@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { InspectionRecord, Loads } from '../types';
-import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff } from 'lucide-react';
 import { analyzeInspectionPhoto } from '../services/geminiService';
 
 interface InspectionDetailProps {
@@ -13,11 +13,85 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
   const [formData, setFormData] = useState<InspectionRecord>(record);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     setFormData(record);
     setAiMessage(null);
   }, [record]);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setFormData(prev => ({
+            ...prev,
+            memo: (prev.memo ? prev.memo + ' ' : '') + finalTranscript.trim()
+          }));
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          alert('Microphone permission denied. Please allow microphone access.');
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+        setIsListening(false);
+      }
+    }
+  };
 
   const handleLoadChange = (key: keyof Loads) => {
     setFormData(prev => ({
@@ -217,13 +291,44 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
 
         {/* Memo */}
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Observations & Actions</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-semibold text-slate-700">Observations & Actions</label>
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                isListening
+                  ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+              }`}
+            >
+              {isListening ? (
+                <>
+                  <MicOff size={16} />
+                  <span>Stop Recording</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={16} />
+                  <span>Voice Input</span>
+                </>
+              )}
+            </button>
+          </div>
           <textarea
             value={formData.memo}
             onChange={handleMemoChange}
-            className="w-full h-24 rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-            placeholder="Enter any specific issues or corrective actions taken..."
+            className={`w-full h-24 rounded-lg border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none ${
+              isListening ? 'border-red-300 bg-red-50' : 'border-slate-300'
+            }`}
+            placeholder="Enter any specific issues or corrective actions taken... or use voice input"
           />
+          {isListening && (
+            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              Listening...
+            </p>
+          )}
         </div>
 
         {/* Footer Actions */}
