@@ -1,0 +1,7 @@
+{
+  "name": "SafetyGuard DB Manager",
+  "description": "Integrated management system for temporary distribution boards with AI-powered inspection.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
