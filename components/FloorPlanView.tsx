@@ -71,21 +71,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
         {/* Floor Plan Image */}
         <div className="relative w-full h-full" style={{ minHeight: '600px' }}>
           <img
-            src="/floor-plan.jpg"
+            src="/Plan DW.jpg"
             alt="Floor Plan"
             className="w-full h-auto object-contain"
             style={{ minHeight: '600px', objectFit: 'contain' }}
             onError={(e) => {
-              // Try alternative formats if jpg fails
+              // Fallback if image fails to load
               const img = e.currentTarget as HTMLImageElement;
-              if (img.src.endsWith('.jpg')) {
-                img.src = '/floor-plan.png';
-              } else if (img.src.endsWith('.png')) {
-                img.src = '/floor-plan.jpeg';
-              } else {
-                // Fallback to placeholder if all formats fail
-                img.src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop';
-              }
+              img.src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop';
             }}
           />
 
