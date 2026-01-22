@@ -331,26 +331,11 @@ export const generateReport = (record: InspectionRecord): void => {
   // Save report to localStorage
   saveReport(record, htmlContent);
 
-  // Create a blob and download
-  const blob = new Blob([htmlContent], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Inspection_Report_${record.id}_${new Date().toISOString().split('T')[0]}.html`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-
-  // Also open in new window for printing
-  const printWindow = window.open('', '_blank');
-  if (printWindow) {
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    // Auto-print after a short delay
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+  // Open report in new window (no auto-download, no auto-print)
+  const reportWindow = window.open('', '_blank');
+  if (reportWindow) {
+    reportWindow.document.write(htmlContent);
+    reportWindow.document.close();
   }
 };
 
