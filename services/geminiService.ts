@@ -1,8 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Vite 공식 문법인 import.meta.env를 써야 합니다.
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const analyzeInspectionPhoto = async (base64Image: string): Promise<{ loads: string[], safetyNotes: string }> => {
+  if (!apiKey) {
+    throw new Error("VITE_GEMINI_API_KEY is not set. Please configure it in your .env file.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
     // Remove header if present (e.g., "data:image/jpeg;base64,")
     const cleanBase64 = base64Image.split(',')[1] || base64Image;
