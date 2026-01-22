@@ -6,9 +6,10 @@ import { CheckCircle2, Clock, AlertCircle, TrendingUp, Activity, ShieldCheck } f
 
 interface DashboardOverviewProps {
   inspections: InspectionRecord[];
+  onUpdateInspections?: (inspections: InspectionRecord[]) => void;
 }
 
-const DashboardOverview: React.FC<DashboardOverviewProps> = ({ inspections }) => {
+const DashboardOverview: React.FC<DashboardOverviewProps> = ({ inspections, onUpdateInspections }) => {
   const stats: StatData[] = useMemo(() => {
     const counts = inspections.reduce((acc, curr) => {
       acc[curr.status] = (acc[curr.status] || 0) + 1;
@@ -173,7 +174,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ inspections }) =>
         </div>
 
         {/* Floor Plan View */}
-        <FloorPlanView inspections={inspections} />
+        <FloorPlanView inspections={inspections} onUpdateInspections={onUpdateInspections} />
 
         {/* Pending Inspections Alert */}
         {pendingCount > 0 && (

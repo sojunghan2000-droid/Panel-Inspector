@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { InspectionRecord, Loads } from '../types';
-import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff } from 'lucide-react';
+import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin } from 'lucide-react';
 import { analyzeInspectionPhoto } from '../services/geminiService';
 
 interface InspectionDetailProps {
@@ -22,7 +22,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
   const isListeningRef = useRef<boolean>(false);
 
   useEffect(() => {
-    setFormData(record);
+    setFormData({
+      ...record,
+      position: record.position || { x: 50, y: 50 } // 기본 위치 정보 추가
+    });
     setAiMessage(null);
   }, [record]);
 
@@ -341,7 +344,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         </div>
       </div>
 
-      <div className="flex-[0.8] overflow-y-auto p-4 space-y-6">
+      <div className="flex-[1.04] overflow-y-auto p-4 space-y-6">
         
         {/* Status & Date */}
         <div className="grid grid-cols-2 gap-6">
@@ -448,6 +451,55 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
               </label>
             )}
           </div>
+        </div>
+
+        {/* Position */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <MapPin size={16} />
+            Position on Floor Plan
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">X 좌표 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={formData.position?.x || 50}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  position: {
+                    x: parseFloat(e.target.value) || 0,
+                    y: prev.position?.y || 50
+                  }
+                }))}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">Y 좌표 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={formData.position?.y || 50}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  position: {
+                    x: prev.position?.x || 50,
+                    y: parseFloat(e.target.value) || 0
+                  }
+                }))}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Floor Plan에서 마커 위치를 조정할 수 있습니다. (0-100%)
+          </p>
         </div>
 
         {/* Memo */}

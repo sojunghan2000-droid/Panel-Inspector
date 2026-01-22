@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { InspectionRecord } from './types';
 import Dashboard from './components/Dashboard';
 import DashboardOverview from './components/DashboardOverview';
@@ -18,11 +18,34 @@ const MOCK_DATA: InspectionRecord[] = [
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
 const App: React.FC = () => {
-  const [inspections, setInspections] = useState<InspectionRecord[]>(MOCK_DATA);
+  const [inspections, setInspections] = useState<InspectionRecord[]>(() => {
+    // position이 없는 항목들에 기본 위치 정보 추가
+    return MOCK_DATA.map(item => {
+      if (!item.position) {
+        // 기본 위치 정보 생성 (랜덤하게 분산)
+        const randomX = Math.floor(Math.random() * 80) + 10; // 10-90%
+        const randomY = Math.floor(Math.random() * 80) + 10; // 10-90%
+        return { ...item, position: { x: randomX, y: randomY } };
+      }
+      return item;
+    });
+  });
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
+
+  // inspections가 업데이트될 때 position이 없는 항목들에 기본 위치 정보 추가
+  useEffect(() => {
+    setInspections(prev => prev.map(item => {
+      if (!item.position) {
+        const randomX = Math.floor(Math.random() * 80) + 10;
+        const randomY = Math.floor(Math.random() * 80) + 10;
+        return { ...item, position: { x: randomX, y: randomY } };
+      }
+      return item;
+    }));
+  }, []);
 
   const handleQRScanSuccess = (qrData: string) => {
     try {
@@ -168,7 +191,7 @@ const App: React.FC = () => {
         {/* Main Content */}
         <main className="flex-1 overflow-hidden p-6 relative">
           {currentPage === 'dashboard-overview' ? (
-            <DashboardOverview inspections={inspections} />
+            <DashboardOverview inspections={inspections} onUpdateInspections={setInspections} />
           ) : currentPage === 'dashboard' ? (
             <Dashboard 
               inspections={inspections}

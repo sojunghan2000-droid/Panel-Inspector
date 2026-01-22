@@ -5,6 +5,7 @@ import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin } from
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
   onSelectInspection?: (inspection: InspectionRecord) => void;
+  onUpdateInspections?: (inspections: InspectionRecord[]) => void;
 }
 
 interface QRLocation {
@@ -15,12 +16,13 @@ interface QRLocation {
   qrId: string;
 }
 
-const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInspection }) => {
+const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInspection, onUpdateInspections }) => {
   const [selectedInspection, setSelectedInspection] = useState<InspectionRecord | null>(null);
   const [hoveredInspection, setHoveredInspection] = useState<InspectionRecord | null>(null);
   const [selectedQRLocation, setSelectedQRLocation] = useState<QRLocation | null>(null);
   const [qrLocations, setQRLocations] = useState<QRLocation[]>([]);
   const [isEditingQRPosition, setIsEditingQRPosition] = useState(false);
+  const [isEditingInspectionPosition, setIsEditingInspectionPosition] = useState(false);
   const [editingPosition, setEditingPosition] = useState({ x: 0, y: 0 });
 
   // Load QR mapping data from localStorage
@@ -124,6 +126,32 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
 
     return () => clearInterval(interval);
   }, []);
+
+  const handleSaveInspectionPosition = () => {
+    if (!selectedInspection || !onUpdateInspections) return;
+
+    try {
+      // InspectionRecord 위치 정보 업데이트
+      const updatedInspections = inspections.map(inspection => 
+        inspection.id === selectedInspection.id
+          ? { ...inspection, position: { x: editingPosition.x, y: editingPosition.y } }
+          : inspection
+      );
+
+      onUpdateInspections(updatedInspections);
+
+      // 화면에 반영
+      setSelectedInspection(prev => 
+        prev ? { ...prev, position: { x: editingPosition.x, y: editingPosition.y } } : null
+      );
+
+      setIsEditingInspectionPosition(false);
+      alert('위치가 저장되었습니다.');
+    } catch (error) {
+      console.error('Failed to save inspection position:', error);
+      alert('위치 저장에 실패했습니다.');
+    }
+  };
 
   const handleSaveQRPosition = () => {
     if (!selectedQRLocation) return;
@@ -397,15 +425,41 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
                 <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedInspection.id}</h4>
                 <p className="text-sm text-slate-600">Distribution Board</p>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedInspection(null);
-                  setSelectedQRLocation(null);
-                }}
-                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-1">
+                {!isEditingInspectionPosition ? (
+                  <button
+                    onClick={() => {
+                      setIsEditingInspectionPosition(true);
+                      setEditingPosition({ 
+                        x: selectedInspection.position?.x || 50, 
+                        y: selectedInspection.position?.y || 50 
+                      });
+                    }}
+                    className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                    title="위치 수정"
+                  >
+                    <Edit2 size={18} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSaveInspectionPosition}
+                    className="p-1 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors"
+                    title="저장"
+                  >
+                    <Save size={18} />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedInspection(null);
+                    setSelectedQRLocation(null);
+                    setIsEditingInspectionPosition(false);
+                  }}
+                  className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -454,6 +508,69 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
                   Active: {getConnectedLoadsCount(selectedInspection.loads)} / 4
                 </p>
               </div>
+
+              {/* Position */}
+              {selectedInspection.position && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+                    <MapPin size={12} />
+                    Position
+                  </p>
+                  {isEditingInspectionPosition ? (
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">X 좌표 (%)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={editingPosition.x}
+                          onChange={(e) => setEditingPosition(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Y 좌표 (%)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={editingPosition.y}
+                          onChange={(e) => setEditingPosition(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div className="col-span-2 flex gap-2 mt-2">
+                        <button
+                          onClick={handleSaveInspectionPosition}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Save size={14} />
+                          저장
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsEditingInspectionPosition(false);
+                            setEditingPosition({ 
+                              x: selectedInspection.position?.x || 50, 
+                              y: selectedInspection.position?.y || 50 
+                            });
+                          }}
+                          className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-800 font-medium">
+                      X: {selectedInspection.position.x}%, Y: {selectedInspection.position.y}%
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Memo */}
               {selectedInspection.memo && (
