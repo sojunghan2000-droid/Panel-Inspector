@@ -48,22 +48,16 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden font-sans">
       
-      {/* Sidebar Toggle Button - Always Visible */}
-      <div className="fixed left-0 top-0 z-30 p-4">
-        <div 
-          className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-600 transition-colors shadow-lg"
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        >
-          <ShieldCheck size={20} className="text-white" />
-        </div>
-      </div>
-
       {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-900 text-white transition-all duration-300 flex flex-col overflow-hidden shadow-xl z-20`}>
-        <div className="p-6 border-b border-slate-800 flex items-center justify-end gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">SafetyGuard<span className="text-blue-400">Pro</span></h1>
+        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+          <div 
+            className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0 cursor-pointer hover:bg-blue-600 transition-colors"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          >
+            <ShieldCheck size={20} className="text-white" />
           </div>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">SafetyGuard<span className="text-blue-400">Pro</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -119,12 +113,12 @@ const App: React.FC = () => {
         {/* Topbar */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-slate-800">Distribution Board Manager</h2>
-          </div>
-          <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600">
               <Menu size={20} />
             </button>
+            <h2 className="text-lg font-semibold text-slate-800">Distribution Board Manager</h2>
+          </div>
+          <div className="flex items-center gap-4">
              <button 
               onClick={() => setShowScanner(true)}
               className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm"
