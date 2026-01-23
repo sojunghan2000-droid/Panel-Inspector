@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
 import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin } from 'lucide-react';
 
@@ -6,6 +6,8 @@ interface FloorPlanViewProps {
   inspections: InspectionRecord[];
   onSelectInspection?: (inspection: InspectionRecord) => void;
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
+  selectedInspectionId?: string | null;
+  onSelectionChange?: (id: string | null) => void;
 }
 
 interface QRLocation {
@@ -16,14 +18,111 @@ interface QRLocation {
   qrId: string;
 }
 
-const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInspection, onUpdateInspections }) => {
+const FloorPlanView: React.FC<FloorPlanViewProps> = ({ 
+  inspections, 
+  onSelectInspection, 
+  onUpdateInspections,
+  selectedInspectionId,
+  onSelectionChange
+}) => {
   const [selectedInspection, setSelectedInspection] = useState<InspectionRecord | null>(null);
   const [hoveredInspection, setHoveredInspection] = useState<InspectionRecord | null>(null);
-  const [selectedQRLocation, setSelectedQRLocation] = useState<QRLocation | null>(null);
   const [qrLocations, setQRLocations] = useState<QRLocation[]>([]);
-  const [isEditingQRPosition, setIsEditingQRPosition] = useState(false);
   const [isEditingInspectionPosition, setIsEditingInspectionPosition] = useState(false);
   const [editingPosition, setEditingPosition] = useState({ x: 0, y: 0 });
+  const [panelPosition, setPanelPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // selectedInspectionId가 변경되면 해당 InspectionRecord 선택
+  useEffect(() => {
+    if (selectedInspectionId) {
+      const inspection = inspections.find(i => i.id === selectedInspectionId);
+      if (inspection) {
+        setSelectedInspection(inspection);
+        // 패널 위치 초기화
+        setPanelPosition({ x: 0, y: 0 });
+        // 마커로 스크롤 (간단한 방법으로 처리)
+        setTimeout(() => {
+          const markerElement = document.querySelector(`[data-marker-id="${inspection.id}"]`);
+          if (markerElement) {
+            markerElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    } else {
+      setSelectedInspection(null);
+    }
+  }, [selectedInspectionId, inspections]);
+
+  // 패널 외부 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+        // 마커 클릭은 제외
+        const target = event.target as HTMLElement;
+        if (!target.closest('[data-marker-id]')) {
+          setSelectedInspection(null);
+          if (onSelectionChange) {
+            onSelectionChange(null);
+          }
+        }
+      }
+    };
+
+    if (selectedInspection) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [selectedInspection, onSelectionChange]);
+
+  // 드래그 핸들러
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // 버튼이나 입력 필드 클릭은 드래그로 처리하지 않음
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
+      return;
+    }
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - panelPosition.x,
+      y: e.clientY - panelPosition.y
+    });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const newX = e.clientX - dragStart.x;
+        const newY = e.clientY - dragStart.y;
+        
+        // 화면 경계 내에서만 이동
+        const maxX = window.innerWidth - 400; // 패널 너비 고려
+        const maxY = window.innerHeight - 400; // 패널 높이 고려
+        
+        setPanelPosition({
+          x: Math.max(0, Math.min(newX, maxX)),
+          y: Math.max(0, Math.min(newY, maxY))
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragStart, panelPosition]);
 
   // Load QR mapping data from localStorage
   useEffect(() => {
@@ -153,62 +252,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
     }
   };
 
-  const handleSaveQRPosition = () => {
-    if (!selectedQRLocation) return;
-
-    try {
-      // QR 코드 데이터를 localStorage에서 찾아서 업데이트
-      const savedQRCodes = JSON.parse(localStorage.getItem('safetyguard_qrcodes') || '[]');
-      const qrCode = savedQRCodes.find((qr: QRCodeData) => qr.id === selectedQRLocation.qrId);
-
-      if (qrCode) {
-        // QR 데이터 파싱
-        const qrData = JSON.parse(qrCode.qrData);
-        
-        // 위치 정보 업데이트
-        qrData.position = {
-          description: qrData.position?.description || qrCode.position || '',
-          x: editingPosition.x,
-          y: editingPosition.y
-        };
-
-        // 업데이트된 QR 데이터 저장
-        qrCode.qrData = JSON.stringify(qrData);
-        localStorage.setItem('safetyguard_qrcodes', JSON.stringify(savedQRCodes));
-
-        // Dashboard 매핑도 업데이트
-        const mappingData = localStorage.getItem('dashboard_qr_mapping');
-        if (mappingData) {
-          const mapping = JSON.parse(mappingData);
-          if (mapping.qrId === selectedQRLocation.qrId) {
-            mapping.qrData = qrCode.qrData;
-            localStorage.setItem('dashboard_qr_mapping', JSON.stringify(mapping));
-          }
-        }
-
-        // 화면에 반영
-        setQRLocations(prev => 
-          prev.map(loc => 
-            loc.id === selectedQRLocation.id 
-              ? { ...loc, position: { x: editingPosition.x, y: editingPosition.y } }
-              : loc
-          )
-        );
-
-        setSelectedQRLocation(prev => 
-          prev ? { ...prev, position: { x: editingPosition.x, y: editingPosition.y } } : null
-        );
-
-        setIsEditingQRPosition(false);
-        alert('위치가 저장되었습니다.');
-      } else {
-        alert('QR 코드를 찾을 수 없습니다.');
-      }
-    } catch (error) {
-      console.error('Failed to save QR position:', error);
-      alert('위치 저장에 실패했습니다.');
-    }
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -236,6 +279,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
 
   const handleMarkerClick = (inspection: InspectionRecord) => {
     setSelectedInspection(inspection);
+    if (onSelectionChange) {
+      onSelectionChange(inspection.id);
+    }
     if (onSelectInspection) {
       onSelectInspection(inspection);
     }
@@ -258,34 +304,46 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
   const positionedInspections = inspections.filter(inspection => inspection.position);
 
   // Combine inspections and QR locations for display
+  // QR과 ID는 하나의 객체이므로 ID로 매칭하여 통합
   const allMarkers = useMemo(() => {
     const markers: Array<{
       id: string;
-      type: 'inspection' | 'qr';
+      type: 'inspection';
       position: { x: number; y: number };
-      data: InspectionRecord | QRLocation;
+      data: InspectionRecord;
+      qrLocation?: QRLocation;
     }> = [];
 
-    // Add inspection markers
+    // QR 코드 데이터에서 ID 매핑 생성
+    const qrMapByInspectionId = new Map<string, QRLocation>();
+    qrLocations.forEach(qrLoc => {
+      try {
+        // QR 코드 데이터에서 InspectionRecord ID 찾기
+        const savedQRCodes = JSON.parse(localStorage.getItem('safetyguard_qrcodes') || '[]');
+        const qrCode = savedQRCodes.find((qr: QRCodeData) => qr.id === qrLoc.qrId);
+        if (qrCode) {
+          const qrData = JSON.parse(qrCode.qrData);
+          if (qrData.id) {
+            qrMapByInspectionId.set(qrData.id, qrLoc);
+          }
+        }
+      } catch (e) {
+        // 무시
+      }
+    });
+
+    // InspectionRecord를 기준으로 마커 생성 (QR 정보 포함)
     positionedInspections.forEach(inspection => {
       if (inspection.position) {
+        const qrLocation = qrMapByInspectionId.get(inspection.id);
         markers.push({
           id: inspection.id,
           type: 'inspection',
           position: inspection.position,
-          data: inspection
+          data: inspection,
+          qrLocation: qrLocation
         });
       }
-    });
-
-    // Add QR location markers
-    qrLocations.forEach(qrLoc => {
-      markers.push({
-        id: qrLoc.id,
-        type: 'qr',
-        position: qrLoc.position,
-        data: qrLoc
-      });
     });
 
     return markers;
@@ -296,8 +354,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
       <div className="p-4 border-b border-slate-200 bg-slate-50">
         <h3 className="text-lg font-semibold text-slate-800">Distribution Board Locations</h3>
         <p className="text-sm text-slate-600 mt-1">
-          {positionedInspections.length} board{positionedInspections.length !== 1 ? 's' : ''} 
-          {qrLocations.length > 0 && `, ${qrLocations.length} QR location${qrLocations.length !== 1 ? 's' : ''}`} mapped on floor plan
+          {positionedInspections.length} board{positionedInspections.length !== 1 ? 's' : ''} mapped on floor plan
         </p>
       </div>
 
@@ -319,43 +376,30 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
           {/* Markers */}
           {allMarkers.map((marker) => {
             const { x, y } = marker.position;
-            const isInspection = marker.type === 'inspection';
-            const inspection = isInspection ? (marker.data as InspectionRecord) : null;
-            const qrLocation = !isInspection ? (marker.data as QRLocation) : null;
+            const inspection = marker.data;
+            const qrLocation = marker.qrLocation;
             
-            const statusColor = isInspection ? getStatusColor(inspection!.status) : '#8b5cf6'; // purple for QR
-            const isSelected = isInspection 
-              ? selectedInspection?.id === marker.id
-              : selectedQRLocation?.id === marker.id;
-            const isHovered = isInspection
-              ? hoveredInspection?.id === marker.id
-              : false;
+            const statusColor = getStatusColor(inspection.status);
+            const isSelected = selectedInspection?.id === marker.id;
+            const isHovered = hoveredInspection?.id === marker.id;
 
             return (
               <div
                 key={marker.id}
+                data-marker-id={marker.id}
                 className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all z-10"
                 style={{
                   left: `${x}%`,
                   top: `${y}%`,
                 }}
                 onClick={() => {
-                  if (isInspection && inspection) {
-                    handleMarkerClick(inspection);
-                  } else if (qrLocation) {
-                    setSelectedQRLocation(qrLocation);
-                    setSelectedInspection(null);
-                  }
+                  handleMarkerClick(inspection);
                 }}
                 onMouseEnter={() => {
-                  if (isInspection && inspection) {
-                    setHoveredInspection(inspection);
-                  }
+                  setHoveredInspection(inspection);
                 }}
                 onMouseLeave={() => {
-                  if (isInspection) {
-                    setHoveredInspection(null);
-                  }
+                  setHoveredInspection(null);
                 }}
               >
                 {/* Marker */}
@@ -385,29 +429,23 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
                     className="relative rounded-full flex items-center justify-center shadow-lg border-2 border-white"
                     style={{
                       backgroundColor: statusColor,
-                      width: isInspection ? '24px' : '28px',
-                      height: isInspection ? '24px' : '28px',
+                      width: '24px',
+                      height: '24px',
                     }}
                   >
-                    {isInspection ? getStatusIcon(inspection!.status) : <QrCode size={16} className="text-white" />}
+                    {getStatusIcon(inspection.status)}
                   </div>
 
                   {/* Tooltip on hover */}
-                  {isHovered && !isSelected && isInspection && (
+                  {isHovered && !isSelected && (
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg shadow-xl whitespace-nowrap z-20">
                       <div className="font-semibold mb-1">{inspection.id}</div>
                       <div className="text-slate-300">{inspection.status}</div>
+                      {qrLocation && (
+                        <div className="text-purple-300 mt-1">QR: {qrLocation.location}</div>
+                      )}
                       <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
                         <div className="border-4 border-transparent border-t-slate-900"></div>
-                      </div>
-                    </div>
-                  )}
-                  {!isInspection && qrLocation && (
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-purple-900 text-white text-xs rounded-lg shadow-xl whitespace-nowrap z-20">
-                      <div className="font-semibold mb-1">QR: {qrLocation.location}</div>
-                      <div className="text-purple-300">{qrLocation.floor}</div>
-                      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
-                        <div className="border-4 border-transparent border-t-purple-900"></div>
                       </div>
                     </div>
                   )}
@@ -418,12 +456,32 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
         </div>
 
         {/* Selected Inspection Details Panel */}
-        {selectedInspection && (
-          <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-xl border border-slate-200 p-4 z-30 max-w-md">
+        {selectedInspection && (() => {
+          // QR 정보 찾기
+          const qrLocation = allMarkers.find(m => m.id === selectedInspection.id)?.qrLocation;
+          
+          return (
+          <div 
+            ref={panelRef}
+            className={`absolute bg-white rounded-lg shadow-xl border border-slate-200 p-4 z-30 max-w-md ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+            style={{
+              bottom: panelPosition.y === 0 ? '16px' : 'auto',
+              left: panelPosition.x === 0 ? '16px' : `${panelPosition.x}px`,
+              right: panelPosition.x === 0 ? '16px' : 'auto',
+              top: panelPosition.y === 0 ? 'auto' : `${panelPosition.y}px`,
+            }}
+            onMouseDown={handleMouseDown}
+          >
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedInspection.id}</h4>
                 <p className="text-sm text-slate-600">Distribution Board</p>
+                {qrLocation && (
+                  <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
+                    <QrCode size={12} />
+                    QR: {qrLocation.location} ({qrLocation.floor})
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 {!isEditingInspectionPosition ? (
@@ -452,7 +510,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
                 <button
                   onClick={() => {
                     setSelectedInspection(null);
-                    setSelectedQRLocation(null);
                     setIsEditingInspectionPosition(false);
                   }}
                   className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
@@ -583,120 +640,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
 
-        {/* Selected QR Location Details Panel */}
-        {selectedQRLocation && (
-          <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-xl border border-slate-200 p-4 z-30 max-w-md">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedQRLocation.location}</h4>
-                <p className="text-sm text-slate-600">QR Location</p>
-              </div>
-              <div className="flex items-center gap-1">
-                {!isEditingQRPosition ? (
-                  <button
-                    onClick={() => {
-                      setIsEditingQRPosition(true);
-                      setEditingPosition({ x: selectedQRLocation.position.x, y: selectedQRLocation.position.y });
-                    }}
-                    className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
-                    title="위치 수정"
-                  >
-                    <Edit2 size={18} />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSaveQRPosition}
-                    className="p-1 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors"
-                    title="저장"
-                  >
-                    <Save size={18} />
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setSelectedQRLocation(null);
-                    setSelectedInspection(null);
-                    setIsEditingQRPosition(false);
-                  }}
-                  className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Location */}
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Location</p>
-                <p className="text-sm text-slate-800 font-medium">{selectedQRLocation.location}</p>
-              </div>
-
-              {/* Floor */}
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Floor</p>
-                <p className="text-sm text-slate-800 font-medium">{selectedQRLocation.floor}</p>
-              </div>
-
-              {/* Position */}
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Position</p>
-                {isEditingQRPosition ? (
-                  <div className="grid grid-cols-2 gap-3 mt-2">
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">X 좌표 (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value={editingPosition.x}
-                        onChange={(e) => setEditingPosition(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Y 좌표 (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value={editingPosition.y}
-                        onChange={(e) => setEditingPosition(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-                    <div className="col-span-2 flex gap-2 mt-2">
-                      <button
-                        onClick={handleSaveQRPosition}
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Save size={14} />
-                        저장
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditingQRPosition(false);
-                          setEditingPosition({ x: selectedQRLocation.position.x, y: selectedQRLocation.position.y });
-                        }}
-                        className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
-                      >
-                        취소
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-800 font-medium">
-                    X: {selectedQRLocation.position.x}%, Y: {selectedQRLocation.position.y}%
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Legend */}
         <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg border border-slate-200 p-3 z-20">
@@ -714,12 +660,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ inspections, onSelectInsp
               <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
               <span className="text-xs text-slate-600">Pending</span>
             </div>
-            {qrLocations.length > 0 && (
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
-                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#8b5cf6' }}></div>
-                <span className="text-xs text-slate-600">QR Location</span>
-              </div>
-            )}
           </div>
         </div>
       </div>

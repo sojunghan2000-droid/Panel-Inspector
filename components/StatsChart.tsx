@@ -1,5 +1,5 @@
 import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { StatData } from '../types';
 
 interface StatsChartProps {
@@ -28,7 +28,6 @@ const StatsChart: React.FC<StatsChartProps> = ({ data }) => {
             contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
             itemStyle={{ color: '#374151', fontWeight: 600 }}
           />
-          <Legend verticalAlign="bottom" height={36}/>
         </PieChart>
       </ResponsiveContainer>
     </div>

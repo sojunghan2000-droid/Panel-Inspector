@@ -10,6 +10,21 @@ const ReportsList: React.FC = () => {
 
   useEffect(() => {
     loadReports();
+    
+    // localStorage 변경 감지 및 주기적 업데이트
+    const handleStorageChange = () => {
+      loadReports();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 주기적으로 확인 (같은 탭에서의 변경 감지)
+    const interval = setInterval(loadReports, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
   }, []);
 
   const loadReports = () => {
@@ -147,55 +162,19 @@ const ReportsList: React.FC = () => {
         </div>
 
         {/* Report Preview */}
-        <div className="w-1/2 bg-slate-50 p-6 overflow-y-auto">
+        <div className="w-1/2 bg-slate-50 overflow-y-auto">
           {selectedReport ? (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 mb-1">{selectedReport.reportId}</h3>
-                  <p className="text-sm text-slate-600">Board ID: {selectedReport.boardId}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(selectedReport.status)}`}>
-                  {selectedReport.status}
-                </span>
-              </div>
-
-              <div className="space-y-4 mb-6">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Generated At</p>
-                  <p className="text-sm text-slate-800">{formatDate(selectedReport.generatedAt)}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleViewReport(selectedReport)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
-                >
-                  <Eye size={18} />
-                  View Report
-                </button>
-                <button
-                  onClick={() => {
-                    const blob = new Blob([selectedReport.htmlContent], { type: 'text/html' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `${selectedReport.reportId}.html`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium transition-colors"
-                >
-                  <FileText size={18} />
-                  Download
-                </button>
-              </div>
+            <div className="h-full">
+              {/* HTML 보고서 렌더링 */}
+              <iframe
+                srcDoc={selectedReport.htmlContent}
+                className="w-full h-full border-0"
+                title={selectedReport.reportId}
+                sandbox="allow-same-origin"
+              />
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6">
               <FileText size={48} className="mb-4 opacity-50" />
               <p className="text-lg font-medium mb-2">Select a report</p>
               <p className="text-sm text-center">Choose a report from the list to view details</p>
