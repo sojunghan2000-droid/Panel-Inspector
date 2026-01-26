@@ -227,9 +227,9 @@ const App: React.FC = () => {
         data = { raw: qrData };
       }
       
-      // 스캔 시간 생성 (YYYY-MM-DD HH:mm 형식) - 예: 2024-05-20 09:30
+      // 스캔 시간 생성 (YYYY-MM-DD, hh-mm-ss 형식) - 예: 2024-05-20, 09-30-45
       const now = new Date();
-      const scanTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const scanTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}, ${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
       // QR 코드에서 ID 찾기
       const qrId = data.id || (data.raw && data.raw.includes('DB-') ? data.raw.split('DB-')[1]?.split('-')[0] : null) || data.raw || 'UNKNOWN';
@@ -385,7 +385,27 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
              <button 
-              onClick={() => setShowScanner(true)}
+              onClick={() => {
+                // QR 스캔 버튼 클릭 순간의 시간 생성 (YYYY-MM-DD, hh-mm-ss 형식)
+                const now = new Date();
+                const scanTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}, ${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+                
+                // 현재 선택된 inspection이 있으면 점검일 업데이트
+                if (selectedInspectionId) {
+                  const selectedInspection = inspections.find(i => i.id === selectedInspectionId);
+                  if (selectedInspection) {
+                    const updatedInspection: InspectionRecord = {
+                      ...selectedInspection,
+                      lastInspectionDate: scanTime
+                    };
+                    setInspections(prev => prev.map(item => 
+                      item.id === selectedInspectionId ? updatedInspection : item
+                    ));
+                  }
+                }
+                
+                setShowScanner(true);
+              }}
               className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm"
             >
               <ScanLine size={18} />

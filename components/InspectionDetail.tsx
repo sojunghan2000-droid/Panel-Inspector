@@ -617,7 +617,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                 value={formData.lastInspectionDate} 
                 onChange={(e) => handleBasicInfoChange('lastInspectionDate', e.target.value)}
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                placeholder="예: 2024-05-20 09:30"
+                placeholder="예: 2024-05-20, 09-30-45"
               />
             </div>
           </div>
