@@ -219,40 +219,69 @@ const App: React.FC = () => {
   const handleQRScanSuccess = (qrData: string) => {
     try {
       // QR 코드 데이터 파싱
-      const data = JSON.parse(qrData);
+      let data: any;
+      try {
+        data = JSON.parse(qrData);
+      } catch (parseError) {
+        // JSON이 아닌 경우 직접 파싱 시도
+        data = { raw: qrData };
+      }
       
-      // QR 코드에서 위치 정보를 가져와서 Distribution Board 찾기 또는 생성
-      const existingBoard = inspections.find(i => 
-        i.id.includes(data.location) || 
-        (i.position && data.position && i.position.x.toString().includes(data.position))
-      );
+      // 스캔 시간 생성 (YYYY-MM-DD HH:mm 형식)
+      const scanTime = new Date().toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).replace(/\. /g, '-').replace(/\./g, '').replace(/,/g, '');
+
+      // QR 코드에서 ID 찾기 (data.id 또는 data.raw에서 추출)
+      const qrId = data.id || (data.raw && data.raw.includes('DB-') ? data.raw.split('DB-')[1]?.split('-')[0] : null) || data.raw || 'UNKNOWN';
+      
+      // 기존 보드 찾기 (ID 기준)
+      const existingBoard = inspections.find(i => i.id === qrId || i.id.includes(qrId));
 
       if (existingBoard) {
-        // 기존 보드 선택
+        // 기존 보드 업데이트 - QR 정보 반영
+        const updatedBoard: InspectionRecord = {
+          ...existingBoard,
+          lastInspectionDate: scanTime, // 스캔 시간으로 자동 업데이트
+          panelNo: data.panelNo || data.pnlNo || existingBoard.panelNo,
+          projectName: data.projectName || data.pjtName || data.pjt || existingBoard.projectName,
+          contractor: data.contractor || data.시공사 || existingBoard.contractor,
+          managementNumber: data.managementNumber || data.관리번호 || data.panelName || existingBoard.managementNumber,
+        };
+        
+        setInspections(prev => prev.map(item => item.id === existingBoard.id ? updatedBoard : item));
         setCurrentPage('dashboard');
-        // Dashboard에서 선택하도록 처리 필요
+        setSelectedInspectionId(existingBoard.id);
         setShowScanner(false);
-        alert(`QR 코드 스캔 완료!\n위치: ${data.location}\n층수: ${data.floor}\n기존 Distribution Board를 찾았습니다.`);
       } else {
-        // 새 Distribution Board 생성 (형식: DB-층수-위치)
-        const newId = `DB-${data.floor}-${data.location}`;
+        // 새 Distribution Board 생성
+        const newId = data.id || `DB-${data.floor || 'F1'}-${data.location || 'LOC'}`;
         const newItem: InspectionRecord = {
           id: newId,
           status: 'In Progress',
-          lastInspectionDate: new Date().toLocaleString(),
+          lastInspectionDate: scanTime, // 스캔 시간으로 설정
           loads: { welder: false, grinder: false, light: false, pump: false },
           photoUrl: null,
-          memo: `QR 스캔으로 생성됨\n위치: ${data.location}\n층수: ${data.floor}\n위치 정보: ${data.position}`,
-          position: data.position ? { x: parseFloat(data.position) || 50, y: 50 } : undefined
+          memo: '',
+          position: data.position ? (typeof data.position === 'object' ? data.position : { x: parseFloat(data.position) || 50, y: 50 }) : undefined,
+          // QR 정보에서 기본 정보 가져오기
+          panelNo: data.panelNo || data.pnlNo || `PNL NO. ${newId}`,
+          projectName: data.projectName || data.pjtName || data.pjt || '',
+          contractor: data.contractor || data.시공사 || '',
+          managementNumber: data.managementNumber || data.관리번호 || data.panelName || newId,
         };
         setInspections(prev => [newItem, ...prev]);
         setCurrentPage('dashboard');
+        setSelectedInspectionId(newId);
         setShowScanner(false);
-        alert(`QR 코드 스캔 완료!\n새 Distribution Board가 생성되었습니다: ${newId}`);
       }
     } catch (error) {
-      // JSON 파싱 실패 시 일반 텍스트로 처리
-      console.error('QR 데이터 파싱 오류:', error);
+      console.error('QR 데이터 처리 오류:', error);
       alert(`QR 코드 스캔 완료!\n데이터: ${qrData}`);
       setShowScanner(false);
     }

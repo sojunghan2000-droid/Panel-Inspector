@@ -17,6 +17,24 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
   useEffect(() => {
     const startScanning = async () => {
       try {
+        // 카메라 접근 권한 확인
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // 권한이 있으면 스트림 종료하고 스캐너 시작
+          stream.getTracks().forEach(track => track.stop());
+        } catch (permError: any) {
+          if (permError.name === 'NotAllowedError' || permError.name === 'PermissionDeniedError') {
+            setError('카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.');
+            setIsScanning(false);
+            return;
+          } else if (permError.name === 'NotFoundError' || permError.name === 'DevicesNotFoundError') {
+            setError('카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.');
+            setIsScanning(false);
+            return;
+          }
+          throw permError;
+        }
+
         const html5QrCode = new Html5Qrcode(scannerId);
         scannerRef.current = html5QrCode;
 
@@ -49,7 +67,17 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
         setError(null);
       } catch (err: any) {
         console.error('QR Scanner error:', err);
-        setError(err.message || '카메라에 접근할 수 없습니다.');
+        let errorMessage = '카메라에 접근할 수 없습니다.';
+        
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMessage = '카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMessage = '카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.';
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+        
+        setError(errorMessage);
         setIsScanning(false);
       }
     };
