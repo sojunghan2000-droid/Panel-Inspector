@@ -15,58 +15,83 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
   const scannerId = 'qr-scanner';
 
   useEffect(() => {
+    let isMounted = true;
+    
     const startScanning = async () => {
-      try {
-        // 카메라 접근 권한 확인
+      // 기존 스캐너가 있으면 먼저 정리
+      if (scannerRef.current) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          // 권한이 있으면 스트림 종료하고 스캐너 시작
-          stream.getTracks().forEach(track => track.stop());
-        } catch (permError: any) {
-          if (permError.name === 'NotAllowedError' || permError.name === 'PermissionDeniedError') {
-            setError('카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.');
-            setIsScanning(false);
-            return;
-          } else if (permError.name === 'NotFoundError' || permError.name === 'DevicesNotFoundError') {
-            setError('카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.');
-            setIsScanning(false);
-            return;
-          }
-          throw permError;
+          await scannerRef.current.stop();
+          await scannerRef.current.clear();
+        } catch (e) {
+          console.log('Error cleaning up previous scanner:', e);
         }
+        scannerRef.current = null;
+      }
 
+      try {
         const html5QrCode = new Html5Qrcode(scannerId);
         scannerRef.current = html5QrCode;
 
+        // 카메라 장치 목록 가져오기 시도
+        let cameraId: string | null = null;
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            // 후면 카메라 우선 선택
+            const backCamera = devices.find(device => 
+              device.label.toLowerCase().includes('back') || 
+              device.label.toLowerCase().includes('rear') ||
+              device.label.toLowerCase().includes('environment')
+            );
+            cameraId = backCamera ? backCamera.id : devices[0].id;
+          }
+        } catch (deviceError) {
+          console.log('Could not enumerate cameras, using default:', deviceError);
+        }
+
+        const config = {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        };
+
         await html5QrCode.start(
-          { facingMode: 'environment' }, // 후면 카메라 우선
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
-          },
+          cameraId || { facingMode: 'environment' },
+          config,
           (decodedText) => {
             // QR 코드 스캔 성공
-            setScannedData(decodedText);
-            setIsScanning(false);
-            onScanSuccess(decodedText);
-            
-            // 스캔 후 자동으로 정리
-            if (scannerRef.current) {
-              scannerRef.current.stop().then(() => {
-                scannerRef.current = null;
-              }).catch(() => {});
+            if (isMounted) {
+              setScannedData(decodedText);
+              setIsScanning(false);
+              onScanSuccessRef.current(decodedText);
+              
+              // 스캔 후 자동으로 정리
+              if (scannerRef.current) {
+                scannerRef.current.stop().then(() => {
+                  if (scannerRef.current) {
+                    scannerRef.current.clear().catch(() => {});
+                    scannerRef.current = null;
+                  }
+                }).catch(() => {});
+              }
             }
           },
           (errorMessage) => {
             // 스캔 중 에러 (무시 - 계속 스캔)
+            // console.log('Scanning error (ignored):', errorMessage);
           }
         );
         
-        setIsScanning(true);
-        setError(null);
+        if (isMounted) {
+          setIsScanning(true);
+          setError(null);
+        }
       } catch (err: any) {
         console.error('QR Scanner error:', err);
+        
+        if (!isMounted) return;
+        
         let errorMessage = '카메라에 접근할 수 없습니다.';
         
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -82,15 +107,21 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
       }
     };
 
-    startScanning();
+    // 약간의 지연을 두고 시작 (DOM이 완전히 렌더링된 후)
+    const timer = setTimeout(() => {
+      startScanning();
+    }, 100);
 
     return () => {
+      isMounted = false;
+      clearTimeout(timer);
       if (scannerRef.current) {
         scannerRef.current.stop().catch(() => {});
         scannerRef.current.clear().catch(() => {});
+        scannerRef.current = null;
       }
     };
-  }, [onScanSuccess]);
+  }, []); // onScanSuccess를 dependency에서 제거하여 불필요한 재실행 방지
 
   const handleClose = async () => {
     if (scannerRef.current) {
