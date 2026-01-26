@@ -227,7 +227,7 @@ const App: React.FC = () => {
         data = { raw: qrData };
       }
       
-      // 스캔 시간 생성 (YYYY-MM-DD HH:mm 형식)
+      // 스캔 시간 생성 (YYYY-MM-DD HH:mm 형식) - 예: 2024-05-20 09:30
       const now = new Date();
       const scanTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -253,7 +253,7 @@ const App: React.FC = () => {
         // 기존 보드 업데이트 - QR 정보 반영
         const updatedBoard: InspectionRecord = {
           ...existingBoard,
-          lastInspectionDate: scanTime, // QR 스캔 시간으로 자동 업데이트
+          lastInspectionDate: scanTime, // QR 스캔 시간으로 자동 업데이트 (항상 스캔 시간으로 설정)
           // QR 데이터에서 정보 가져오기 (우선순위: QR 데이터 > 기존 값)
           panelNo: data.panelNo || data.pnlNo || existingBoard.panelNo || (matchedQR ? `PNL NO. ${qrId}` : undefined),
           projectName: data.projectName || data.pjtName || data.pjt || existingBoard.projectName || '',
@@ -265,6 +265,11 @@ const App: React.FC = () => {
         setCurrentPage('dashboard');
         setSelectedInspectionId(existingBoard.id);
         setShowScanner(false);
+        
+        // 점검일이 자동으로 업데이트되었음을 알림
+        setTimeout(() => {
+          // InspectionDetail이 업데이트된 record를 받아서 자동으로 formData가 업데이트됨
+        }, 100);
       } else {
         // 새 Distribution Board 생성
         const newId = data.id || `DB-${data.floor || 'F1'}-${data.location || 'LOC'}`;
