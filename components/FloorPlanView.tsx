@@ -8,6 +8,8 @@ interface FloorPlanViewProps {
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
+  selectedFloor?: 'F1' | 'B1';
+  onFloorChange?: (floor: 'F1' | 'B1') => void;
 }
 
 interface QRLocation {
@@ -23,7 +25,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   onSelectInspection, 
   onUpdateInspections,
   selectedInspectionId,
-  onSelectionChange
+  onSelectionChange,
+  selectedFloor: propSelectedFloor,
+  onFloorChange
 }) => {
   const [selectedInspection, setSelectedInspection] = useState<InspectionRecord | null>(null);
   const [hoveredInspection, setHoveredInspection] = useState<InspectionRecord | null>(null);
@@ -33,7 +37,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const [panelPosition, setPanelPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [internalSelectedFloor, setInternalSelectedFloor] = useState<'F1' | 'B1'>('F1');
   const panelRef = useRef<HTMLDivElement>(null);
+  
+  // prop으로 전달된 층수가 있으면 사용, 없으면 내부 상태 사용
+  const selectedFloor = propSelectedFloor ?? internalSelectedFloor;
+  
+  const handleFloorChange = (floor: 'F1' | 'B1') => {
+    if (onFloorChange) {
+      onFloorChange(floor);
+    } else {
+      setInternalSelectedFloor(floor);
+    }
+  };
 
   // selectedInspectionId가 변경되면 해당 InspectionRecord 선택
   useEffect(() => {
@@ -287,6 +303,105 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   };
 
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 마커 클릭은 제외
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-marker-id]')) {
+      return;
+    }
+
+    const container = e.currentTarget;
+    const rect = container.getBoundingClientRect();
+    const img = container.querySelector('img');
+    
+    if (!img) return;
+
+    // 이미지의 실제 표시 영역 계산 (object-contain 고려)
+    const imgRect = img.getBoundingClientRect();
+    const imgNaturalWidth = img.naturalWidth;
+    const imgNaturalHeight = img.naturalHeight;
+    
+    if (imgNaturalWidth === 0 || imgNaturalHeight === 0) return;
+
+    // 이미지의 실제 표시 크기 계산
+    const containerAspect = rect.width / rect.height;
+    const imageAspect = imgNaturalWidth / imgNaturalHeight;
+    
+    let displayWidth: number;
+    let displayHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (imageAspect > containerAspect) {
+      // 이미지가 컨테이너보다 넓음 (좌우 여백)
+      displayWidth = rect.width;
+      displayHeight = rect.width / imageAspect;
+      offsetX = 0;
+      offsetY = (rect.height - displayHeight) / 2;
+    } else {
+      // 이미지가 컨테이너보다 높음 (상하 여백)
+      displayWidth = rect.height * imageAspect;
+      displayHeight = rect.height;
+      offsetX = (rect.width - displayWidth) / 2;
+      offsetY = 0;
+    }
+
+    // 클릭한 위치를 이미지 기준으로 계산
+    const clickX = e.clientX - rect.left - offsetX;
+    const clickY = e.clientY - rect.top - offsetY;
+    
+    // 이미지 영역 내부인지 확인
+    if (clickX < 0 || clickX > displayWidth || clickY < 0 || clickY > displayHeight) {
+      return; // 이미지 영역 밖 클릭은 무시
+    }
+    
+    // 퍼센트 좌표로 변환
+    const x = (clickX / displayWidth) * 100;
+    const y = (clickY / displayHeight) * 100;
+    
+    // 좌표를 0-100 범위로 제한
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
+
+    // 선택된 inspection이 있으면 위치 업데이트
+    if (selectedInspection && onUpdateInspections) {
+      const updatedInspections = inspections.map(inspection => 
+        inspection.id === selectedInspection.id
+          ? { ...inspection, position: { x: clampedX, y: clampedY } }
+          : inspection
+      );
+
+      onUpdateInspections(updatedInspections);
+      
+      // 화면에 반영
+      setSelectedInspection(prev => 
+        prev ? { ...prev, position: { x: clampedX, y: clampedY } } : null
+      );
+    } else {
+      // 선택된 inspection이 없으면 가장 가까운 inspection 선택하거나 새로 생성
+      // 여기서는 가장 가까운 inspection을 찾아서 선택
+      const nearestInspection = inspections.find(inspection => {
+        if (!inspection.position) return false;
+        const dx = Math.abs(inspection.position.x - clampedX);
+        const dy = Math.abs(inspection.position.y - clampedY);
+        return dx < 5 && dy < 5; // 5% 이내에 있으면 선택
+      });
+
+      if (nearestInspection) {
+        handleMarkerClick(nearestInspection);
+        // 위치 업데이트
+        if (onUpdateInspections) {
+          const updatedInspections = inspections.map(inspection => 
+            inspection.id === nearestInspection.id
+              ? { ...inspection, position: { x: clampedX, y: clampedY } }
+              : inspection
+          );
+          onUpdateInspections(updatedInspections);
+        }
+      }
+    }
+  };
+
   const getConnectedLoadsCount = (loads: InspectionRecord['loads']) => {
     return Object.values(loads).filter(Boolean).length;
   };
@@ -336,36 +451,125 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     positionedInspections.forEach(inspection => {
       if (inspection.position) {
         const qrLocation = qrMapByInspectionId.get(inspection.id);
-        markers.push({
-          id: inspection.id,
-          type: 'inspection',
-          position: inspection.position,
-          data: inspection,
-          qrLocation: qrLocation
-        });
+        
+        // 층수 필터링: QR 코드의 층수 정보와 선택된 층이 일치하는 경우만 표시
+        let shouldShow = false;
+        let markerFloor: string | null = null;
+        
+        if (qrLocation) {
+          // QR 코드에 층수 정보가 있으면 그것을 사용
+          markerFloor = qrLocation.floor;
+        } else {
+          // QR 코드 정보가 없으면 savedQRCodes에서 직접 확인
+          try {
+            const savedQRCodes = JSON.parse(localStorage.getItem('safetyguard_qrcodes') || '[]');
+            const qrCode = savedQRCodes.find((qr: QRCodeData) => {
+              try {
+                const qrData = JSON.parse(qr.qrData);
+                return qrData.id === inspection.id;
+              } catch {
+                return false;
+              }
+            });
+            
+            if (qrCode) {
+              markerFloor = qrCode.floor;
+            }
+          } catch (e) {
+            // 무시
+          }
+        }
+        
+        // QR 코드에 층수 정보가 없으면 ID에서 추출 (형식: DB-층수-위치)
+        if (!markerFloor && inspection.id) {
+          const idParts = inspection.id.split('-');
+          if (idParts.length >= 3) {
+            // DB-층수-위치 형식에서 층수 추출 (idParts[1]이 층수)
+            const floorFromId = idParts[1] || '';
+            // 층수 매핑: A -> F1, B -> B1 등
+            const floorMap: { [key: string]: string } = {
+              'A': 'F1',
+              'B': 'B1',
+              '1': 'F1',
+              'F1': 'F1',
+              '1st': 'F1',
+              'B1': 'B1'
+            };
+            markerFloor = floorMap[floorFromId.toUpperCase()] || floorFromId;
+          }
+        }
+        
+        // 층수 일치 확인
+        if (markerFloor && markerFloor === selectedFloor) {
+          shouldShow = true;
+        }
+        
+        // 층수에 맞는 마커만 추가
+        if (shouldShow) {
+          markers.push({
+            id: inspection.id,
+            type: 'inspection',
+            position: inspection.position,
+            data: inspection,
+            qrLocation: qrLocation
+          });
+        }
       }
     });
+    
+    // 디버깅: 마커 개수 확인
+    console.log('Total markers for floor', selectedFloor, ':', markers.length, 'Positioned inspections:', positionedInspections.length);
 
     return markers;
-  }, [positionedInspections, qrLocations]);
+  }, [positionedInspections, qrLocations, selectedFloor]);
+
+  // 층에 따른 이미지 경로 결정
+  const floorImagePath = selectedFloor === 'F1' ? '/1st Floor.jpg' : '/Basement.jpg';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="p-4 border-b border-slate-200 bg-slate-50">
-        <h3 className="text-lg font-semibold text-slate-800">Distribution Board Locations</h3>
-        <p className="text-sm text-slate-600 mt-1">
-          {positionedInspections.length} board{positionedInspections.length !== 1 ? 's' : ''} mapped on floor plan
-        </p>
+      <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Distribution Board Locations</h3>
+          <p className="text-sm text-slate-600 mt-1">
+            {allMarkers.length} board{allMarkers.length !== 1 ? 's' : ''} mapped on floor plan
+            {allMarkers.length === 0 && (
+              <span className="text-red-600 font-bold ml-2">⚠️ 위젯이 표시되지 않습니다. 위치 정보가 있는 검사 항목이 없습니다.</span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-slate-700">층 선택:</label>
+          <select
+            value={selectedFloor}
+            onChange={(e) => handleFloorChange(e.target.value as 'F1' | 'B1')}
+            className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none cursor-pointer"
+          >
+            <option value="F1">F1</option>
+            <option value="B1">B1</option>
+          </select>
+        </div>
       </div>
 
       <div className="relative bg-slate-100" style={{ minHeight: '600px' }}>
-        {/* Floor Plan Image */}
-        <div className="relative w-full h-full" style={{ minHeight: '600px' }}>
+        {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
+        <div 
+          className="relative w-full h-full cursor-crosshair" 
+          style={{ minHeight: '600px' }}
+          onClick={handleImageClick}
+        >
+          {/* Floor Plan Image - 낮은 해상도, 최하위 z-index */}
           <img
-            src="/Plan DW.jpg"
-            alt="Floor Plan"
-            className="w-full h-auto object-contain"
-            style={{ minHeight: '600px', objectFit: 'contain' }}
+            src={floorImagePath}
+            alt={`${selectedFloor === 'F1' ? 'F1' : 'B1'} Floor Plan`}
+            className="w-full h-auto object-contain pointer-events-none"
+            style={{ 
+              minHeight: '600px', 
+              objectFit: 'contain',
+              imageRendering: 'pixelated', // 해상도 낮춤
+              opacity: 0.7, // 약간 투명하게
+              zIndex: 0, // 최하위
+            }}
             onError={(e) => {
               // Fallback if image fails to load
               const img = e.currentTarget as HTMLImageElement;
@@ -374,6 +578,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           />
 
           {/* Markers */}
+          {allMarkers.length === 0 && (
+            <div className="absolute top-4 left-4 bg-red-500 text-white p-4 rounded-lg shadow-xl z-50">
+              <p className="font-bold">⚠️ 위젯이 없습니다!</p>
+              <p className="text-sm mt-1">위치 정보가 있는 검사 항목: {positionedInspections.length}개</p>
+              <p className="text-sm">표시할 마커: {allMarkers.length}개</p>
+            </div>
+          )}
           {allMarkers.map((marker) => {
             const { x, y } = marker.position;
             const inspection = marker.data;
@@ -382,15 +593,21 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             const statusColor = getStatusColor(inspection.status);
             const isSelected = selectedInspection?.id === marker.id;
             const isHovered = hoveredInspection?.id === marker.id;
+            
+            // 위젯 색상을 상태 색상으로 설정
+            const widgetColor = statusColor;
 
             return (
               <div
                 key={marker.id}
                 data-marker-id={marker.id}
-                className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all z-10"
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-all"
                 style={{
                   left: `${x}%`,
                   top: `${y}%`,
+                  padding: '8px', // hover 영역 확장
+                  cursor: 'default', // 기본 커서
+                  zIndex: 100, // 위젯을 최상위로
                 }}
                 onClick={() => {
                   handleMarkerClick(inspection);
@@ -402,6 +619,64 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   setHoveredInspection(null);
                 }}
               >
+                {/* 위젯 위치 표시 - 배경 하이라이트 */}
+                <div
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  style={{
+                    width: '60px',
+                    height: '60px',
+                    backgroundColor: `${widgetColor}20`,
+                    border: `3px dashed ${widgetColor}`,
+                    left: '50%',
+                    top: '50%',
+                    zIndex: 0,
+                    animation: 'pulse-ring 2s ease-in-out infinite',
+                  }}
+                />
+                {/* 위치 표시 십자가 */}
+                <div
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                  style={{
+                    left: '50%',
+                    top: '50%',
+                    width: '2px',
+                    height: '40px',
+                    backgroundColor: widgetColor,
+                    zIndex: 1,
+                    opacity: 0.6,
+                  }}
+                />
+                <div
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                  style={{
+                    left: '50%',
+                    top: '50%',
+                    width: '40px',
+                    height: '2px',
+                    backgroundColor: widgetColor,
+                    zIndex: 1,
+                    opacity: 0.6,
+                  }}
+                />
+                {/* 위치 번호 표시 */}
+                <div
+                  className="absolute transform -translate-x-1/2"
+                  style={{
+                    left: '50%',
+                    top: '-30px',
+                    backgroundColor: widgetColor,
+                    color: 'white',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
+                    zIndex: 1,
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                  }}
+                >
+                  {inspection.id}
+                </div>
                 {/* Marker */}
                 <div
                   className="relative"
@@ -424,21 +699,113 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                     />
                   )}
 
-                  {/* Main marker circle */}
+                  {/* Main marker - 빨간색 위젯 */}
                   <div
-                    className="relative rounded-full flex items-center justify-center shadow-lg border-2 border-white"
+                    className="relative"
                     style={{
-                      backgroundColor: statusColor,
-                      width: '24px',
-                      height: '24px',
+                      width: '25px',
+                      height: '15px',
+                      cursor: 'pointer',
+                      zIndex: 40,
+                      position: 'relative',
+                      pointerEvents: 'auto',
+                      display: 'block !important',
+                      visibility: 'visible !important',
+                      opacity: '1 !important',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.cursor = 'pointer';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.cursor = 'default';
                     }}
                   >
-                    {getStatusIcon(inspection.status)}
+                    {/* 외곽 글로우 링 - 빨간색 */}
+                    <div
+                      className="absolute rounded-full"
+                      style={{
+                        boxShadow: `0 0 0 2px ${widgetColor}, 0 0 8px ${widgetColor}, 0 0 16px ${widgetColor}CC`,
+                        animation: 'pulse-glow 1.5s ease-in-out infinite',
+                        zIndex: 1,
+                        width: '30px',
+                        height: '18px',
+                        left: '50%',
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        position: 'absolute',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    
+                    {/* 메인 위젯 컨테이너 - 빨간색 */}
+                    <div
+                      className="relative rounded-lg overflow-visible"
+                      style={{
+                        width: '25px',
+                        height: '15px',
+                        border: `0.5px solid ${widgetColor}`,
+                        backgroundColor: widgetColor,
+                        boxShadow: `0 0 0 0.5px white`,
+                        zIndex: 40,
+                        position: 'relative',
+                        pointerEvents: 'auto',
+                        display: 'block !important',
+                        visibility: 'visible !important',
+                        opacity: '1 !important',
+                      }}
+                    >
+                      {/* 빨간색 배경 */}
+                      <div
+                        className="absolute inset-0"
+                        style={{
+                          backgroundColor: widgetColor,
+                          zIndex: 1,
+                        }}
+                      />
+                      
+                    </div>
+                    
+                    {/* 선택/호버 시 추가 효과 - 빨간색 */}
+                    {(isSelected || isHovered) && (
+                      <div
+                        className="absolute rounded-full animate-ping"
+                        style={{
+                          backgroundColor: widgetColor,
+                          opacity: 0.5,
+                          zIndex: 0,
+                          width: '30px',
+                          height: '18px',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          position: 'absolute',
+                        }}
+                      />
+                    )}
                   </div>
+
+                  {/* 좌표 표시 - 선택된 마커에만 표시 */}
+                  {isSelected && (
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-2 py-1 bg-slate-900 text-white text-xs rounded shadow-lg whitespace-nowrap z-20">
+                      <div className="font-semibold">X: {x.toFixed(1)}%</div>
+                      <div className="font-semibold">Y: {y.toFixed(1)}%</div>
+                      <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-full">
+                        <div className="border-4 border-transparent border-b-slate-900"></div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Tooltip on hover */}
                   {isHovered && !isSelected && (
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg shadow-xl whitespace-nowrap z-20">
+                    <div 
+                      className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg shadow-xl whitespace-nowrap z-30 pointer-events-none"
+                      onMouseEnter={() => {
+                        setHoveredInspection(inspection);
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredInspection(null);
+                      }}
+                    >
                       <div className="font-semibold mb-1">{inspection.id}</div>
                       <div className="text-slate-300">{inspection.status}</div>
                       {qrLocation && (
@@ -461,17 +828,29 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           const qrLocation = allMarkers.find(m => m.id === selectedInspection.id)?.qrLocation;
           
           return (
-          <div 
-            ref={panelRef}
-            className={`absolute bg-white rounded-lg shadow-xl border border-slate-200 p-4 z-30 max-w-md ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
-            style={{
-              bottom: panelPosition.y === 0 ? '16px' : 'auto',
-              left: panelPosition.x === 0 ? '16px' : `${panelPosition.x}px`,
-              right: panelPosition.x === 0 ? '16px' : 'auto',
-              top: panelPosition.y === 0 ? 'auto' : `${panelPosition.y}px`,
-            }}
-            onMouseDown={handleMouseDown}
-          >
+          <>
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-30 z-40"
+              onClick={() => {
+                setSelectedInspection(null);
+                if (onSelectionChange) {
+                  onSelectionChange(null);
+                }
+              }}
+            />
+            {/* Popup Panel */}
+            <div 
+              ref={panelRef}
+              className={`fixed bg-white rounded-xl shadow-2xl border border-slate-200 p-6 max-w-md ${isDragging ? 'cursor-grabbing' : 'cursor-move'}`}
+              style={{
+                left: panelPosition.x === 0 ? '50%' : `${panelPosition.x}px`,
+                top: panelPosition.y === 0 ? '50%' : `${panelPosition.y}px`,
+                transform: panelPosition.x === 0 && panelPosition.y === 0 ? 'translate(-50%, -50%)' : 'none',
+                zIndex: 100,
+              }}
+              onMouseDown={handleMouseDown}
+            >
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedInspection.id}</h4>
@@ -638,10 +1017,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   </p>
                 </div>
               )}
-            </div>
-          </div>
-          );
-        })()}
+             </div>
+           </div>
+           </>
+           );
+         })()}
 
 
         {/* Legend */}

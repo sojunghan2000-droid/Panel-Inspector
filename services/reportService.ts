@@ -17,9 +17,61 @@ const saveReport = (record: InspectionRecord, htmlContent: string): void => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
 };
 
+// ID에서 "1st"를 "F1"으로 변경하는 함수
+const migrateIdFloor = (id: string): string => {
+  if (id && typeof id === 'string') {
+    // DB-1st-001 -> DB-F1-001 형식으로 변경
+    // 모든 경우를 처리: DB-1st-001, DB-1st-002 등
+    if (id.includes('-1st-')) {
+      return id.replace(/-1st-/g, '-F1-');
+    }
+    // DB-1st-로 시작하는 경우도 처리
+    if (id.startsWith('DB-1st-')) {
+      return id.replace(/^DB-1st-/, 'DB-F1-');
+    }
+  }
+  return id;
+};
+
+// Reports 데이터 마이그레이션
+const migrateReports = (reports: ReportHistory[]): ReportHistory[] => {
+  return reports.map(report => {
+    const migrated: ReportHistory = { ...report };
+    
+    // boardId 마이그레이션
+    if (migrated.boardId) {
+      migrated.boardId = migrateIdFloor(migrated.boardId);
+    }
+    
+    // reportId 마이그레이션 (RPT-DB-1st-001-2026-01-23 형식)
+    if (migrated.reportId && migrated.reportId.includes('1st')) {
+      migrated.reportId = migrateIdFloor(migrated.reportId);
+    }
+    
+    // htmlContent 내부의 ID도 마이그레이션
+    if (migrated.htmlContent && migrated.htmlContent.includes('1st')) {
+      migrated.htmlContent = migrated.htmlContent.replace(/DB-1st-/g, 'DB-F1-');
+    }
+    
+    return migrated;
+  });
+};
+
 // Get all saved reports
 export const getSavedReports = (): ReportHistory[] => {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  const reports = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  const migrated = migrateReports(reports);
+  
+  // 마이그레이션된 데이터를 localStorage에 저장
+  if (JSON.stringify(reports) !== JSON.stringify(migrated)) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    } catch (e) {
+      console.error('Failed to save migrated reports to localStorage:', e);
+    }
+  }
+  
+  return migrated;
 };
 
 // Get report by ID
@@ -36,6 +88,11 @@ export const deleteReport = (id: string): void => {
 };
 
 export const generateReport = (record: InspectionRecord): void => {
+  // In Progress 상태는 리포트 생성하지 않음
+  if (record.status === 'In Progress') {
+    return;
+  }
+
   const reportDate = new Date().toLocaleString('en-US', {
     year: 'numeric',
     month: 'long',

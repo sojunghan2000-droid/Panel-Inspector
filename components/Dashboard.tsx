@@ -71,13 +71,19 @@ const Dashboard: React.FC<DashboardProps> = ({
     );
     onUpdateInspections(updatedInspections);
     
-    // Generate and download report
-    generateReport(finalRecord);
-    
-    // Show success message
-    setTimeout(() => {
-      alert("Report generated and saved successfully!");
-    }, 500);
+    // Generate report only if status is Complete (not In Progress)
+    if (finalRecord.status === 'Complete') {
+      generateReport(finalRecord);
+      // Show success message
+      setTimeout(() => {
+        alert("Report generated and saved successfully!");
+      }, 500);
+    } else {
+      // Show save message without report generation
+      setTimeout(() => {
+        alert("Data saved successfully!");
+      }, 100);
+    }
   };
 
   const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {

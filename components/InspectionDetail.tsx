@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { InspectionRecord, Loads } from '../types';
-import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin } from 'lucide-react';
+import { InspectionRecord, Loads, BreakerInfo, ThermalImageData, LoadSummary } from '../types';
+import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin, Plus, Trash2, Thermometer } from 'lucide-react';
 import { analyzeInspectionPhoto } from '../services/geminiService';
 
 interface InspectionDetailProps {
@@ -14,12 +14,14 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [activeVoiceField, setActiveVoiceField] = useState<string | null>(null); // 현재 음성 입력 중인 필드
   const recognitionRef = useRef<any>(null);
   const lastTranscriptRef = useRef<string>('');
   const processedResultsRef = useRef<Set<number>>(new Set());
   const silenceTimerRef = useRef<number | null>(null);
   const lastActivityRef = useRef<number>(0);
   const isListeningRef = useRef<boolean>(false);
+  const activeFieldRef = useRef<string | null>(null); // 음성 입력 대상 필드
 
   useEffect(() => {
     setFormData({
@@ -73,10 +75,39 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
           // 마지막 텍스트 저장
           lastTranscriptRef.current = newText;
           
-          setFormData(prev => ({
-            ...prev,
-            memo: (prev.memo ? prev.memo + ' ' : '') + newText
-          }));
+          // 활성화된 필드에 따라 다른 처리
+          const activeField = activeFieldRef.current;
+          
+          if (activeField && activeField.startsWith('breaker-')) {
+            // 차단기 필드 처리
+            const parts = activeField.split('-');
+            const breakerIndex = parseInt(parts[1]);
+            const fieldName = parts[2];
+            
+            if (fieldName === 'breakerNo' || fieldName === 'loadName' || fieldName === 'type') {
+              // 문자열 필드
+              handleBreakerChange(breakerIndex, fieldName as keyof BreakerInfo, newText);
+            } else if (fieldName === 'category') {
+              // 구분 필드 (1차 또는 2차)
+              const category = newText.includes('1차') || newText.includes('일차') ? '1차' : 
+                              newText.includes('2차') || newText.includes('이차') ? '2차' : '1차';
+              handleBreakerChange(breakerIndex, 'category', category);
+            } else if (fieldName === 'kind') {
+              // 종류 필드 (MCCB 또는 ELB)
+              const kind = newText.toUpperCase().includes('ELB') ? 'ELB' : 'MCCB';
+              handleBreakerChange(breakerIndex, 'kind', kind);
+            } else {
+              // 숫자 필드
+              const numValue = parseFloat(newText.replace(/[^0-9.]/g, '')) || 0;
+              handleBreakerChange(breakerIndex, fieldName as keyof BreakerInfo, numValue);
+            }
+          } else if (activeField === 'memo') {
+            // 메모 필드
+            setFormData(prev => ({
+              ...prev,
+              memo: (prev.memo ? prev.memo + ' ' : '') + newText
+            }));
+          }
 
           // continuous 모드에서는 자동 종료하지 않음
           // 버튼을 다시 누를 때까지 계속 인식
@@ -95,6 +126,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
           // 중단된 경우는 정상적인 종료로 처리
           console.log('Recognition aborted');
           setIsListening(false);
+          setActiveVoiceField(null);
+          activeFieldRef.current = null;
           processedResultsRef.current.clear();
           lastTranscriptRef.current = '';
           if (silenceTimerRef.current) {
@@ -106,9 +139,13 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
           // 네트워크 에러는 재시도하지 않고 종료
           console.error('Network error in speech recognition');
           setIsListening(false);
+          setActiveVoiceField(null);
+          activeFieldRef.current = null;
           alert('네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.');
         } else if (event.error === 'not-allowed') {
           setIsListening(false);
+          setActiveVoiceField(null);
+          activeFieldRef.current = null;
           alert('마이크 권한이 거부되었습니다. 마이크 접근을 허용해주세요.');
         } else {
           // 기타 에러는 로그만 남기고 계속 시도
@@ -119,6 +156,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         if (event.error === 'not-allowed' || event.error === 'network') {
           processedResultsRef.current.clear();
           lastTranscriptRef.current = '';
+          activeFieldRef.current = null;
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = null;
@@ -150,6 +188,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         } else {
           // 사용자가 버튼을 눌러 종료한 경우
           setIsListening(false);
+          setActiveVoiceField(null);
+          activeFieldRef.current = null;
           processedResultsRef.current.clear();
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
@@ -194,21 +234,25 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
     };
   }, []);
 
-  const toggleListening = () => {
+  const toggleListening = (fieldId?: string) => {
     if (!recognitionRef.current) {
       alert('이 브라우저에서는 음성 인식을 지원하지 않습니다.');
       return;
     }
 
-    if (isListening) {
+    const targetField = fieldId || 'memo';
+
+    if (isListening && activeVoiceField === targetField) {
       // 종료
       isListeningRef.current = false;
+      activeFieldRef.current = null;
       try {
         recognitionRef.current.stop();
       } catch (error) {
         console.error('Error stopping recognition:', error);
       }
       setIsListening(false);
+      setActiveVoiceField(null);
       processedResultsRef.current.clear();
       lastTranscriptRef.current = '';
       if (silenceTimerRef.current) {
@@ -228,26 +272,40 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         processedResultsRef.current.clear();
         lastTranscriptRef.current = '';
         isListeningRef.current = true;
+        activeFieldRef.current = targetField;
         
         // 이미 실행 중이 아닌지 확인
         try {
-          recognitionRef.current.start();
+          if (isListening) {
+            // 다른 필드로 전환하는 경우 기존 인식 중지 후 재시작
+            recognitionRef.current.stop();
+            setTimeout(() => {
+              recognitionRef.current.start();
+            }, 100);
+          } else {
+            recognitionRef.current.start();
+          }
           setIsListening(true);
+          setActiveVoiceField(targetField);
         } catch (startError: any) {
           // 이미 실행 중인 경우 에러 무시
           if (startError.message && startError.message.includes('already started')) {
             console.log('Recognition already started');
             setIsListening(true);
+            setActiveVoiceField(targetField);
             isListeningRef.current = true;
           } else {
             isListeningRef.current = false;
+            activeFieldRef.current = null;
             throw startError;
           }
         }
       } catch (error: any) {
         console.error('Error starting speech recognition:', error);
         isListeningRef.current = false;
+        activeFieldRef.current = null;
         setIsListening(false);
+        setActiveVoiceField(null);
         if (error.message && error.message.includes('not-allowed')) {
           alert('마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 접근을 허용해주세요.');
         } else {
@@ -273,6 +331,116 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, status: e.target.value as InspectionRecord['status'] }));
+  };
+
+  const handleBasicInfoChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleInspectorChange = (index: number, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      inspectors: prev.inspectors ? prev.inspectors.map((insp, i) => i === index ? value : insp) : [value]
+    }));
+  };
+
+  const addInspector = () => {
+    setFormData(prev => ({
+      ...prev,
+      inspectors: [...(prev.inspectors || []), '']
+    }));
+  };
+
+  const removeInspector = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      inspectors: prev.inspectors?.filter((_, i) => i !== index) || []
+    }));
+  };
+
+  const handleBreakerChange = (index: number, field: keyof BreakerInfo, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      breakers: prev.breakers?.map((breaker, i) => 
+        i === index ? { ...breaker, [field]: value } : breaker
+      ) || []
+    }));
+  };
+
+  const addBreaker = () => {
+    const newBreaker: BreakerInfo = {
+      breakerNo: '',
+      category: '1차',
+      breakerCapacity: 0,
+      loadName: '',
+      type: '',
+      kind: 'MCCB',
+      currentL1: 0,
+      currentL2: 0,
+      currentL3: 0,
+      loadCapacityR: 0,
+      loadCapacityS: 0,
+      loadCapacityT: 0,
+      loadCapacityN: 0
+    };
+    setFormData(prev => ({
+      ...prev,
+      breakers: [...(prev.breakers || []), newBreaker]
+    }));
+  };
+
+  const removeBreaker = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      breakers: prev.breakers?.filter((_, i) => i !== index) || []
+    }));
+  };
+
+  const handleGroundingChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, grounding: e.target.value as '양호' | '불량' | '미점검' }));
+  };
+
+  const handleThermalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          thermalImage: {
+            ...prev.thermalImage,
+            imageUrl: reader.result as string,
+            equipment: prev.thermalImage?.equipment || 'KT-352',
+            temperature: prev.thermalImage?.temperature || 0,
+            maxTemp: prev.thermalImage?.maxTemp || 0,
+            minTemp: prev.thermalImage?.minTemp || 0,
+            emissivity: prev.thermalImage?.emissivity || 0.95,
+            measurementTime: prev.thermalImage?.measurementTime || new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+          } as ThermalImageData
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleThermalImageDataChange = (field: keyof ThermalImageData, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      thermalImage: {
+        ...prev.thermalImage,
+        [field]: value
+      } as ThermalImageData
+    }));
+  };
+
+  const handleLoadSummaryChange = (field: keyof LoadSummary, value: number) => {
+    setFormData(prev => ({
+      ...prev,
+      loadSummary: {
+        ...prev.loadSummary,
+        [field]: value
+      } as LoadSummary
+    }));
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -337,7 +505,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
             <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-sm">ID</span>
             {formData.id}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">Inspection Details</p>
+          <p className="text-sm text-slate-500 mt-1">가설 전기 점검</p>
         </div>
         <div className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(formData.status)}`}>
           {formData.status}
@@ -346,69 +514,641 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
 
       <div className="flex-[1.04] overflow-y-auto p-4 space-y-6">
         
-        {/* Status & Date */}
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Inspection Status</label>
-            <select 
-              value={formData.status} 
-              onChange={handleStatusChange}
-              className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            >
-              <option value="Complete">Complete</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Pending">Pending</option>
-            </select>
+        {/* 기본 정보 섹션 */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h3 className="text-lg font-bold text-green-800 mb-4">공사용 가설 분전반</h3>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">PNL NO.</label>
+              <input 
+                type="text" 
+                value={formData.panelNo || ''} 
+                onChange={(e) => handleBasicInfoChange('panelNo', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="예: PNL NO. 1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">PJT명</label>
+              <input 
+                type="text" 
+                value={formData.projectName || ''} 
+                onChange={(e) => handleBasicInfoChange('projectName', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">시공사</label>
+              <input 
+                type="text" 
+                value={formData.contractor || ''} 
+                onChange={(e) => handleBasicInfoChange('contractor', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">관리번호 (판넬명)</label>
+              <input 
+                type="text" 
+                value={formData.managementNumber || ''} 
+                onChange={(e) => handleBasicInfoChange('managementNumber', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Last Inspected</label>
+
+          {/* 점검자 정보 */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-slate-700">점검자</label>
+              <button
+                type="button"
+                onClick={addInspector}
+                className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+              >
+                <Plus size={14} />
+                추가
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(formData.inspectors || []).map((inspector, index) => (
+                <div key={index} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={inspector} 
+                    onChange={(e) => handleInspectorChange(index, e.target.value)}
+                    className="flex-1 rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="예: 이재두 프로"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeInspector(index)}
+                    className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              {(!formData.inspectors || formData.inspectors.length === 0) && (
+                <p className="text-sm text-slate-500">점검자를 추가해주세요</p>
+              )}
+            </div>
+          </div>
+
+          {/* 상태 및 점검일 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">상태</label>
+              <select 
+                value={formData.status} 
+                onChange={handleStatusChange}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              >
+                <option value="Complete">양호</option>
+                <option value="In Progress">점검 중</option>
+                <option value="Pending">미점검</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">점검일</label>
+              <input 
+                type="text" 
+                value={formData.lastInspectionDate} 
+                onChange={(e) => handleBasicInfoChange('lastInspectionDate', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="예: 2024-05-20 09:30"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 차단기 정보 섹션 */}
+        <div className="border border-slate-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-800">차단기 정보</h3>
+            <button
+              type="button"
+              onClick={addBreaker}
+              className="flex items-center gap-1 text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded hover:bg-green-200"
+            >
+              <Plus size={16} />
+              차단기 추가
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {(formData.breakers || []).map((breaker, index) => (
+              <div key={index} className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-slate-700">차단기 #{index + 1}</h4>
+                  <button
+                    type="button"
+                    onClick={() => removeBreaker(index)}
+                    className="text-red-600 hover:bg-red-50 p-1 rounded"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">차단기 No.</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-breakerNo`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-breakerNo`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-breakerNo` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input 
+                      type="text" 
+                      value={breaker.breakerNo} 
+                      onChange={(e) => handleBreakerChange(index, 'breakerNo', e.target.value)}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-breakerNo` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">구분</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-category`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-category`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-category` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <select 
+                      value={breaker.category} 
+                      onChange={(e) => handleBreakerChange(index, 'category', e.target.value as '1차' | '2차')}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-category` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                    >
+                      <option value="1차">1차</option>
+                      <option value="2차">2차</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">차단기 용량[A]</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-breakerCapacity`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-breakerCapacity`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-breakerCapacity` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input 
+                      type="number" 
+                      value={breaker.breakerCapacity} 
+                      onChange={(e) => handleBreakerChange(index, 'breakerCapacity', parseFloat(e.target.value) || 0)}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-breakerCapacity` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">종류</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-kind`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-kind`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-kind` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <select 
+                      value={breaker.kind} 
+                      onChange={(e) => handleBreakerChange(index, 'kind', e.target.value as 'MCCB' | 'ELB')}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-kind` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                    >
+                      <option value="MCCB">MCCB</option>
+                      <option value="ELB">ELB</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">형식</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-type`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-type`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-type` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input 
+                      type="text" 
+                      value={breaker.type} 
+                      onChange={(e) => handleBreakerChange(index, 'type', e.target.value)}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-type` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-600">부하명</label>
+                      <button
+                        type="button"
+                        onClick={() => toggleListening(`breaker-${index}-loadName`)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                          isListening && activeVoiceField === `breaker-${index}-loadName`
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+                        }`}
+                      >
+                        {isListening && activeVoiceField === `breaker-${index}-loadName` ? (
+                          <>
+                            <MicOff size={12} />
+                            <span>중지</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic size={12} />
+                            <span>음성</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input 
+                      type="text" 
+                      value={breaker.loadName} 
+                      onChange={(e) => handleBreakerChange(index, 'loadName', e.target.value)}
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                        isListening && activeVoiceField === `breaker-${index}-loadName` ? 'border-red-300 bg-red-50' : 'border-slate-300'
+                      }`}
+                      placeholder="고정부하, 이동부하X"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-slate-600 mb-2">전류 (A) - 후크메가</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">L1</label>
+                      <input 
+                        type="number" 
+                        step="0.1"
+                        value={breaker.currentL1} 
+                        onChange={(e) => handleBreakerChange(index, 'currentL1', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">L2</label>
+                      <input 
+                        type="number" 
+                        step="0.1"
+                        value={breaker.currentL2} 
+                        onChange={(e) => handleBreakerChange(index, 'currentL2', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">L3</label>
+                      <input 
+                        type="number" 
+                        step="0.1"
+                        value={breaker.currentL3} 
+                        onChange={(e) => handleBreakerChange(index, 'currentL3', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-2">부하 용량[W]</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">R</label>
+                      <input 
+                        type="number" 
+                        value={breaker.loadCapacityR} 
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityR', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">S</label>
+                      <input 
+                        type="number" 
+                        value={breaker.loadCapacityS} 
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityS', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">T</label>
+                      <input 
+                        type="number" 
+                        value={breaker.loadCapacityT} 
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityT', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">N</label>
+                      <input 
+                        type="number" 
+                        value={breaker.loadCapacityN} 
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityN', parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(!formData.breakers || formData.breakers.length === 0) && (
+              <p className="text-sm text-slate-500 text-center py-4">차단기 정보를 추가해주세요</p>
+            )}
+          </div>
+        </div>
+
+        {/* 접지 정보 */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">접지 (외관 점검)</label>
+          <select 
+            value={formData.grounding || '미점검'} 
+            onChange={handleGroundingChange}
+            className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            <option value="양호">양호</option>
+            <option value="불량">불량</option>
+            <option value="미점검">미점검</option>
+          </select>
+        </div>
+
+        {/* 열화상 측정 섹션 */}
+        <div className="border border-slate-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Thermometer size={20} className="text-red-600" />
+              열화상 측정
+            </h3>
+          </div>
+          
+          <div className="mb-3">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">측정기</label>
             <input 
               type="text" 
-              disabled 
-              value={formData.lastInspectionDate} 
+              value={formData.thermalImage?.equipment || 'KT-352'} 
+              onChange={(e) => handleThermalImageDataChange('equipment', e.target.value)}
+              className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div className="mb-3">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">점검 내용</label>
+            <input 
+              type="text" 
+              value="변대/가설분전반 전류 및 발열" 
+              disabled
               className="w-full rounded-lg border-slate-200 border px-3 py-2 bg-slate-50 text-slate-500"
             />
           </div>
-        </div>
 
-        {/* Connected Loads */}
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-3">Connected Loads</label>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { key: 'welder', label: 'Welder' },
-              { key: 'grinder', label: 'Grinder' },
-              { key: 'light', label: 'Temp Light' },
-              { key: 'pump', label: 'Water Pump' }
-            ].map((item) => (
-              <label 
-                key={item.key}
-                className={`
-                  flex items-center p-3 rounded-lg border cursor-pointer transition-all
-                  ${formData.loads[item.key as keyof Loads] 
-                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}
-                `}
-              >
-                <input
-                  type="checkbox"
-                  className="hidden"
-                  checked={formData.loads[item.key as keyof Loads]}
-                  onChange={() => handleLoadChange(item.key as keyof Loads)}
-                />
-                <div className={`w-5 h-5 rounded border mr-3 flex items-center justify-center ${formData.loads[item.key as keyof Loads] ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
-                  {formData.loads[item.key as keyof Loads] && <CheckCircle2 size={14} className="text-white" />}
+          <div className="mb-3">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">열화상 이미지</label>
+            <div className="relative group">
+              {formData.thermalImage?.imageUrl ? (
+                <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center" style={{ height: '200px' }}>
+                  <img src={formData.thermalImage.imageUrl} alt="Thermal Image" className="h-full w-auto object-contain" />
+                  <button 
+                    onClick={() => setFormData(prev => ({ ...prev, thermalImage: { ...prev.thermalImage, imageUrl: null } as ThermalImageData }))}
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Upload size={14} className="rotate-45" />
+                  </button>
                 </div>
-                <span className="font-medium">{item.label}</span>
-              </label>
-            ))}
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <div className="flex flex-col items-center justify-center pt-3 pb-4">
+                    <Camera className="w-6 h-6 text-slate-400 mb-1" />
+                    <p className="text-xs text-slate-500">열화상 이미지 업로드</p>
+                  </div>
+                  <input type="file" className="hidden" accept="image/*" onChange={handleThermalImageUpload} />
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">온도 측정값 (°C)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.thermalImage?.temperature || 0} 
+                onChange={(e) => handleThermalImageDataChange('temperature', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">방사율 (e)</label>
+              <input 
+                type="number" 
+                step="0.01"
+                value={formData.thermalImage?.emissivity || 0.95} 
+                onChange={(e) => handleThermalImageDataChange('emissivity', parseFloat(e.target.value) || 0.95)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">최대 온도 (°C)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.thermalImage?.maxTemp || 0} 
+                onChange={(e) => handleThermalImageDataChange('maxTemp', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">최소 온도 (°C)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.thermalImage?.minTemp || 0} 
+                onChange={(e) => handleThermalImageDataChange('minTemp', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">측정 시간</label>
+              <input 
+                type="text" 
+                value={formData.thermalImage?.measurementTime || ''} 
+                onChange={(e) => handleThermalImageDataChange('measurementTime', e.target.value)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                placeholder="예: 17:00"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Photo Section */}
+        {/* 부하 합계 정보 */}
+        <div className="border border-slate-200 rounded-lg p-4">
+          <h3 className="text-lg font-bold text-slate-800 mb-4">부하 합계 정보</h3>
+          
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] A</label>
+              <input 
+                type="number" 
+                value={formData.loadSummary?.phaseLoadSumA || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumA', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] B</label>
+              <input 
+                type="number" 
+                value={formData.loadSummary?.phaseLoadSumB || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumB', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] C</label>
+              <input 
+                type="number" 
+                value={formData.loadSummary?.phaseLoadSumC || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumC', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">총 연결 부하 합계[AV]</label>
+              <input 
+                type="number" 
+                step="0.01"
+                value={formData.loadSummary?.totalLoadSum || 0} 
+                onChange={(e) => handleLoadSummaryChange('totalLoadSum', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] A</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.loadSummary?.phaseLoadShareA || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareA', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] B</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.loadSummary?.phaseLoadShareB || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareB', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] C</label>
+              <input 
+                type="number" 
+                step="0.1"
+                value={formData.loadSummary?.phaseLoadShareC || 0} 
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareC', parseFloat(e.target.value) || 0)}
+                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Site Photo Section */}
         <div>
           <div className="flex justify-between items-center mb-3">
-            <label className="block text-sm font-semibold text-slate-700">Site Photo</label>
+            <label className="block text-sm font-semibold text-slate-700">현장 사진</label>
             {formData.photoUrl && (
               <button
                 onClick={handleAnalyzePhoto}
@@ -420,20 +1160,20 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                 ) : (
                   <Sparkles size={14} />
                 )}
-                {isAnalyzing ? 'Analyzing...' : 'AI Analyze'}
+                {isAnalyzing ? '분석 중...' : 'AI 분석'}
               </button>
             )}
           </div>
           
           <div className="relative group">
             {formData.photoUrl ? (
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[32/9]">
-                <img src={formData.photoUrl} alt="Inspection Site" className="w-full h-full object-cover" />
+              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center" style={{ height: '214px' }}>
+                <img src={formData.photoUrl} alt="Inspection Site" className="h-full w-auto object-contain" />
                 <button 
                   onClick={() => setFormData(prev => ({ ...prev, photoUrl: null }))}
                   className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
                 >
-                  <Upload size={14} className="rotate-45" /> {/* Close Icon Simulation */}
+                  <Upload size={14} className="rotate-45" />
                 </button>
                 {aiMessage && (
                    <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-md text-white text-xs p-2 text-center animate-fade-in">
@@ -445,7 +1185,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
               <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Camera className="w-8 h-8 text-slate-400 mb-2" />
-                  <p className="text-sm text-slate-500">Click to upload or drag photo</p>
+                  <p className="text-sm text-slate-500">사진을 업로드하거나 드래그하세요</p>
                 </div>
                 <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
               </label>
@@ -457,25 +1197,25 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         {/* Memo */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-semibold text-slate-700">Observations & Actions</label>
+            <label className="block text-sm font-semibold text-slate-700">점검 조치 사항</label>
             <button
               type="button"
-              onClick={toggleListening}
+              onClick={() => toggleListening('memo')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                isListening
+                isListening && activeVoiceField === 'memo'
                   ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
               }`}
             >
-              {isListening ? (
+              {isListening && activeVoiceField === 'memo' ? (
                 <>
                   <MicOff size={16} />
-                  <span>Stop Recording</span>
+                  <span>녹음 중지</span>
                 </>
               ) : (
                 <>
                   <Mic size={16} />
-                  <span>Voice Input</span>
+                  <span>음성 입력</span>
                 </>
               )}
             </button>
@@ -484,33 +1224,33 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
             value={formData.memo}
             onChange={handleMemoChange}
             className={`w-full h-24 rounded-lg border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none ${
-              isListening ? 'border-red-300 bg-red-50' : 'border-slate-300'
+              isListening && activeVoiceField === 'memo' ? 'border-red-300 bg-red-50' : 'border-slate-300'
             }`}
-            placeholder="Enter any specific issues or corrective actions taken... or use voice input"
+            placeholder="특정 문제나 조치 사항을 입력하세요... 또는 음성 입력을 사용하세요"
           />
-          {isListening && (
+          {isListening && activeVoiceField === 'memo' && (
             <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
               <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-              Listening...
+              녹음 중...
             </p>
           )}
-        </div>
+      </div>
 
-        {/* Footer Actions */}
+      {/* Footer Actions */}
         <div className="pt-4 flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2.5 px-4 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-white hover:shadow-sm transition-all"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(formData)}
-            className="flex-[2] py-2.5 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2"
-          >
-            <Save size={18} />
-            Save & Generate Report
-          </button>
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2.5 px-4 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-white hover:shadow-sm transition-all"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onSave(formData)}
+          className="flex-[2] py-2.5 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2"
+        >
+          <Save size={18} />
+          Save & Generate Report
+        </button>
         </div>
 
       </div>

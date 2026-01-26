@@ -14,22 +14,133 @@ const MOCK_DATA: InspectionRecord[] = [
   { id: 'DB-A-003', status: 'In Progress', lastInspectionDate: '2024-05-21 08:00', loads: { welder: false, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'Check ground fault interrupter.', position: { x: 50, y: 50 } },
   { id: 'DB-B-001', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 15, y: 70 } },
   { id: 'DB-B-002', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 85, y: 75 } },
+  // 추가 검사 항목들 - 위치 정보 포함
+  { id: 'DB-A-004', status: 'Complete', lastInspectionDate: '2024-05-22 14:20', loads: { welder: true, grinder: true, light: false, pump: false }, photoUrl: null, memo: 'Regular maintenance completed.', position: { x: 30, y: 60 } },
+  { id: 'DB-A-005', status: 'In Progress', lastInspectionDate: '2024-05-23 11:00', loads: { welder: false, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'Inspection in progress.', position: { x: 60, y: 40 } },
+  { id: 'DB-B-003', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 40, y: 20 } },
+  { id: 'DB-A-006', status: 'Complete', lastInspectionDate: '2024-05-19 16:45', loads: { welder: true, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'All systems operational.', position: { x: 70, y: 60 } },
+  { id: 'DB-A-007', status: 'In Progress', lastInspectionDate: '2024-05-24 09:15', loads: { welder: false, grinder: true, light: false, pump: false }, photoUrl: null, memo: 'Pending review.', position: { x: 20, y: 45 } },
+  { id: 'DB-A-008', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 90, y: 50 } },
+  { id: 'DB-A-009', status: 'Complete', lastInspectionDate: '2024-05-18 13:30', loads: { welder: false, grinder: false, light: true, pump: false }, photoUrl: null, memo: 'Lighting system checked.', position: { x: 35, y: 80 } },
+  { id: 'DB-B-004', status: 'In Progress', lastInspectionDate: '2024-05-25 10:00', loads: { welder: true, grinder: true, light: true, pump: false }, photoUrl: null, memo: 'Multiple loads connected.', position: { x: 65, y: 15 } },
 ];
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
+const STORAGE_KEY_INSPECTIONS = 'safetyguard_inspections';
+
+// ID에서 "1st"를 "F1"으로 변경하는 함수
+const migrateIdFloor = (id: string): string => {
+  if (id && typeof id === 'string') {
+    // DB-1st-001 -> DB-F1-001 형식으로 변경
+    // 모든 경우를 처리: DB-1st-001, DB-1st-002 등
+    if (id.includes('-1st-')) {
+      return id.replace(/-1st-/g, '-F1-');
+    }
+    // DB-1st-로 시작하는 경우도 처리
+    if (id.startsWith('DB-1st-')) {
+      return id.replace(/^DB-1st-/, 'DB-F1-');
+    }
+  }
+  return id;
+};
+
+// 층수 마이그레이션 함수: "1st" -> "F1"
+const migrateFloorFormat = (data: any): any => {
+  if (typeof data === 'string') {
+    // ID 형식인지 확인 (DB-로 시작)
+    if (data.startsWith('DB-')) {
+      return migrateIdFloor(data);
+    }
+    return data === '1st' ? 'F1' : data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => migrateFloorFormat(item));
+  }
+  if (data && typeof data === 'object') {
+    const migrated: any = {};
+    for (const key in data) {
+      if (key === 'id' && typeof data[key] === 'string') {
+        // ID 마이그레이션
+        migrated[key] = migrateIdFloor(data[key]);
+      } else if (key === 'floor' && data[key] === '1st') {
+        migrated[key] = 'F1';
+      } else if (key === 'qrData' && typeof data[key] === 'string') {
+        try {
+          const qrData = JSON.parse(data[key]);
+          if (qrData.id) {
+            qrData.id = migrateIdFloor(qrData.id);
+          }
+          if (qrData.floor === '1st') {
+            qrData.floor = 'F1';
+          }
+          migrated[key] = JSON.stringify(qrData);
+        } catch {
+          migrated[key] = data[key];
+        }
+      } else if (key === 'boardId' && typeof data[key] === 'string') {
+        // Reports의 boardId도 마이그레이션
+        migrated[key] = migrateIdFloor(data[key]);
+      } else {
+        migrated[key] = migrateFloorFormat(data[key]);
+      }
+    }
+    return migrated;
+  }
+  return data;
+};
+
 const App: React.FC = () => {
   const [inspections, setInspections] = useState<InspectionRecord[]>(() => {
-    // position이 없는 항목들에 기본 위치 정보 추가
-    return MOCK_DATA.map(item => {
+    // localStorage에서 불러오기
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_INSPECTIONS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // 층수 마이그레이션: "1st" -> "F1"
+        const migrated = migrateFloorFormat(parsed);
+        
+        // position이 없는 항목들에 기본 위치 정보 추가
+        const result = migrated.map((item: InspectionRecord) => {
+          if (!item.position) {
+            const randomX = Math.floor(Math.random() * 80) + 10;
+            const randomY = Math.floor(Math.random() * 80) + 10;
+            return { ...item, position: { x: randomX, y: randomY } };
+          }
+          return item;
+        });
+        
+        // 마이그레이션된 데이터를 localStorage에 저장
+        try {
+          localStorage.setItem(STORAGE_KEY_INSPECTIONS, JSON.stringify(result));
+        } catch (e) {
+          console.error('Failed to save migrated inspections to localStorage:', e);
+        }
+        
+        return result;
+      }
+    } catch (e) {
+      console.error('Failed to load inspections from localStorage:', e);
+    }
+    
+    // localStorage에 없으면 MOCK_DATA 사용
+    const initialData = MOCK_DATA.map(item => {
       if (!item.position) {
-        // 기본 위치 정보 생성 (랜덤하게 분산)
-        const randomX = Math.floor(Math.random() * 80) + 10; // 10-90%
-        const randomY = Math.floor(Math.random() * 80) + 10; // 10-90%
+        const randomX = Math.floor(Math.random() * 80) + 10;
+        const randomY = Math.floor(Math.random() * 80) + 10;
         return { ...item, position: { x: randomX, y: randomY } };
       }
       return item;
     });
+    
+    // localStorage에 저장
+    try {
+      localStorage.setItem(STORAGE_KEY_INSPECTIONS, JSON.stringify(initialData));
+    } catch (e) {
+      console.error('Failed to save inspections to localStorage:', e);
+    }
+    
+    return initialData;
   });
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -38,16 +149,28 @@ const App: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<any[]>([]);
 
+  // inspections가 변경될 때마다 localStorage에 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_INSPECTIONS, JSON.stringify(inspections));
+    } catch (e) {
+      console.error('Failed to save inspections to localStorage:', e);
+    }
+  }, [inspections]);
+
   // inspections가 업데이트될 때 position이 없는 항목들에 기본 위치 정보 추가
   useEffect(() => {
-    setInspections(prev => prev.map(item => {
-      if (!item.position) {
-        const randomX = Math.floor(Math.random() * 80) + 10;
-        const randomY = Math.floor(Math.random() * 80) + 10;
-        return { ...item, position: { x: randomX, y: randomY } };
-      }
-      return item;
-    }));
+    setInspections(prev => {
+      const updated = prev.map(item => {
+        if (!item.position) {
+          const randomX = Math.floor(Math.random() * 80) + 10;
+          const randomY = Math.floor(Math.random() * 80) + 10;
+          return { ...item, position: { x: randomX, y: randomY } };
+        }
+        return item;
+      });
+      return updated;
+    });
   }, []);
 
   // Reports 로드 및 실시간 업데이트
@@ -111,8 +234,8 @@ const App: React.FC = () => {
         setShowScanner(false);
         alert(`QR 코드 스캔 완료!\n위치: ${data.location}\n층수: ${data.floor}\n기존 Distribution Board를 찾았습니다.`);
       } else {
-        // 새 Distribution Board 생성
-        const newId = `DB-${data.location}-${data.floor}-${Date.now().toString().slice(-4)}`;
+        // 새 Distribution Board 생성 (형식: DB-층수-위치)
+        const newId = `DB-${data.floor}-${data.location}`;
         const newItem: InspectionRecord = {
           id: newId,
           status: 'In Progress',

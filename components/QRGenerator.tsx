@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
+import FloorPlanView from './FloorPlanView';
 
 interface QRData {
   id: string;
@@ -25,10 +26,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   onSelectInspection,
   onUpdateInspections 
 }) => {
+  const [selectedFloor, setSelectedFloor] = useState<'F1' | 'B1'>('F1');
   const [qrData, setQrData] = useState<QRData>({
     id: '',
     location: '',
-    floor: '',
+    floor: 'F1', // 기본값 설정
     position: '',
     positionX: '',
     positionY: ''
@@ -82,7 +84,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             ? { x: position.x, y: position.y }
             : undefined;
 
-          const newId = `DB-${locationCode}-${floorCode}-${Date.now().toString().slice(-4)}`;
+          const newId = `DB-${floorCode}-${locationCode}`;
           const newInspection: InspectionRecord = {
             id: newId,
             status: 'Pending',
@@ -142,16 +144,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // 각 InspectionRecord에 대해 QR 코드 생성
     const newQRCodes: QRCodeData[] = [];
     inspectionsWithoutQR.forEach(inspection => {
-      // ID에서 위치 정보 추출 (예: DB-A-001 -> A)
+      // ID에서 위치 정보 추출 (형식: DB-층수-위치, 예: DB-A-001)
       const idParts = inspection.id.split('-');
       let location = '';
       let floor = '';
       
-      if (idParts.length >= 2) {
-        location = idParts[1] || '';
-        if (idParts.length >= 3) {
-          floor = idParts[2] || '';
-        }
+      if (idParts.length >= 3) {
+        // DB-층수-위치 형식
+        floor = idParts[1] || '';
+        location = idParts[2] || '';
+      } else if (idParts.length >= 2) {
+        // 호환성을 위해 2개 파트만 있는 경우 첫 번째를 층수로
+        floor = idParts[1] || '';
       }
 
       // 기본값 설정
@@ -191,16 +195,248 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
   }, [inspections]);
 
+  // ID에서 "1st"를 "F1"으로 변경하는 함수
+  const migrateIdFloor = (id: string): string => {
+    if (id && typeof id === 'string') {
+      // DB-1st-001 -> DB-F1-001 형식으로 변경
+      // 모든 경우를 처리: DB-1st-001, DB-1st-002 등
+      if (id.includes('-1st-')) {
+        return id.replace(/-1st-/g, '-F1-');
+      }
+      // DB-1st-로 시작하는 경우도 처리
+      if (id.startsWith('DB-1st-')) {
+        return id.replace(/^DB-1st-/, 'DB-F1-');
+      }
+    }
+    return id;
+  };
+
+  // 층수 마이그레이션 함수: "1st" -> "F1"
+  const migrateFloorFormat = (data: any): any => {
+    if (typeof data === 'string') {
+      // ID 형식인지 확인 (DB-로 시작)
+      if (data.startsWith('DB-')) {
+        return migrateIdFloor(data);
+      }
+      return data === '1st' ? 'F1' : data;
+    }
+    if (Array.isArray(data)) {
+      return data.map(item => migrateFloorFormat(item));
+    }
+    if (data && typeof data === 'object') {
+      const migrated: any = {};
+      for (const key in data) {
+        if (key === 'id' && typeof data[key] === 'string') {
+          // ID 마이그레이션
+          migrated[key] = migrateIdFloor(data[key]);
+        } else if (key === 'floor' && data[key] === '1st') {
+          migrated[key] = 'F1';
+        } else if (key === 'qrData' && typeof data[key] === 'string') {
+          try {
+            const qrData = JSON.parse(data[key]);
+            if (qrData.id) {
+              qrData.id = migrateIdFloor(qrData.id);
+            }
+            if (qrData.floor === '1st') {
+              qrData.floor = 'F1';
+            }
+            migrated[key] = JSON.stringify(qrData);
+          } catch {
+            migrated[key] = data[key];
+          }
+        } else {
+          migrated[key] = migrateFloorFormat(data[key]);
+        }
+      }
+      return migrated;
+    }
+    return data;
+  };
+
   const loadQRCodes = () => {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    setQrCodes(saved);
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      // 층수 마이그레이션: "1st" -> "F1"
+      const migrated = migrateFloorFormat(saved);
+      
+      // 마이그레이션된 데이터를 localStorage에 저장
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      } catch (e) {
+        console.error('Failed to save migrated QR codes to localStorage:', e);
+      }
+      
+      setQrCodes(migrated);
+    } catch (e) {
+      console.error('Failed to load QR codes:', e);
+      setQrCodes([]);
+    }
   };
 
   const handleInputChange = (field: keyof QRData, value: string) => {
-    setQrData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setQrData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+      
+      // ID 입력 시 자동으로 층수와 위치 추출 (형식: DB-층수-위치)
+      if (field === 'id' && value) {
+        const idParts = value.split('-');
+        if (idParts.length >= 3) {
+          // DB-층수-위치 형식
+          const floorFromId = idParts[1] || '';
+          const locationFromId = idParts[2] || '';
+          
+          // 층수가 비어있으면 ID에서 추출한 값으로 설정
+          if (!updated.floor && floorFromId) {
+            // 층수 매핑: A -> F1, B -> B1 등 (필요시 확장)
+            const floorMap: { [key: string]: string } = {
+              'A': 'F1',
+              'B': 'B1',
+              '1': 'F1',
+              'F1': 'F1',
+              '1st': 'F1',
+              'B1': 'B1'
+            };
+            updated.floor = floorMap[floorFromId.toUpperCase()] || floorFromId;
+            // 층수 상태도 동기화
+            if (updated.floor === 'F1' || updated.floor === 'B1') {
+              setSelectedFloor(updated.floor as 'F1' | 'B1');
+            }
+          }
+          
+          // 위치가 비어있으면 ID에서 추출한 값으로 설정
+          if (!updated.location && locationFromId) {
+            updated.location = locationFromId;
+          }
+        }
+      }
+      
+      // 층수 필드 변경 시 selectedFloor도 동기화
+      if (field === 'floor' && (value === 'F1' || value === 'B1')) {
+        setSelectedFloor(value as 'F1' | 'B1');
+      }
+      
+      // 층수와 위치가 모두 입력되면 자동으로 QR 생성
+      const hasFloor = updated.floor && (updated.floor === 'F1' || updated.floor === 'B1');
+      const hasLocation = updated.location && updated.location.trim() !== '';
+      
+      if (hasFloor && hasLocation) {
+        // ID가 없으면 자동 생성: DB-층수-위치
+        if (!updated.id || updated.id.trim() === '') {
+          updated.id = `DB-${updated.floor}-${updated.location}`;
+        }
+        
+        // 중복 체크: 같은 층수에서 위치 번호 중복 확인
+        const locationNum = parseInt(updated.location);
+        if (!isNaN(locationNum)) {
+          const savedQRCodes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+          const sameFloorQRCodes = savedQRCodes.filter((qr: QRCodeData) => {
+            return qr.floor === updated.floor;
+          });
+          
+          // 같은 층수에서 같은 위치 번호가 있는지 확인
+          const duplicateQR = sameFloorQRCodes.find((qr: QRCodeData) => {
+            try {
+              const qrData = JSON.parse(qr.qrData);
+              const qrLocationNum = parseInt(qrData.location || qr.location);
+              return !isNaN(qrLocationNum) && qrLocationNum === locationNum;
+            } catch {
+              return false;
+            }
+          });
+          
+          if (duplicateQR) {
+            // 중복이면 마지막 위치 번호에 +1
+            const locationNumbers = sameFloorQRCodes.map((qr: QRCodeData) => {
+              try {
+                const qrData = JSON.parse(qr.qrData);
+                const num = parseInt(qrData.location || qr.location);
+                return isNaN(num) ? 0 : num;
+              } catch {
+                return 0;
+              }
+            }).filter(n => n > 0);
+            
+            const maxLocationNum = locationNumbers.length > 0 ? Math.max(...locationNumbers) : 0;
+            updated.location = String(maxLocationNum + 1).padStart(3, '0');
+            
+            // ID도 업데이트 (위치 번호 변경)
+            updated.id = `DB-${updated.floor}-${updated.location}`;
+          }
+        }
+        
+        // 자동으로 QR 생성
+        setTimeout(() => {
+          autoGenerateQR(updated);
+        }, 100);
+      }
+      
+      return updated;
+    });
+  };
+
+  // 자동 QR 생성 함수
+  const autoGenerateQR = (data: QRData) => {
+    if (!data.location || !data.floor) {
+      return;
+    }
+
+    // Position coordinates (optional)
+    const position = {
+      description: '',
+      x: data.positionX ? parseFloat(data.positionX) : undefined,
+      y: data.positionY ? parseFloat(data.positionY) : undefined
+    };
+
+    // ID 생성: DB-층수-위치
+    const finalId = data.id || `DB-${data.floor}-${data.location}`;
+
+    // QR 코드에 포함될 데이터를 JSON 형식으로 생성
+    const qrDataString = JSON.stringify({
+      id: finalId,
+      location: data.location,
+      floor: data.floor,
+      position: position,
+      timestamp: new Date().toISOString()
+    });
+
+    // 기존 QR 코드 확인
+    const savedQRCodes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const existingQR = savedQRCodes.find((qr: QRCodeData) => {
+      try {
+        const qrData = JSON.parse(qr.qrData);
+        return qrData.id === finalId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!existingQR) {
+      // 새 QR 코드 생성
+      const newQRCode: QRCodeData = {
+        id: `qr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        qrData: qrDataString,
+        location: data.location,
+        floor: data.floor,
+        position: data.position || '',
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedQRCodes = [...savedQRCodes, newQRCode];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedQRCodes));
+      setQrCodes(updatedQRCodes);
+      setGeneratedQR(qrDataString);
+      setSavedQRId(newQRCode.id);
+      
+      // QR 코드 선택
+      setSelectedQR(newQRCode);
+    } else {
+      // 기존 QR 코드 업데이트
+      setGeneratedQR(qrDataString);
+      setSelectedQR(existingQR);
+    }
   };
 
   const handleSelectQR = (qr: QRCodeData) => {
@@ -253,9 +489,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     if (!foundInspection) {
       const locationParts = qr.location.split(/\s+/);
       foundInspection = inspections.find(inspection => {
-        // ID에서 위치 정보 추출 (예: DB-A-001 -> A)
+        // ID에서 위치 정보 추출 (형식: DB-층수-위치, 예: DB-A-001 -> 001)
         const idParts = inspection.id.split('-');
-        if (idParts.length >= 2) {
+        if (idParts.length >= 3) {
+          // DB-층수-위치 형식에서 위치는 idParts[2]
+          return locationParts.some(part => idParts[2].includes(part) || part.includes(idParts[2]));
+        } else if (idParts.length >= 2) {
+          // 호환성을 위해 2개 파트만 있는 경우
           return locationParts.some(part => idParts[1].includes(part) || part.includes(idParts[1]));
         }
         return false;
@@ -271,10 +511,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         ? { x: position.x, y: position.y }
         : undefined;
 
-      // ID 생성: 위치 정보를 기반으로
+      // ID 생성: 위치 정보를 기반으로 (형식: DB-층수-위치)
       const locationCode = qr.location.replace(/\s+/g, '-').toUpperCase();
       const floorCode = qr.floor.replace(/\s+/g, '').toUpperCase();
-      const newId = `DB-${locationCode}-${floorCode}-${Date.now().toString().slice(-4)}`;
+      const newId = `DB-${floorCode}-${locationCode}`;
 
       const newInspection: InspectionRecord = {
         id: newId,
@@ -435,13 +675,15 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     let finalFloor = qrData.floor;
     
     if (qrData.id && (!finalLocation || !finalFloor)) {
-      // ID에서 위치 정보 추출 (예: DB-A-001 -> A, 001)
+      // ID에서 위치 정보 추출 (형식: DB-층수-위치, 예: DB-A-001)
       const idParts = qrData.id.split('-');
-      if (idParts.length >= 2) {
-        if (!finalLocation) finalLocation = idParts[1] || '';
-        if (idParts.length >= 3 && !finalFloor) {
-          finalFloor = idParts[2] || '';
-        }
+      if (idParts.length >= 3) {
+        // DB-층수-위치 형식
+        if (!finalFloor) finalFloor = idParts[1] || '';
+        if (!finalLocation) finalLocation = idParts[2] || '';
+      } else if (idParts.length >= 2) {
+        // 호환성을 위해 2개 파트만 있는 경우 첫 번째를 층수로
+        if (!finalFloor) finalFloor = idParts[1] || '';
       }
       
       // 기본값 설정
@@ -729,65 +971,104 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       <div className="w-1/3 border-r border-slate-200 bg-white overflow-y-auto">
         <div className="p-4 border-b border-slate-200 bg-slate-50">
           <h2 className="text-lg font-semibold text-slate-800 mb-1">등록된 QR 코드</h2>
-          <p className="text-sm text-slate-600">{qrCodes.length}개</p>
+          <p className="text-sm text-slate-600">{inspections.length}개</p>
         </div>
         
-        {qrCodes.length === 0 ? (
+        {inspections.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
             <QrCode size={48} className="mb-4 opacity-50" />
             <p className="text-sm text-center">등록된 QR 코드가 없습니다</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {qrCodes.map((qr) => (
-              <div
-                key={qr.id}
-                onClick={() => handleSelectQR(qr)}
-                className={`p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
-                  selectedQR?.id === qr.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <MapPin size={14} className="text-blue-600" />
-                      <span className="font-semibold text-slate-800">
-                        {(() => {
-                          try {
-                            const qrData = JSON.parse(qr.qrData);
-                            return qrData.id || qr.location;
-                          } catch (e) {
-                            return qr.location;
-                          }
-                        })()}
-                      </span>
+            {inspections.map((inspection) => {
+              // 해당 inspection에 대한 QR 코드 찾기
+              const matchingQR = qrCodes.find(qr => {
+                try {
+                  const qrData = JSON.parse(qr.qrData);
+                  return qrData.id === inspection.id;
+                } catch (e) {
+                  return false;
+                }
+              });
+              
+              return (
+                <div
+                  key={inspection.id}
+                  onClick={() => {
+                    if (matchingQR) {
+                      handleSelectQR(matchingQR);
+                    } else {
+                      // QR 코드가 없으면 inspection ID를 표시하고 선택
+                      setSelectedQR(null);
+                      setQrData({
+                        id: inspection.id,
+                        location: '',
+                        floor: 'F1',
+                        position: '',
+                        positionX: inspection.position?.x?.toString() || '',
+                        positionY: inspection.position?.y?.toString() || ''
+                      });
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
+                    selectedQR && (() => {
+                      try {
+                        const qrData = JSON.parse(selectedQR.qrData);
+                        return qrData.id === inspection.id;
+                      } catch {
+                        return false;
+                      }
+                    })() ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MapPin size={14} className="text-blue-600" />
+                        <span className="font-semibold text-slate-800">
+                          {migrateIdFloor(inspection.id)}
+                        </span>
+                      </div>
+                      {matchingQR && (
+                        <>
+                          <p className="text-sm text-slate-600 mb-1">{matchingQR.floor}</p>
+                          <p className="text-xs text-slate-500 line-clamp-1">{matchingQR.location}</p>
+                          <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                            <Calendar size={12} />
+                            <span>{formatDate(matchingQR.createdAt)}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <p className="text-sm text-slate-600 mb-1">{qr.floor}</p>
-                    <p className="text-xs text-slate-500 line-clamp-1">{qr.position}</p>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
-                      <Calendar size={12} />
-                      <span>{formatDate(qr.createdAt)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => handleEditQR(qr, e)}
-                      className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
-                      title="Edit QR code"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteQR(qr.id, e)}
-                      className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
-                      title="Delete QR code"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {matchingQR && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditQR(matchingQR, e);
+                          }}
+                          className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Edit QR code"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteQR(matchingQR.id, e);
+                          }}
+                          className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
+                          title="Delete QR code"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -856,18 +1137,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               <div className="flex-1 space-y-4">
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex items-center gap-2 mb-3">
-                    <MapPin size={16} className="text-blue-600" />
-                    <span className="text-sm font-semibold text-slate-700">위치</span>
-                  </div>
-                  <p className="text-slate-800 font-medium">{qrData.location}</p>
-                </div>
-
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <div className="flex items-center gap-2 mb-3">
                     <Building2 size={16} className="text-blue-600" />
                     <span className="text-sm font-semibold text-slate-700">층수</span>
                   </div>
                   <p className="text-slate-800 font-medium">{qrData.floor}</p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <MapPin size={16} className="text-blue-600" />
+                    <span className="text-sm font-semibold text-slate-700">위치</span>
+                  </div>
+                  <p className="text-slate-800 font-medium">{qrData.location}</p>
                 </div>
 
                 {(qrData.positionX || qrData.positionY) && (
@@ -947,6 +1228,24 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                <Building2 size={16} />
+                층수
+              </label>
+              <select
+                value={qrData.floor || selectedFloor}
+                onChange={(e) => {
+                  handleInputChange('floor', e.target.value);
+                  setSelectedFloor(e.target.value as 'F1' | 'B1');
+                }}
+                className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              >
+                <option value="F1">F1</option>
+                <option value="B1">B1</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
                 <MapPin size={16} />
                 위치
               </label>
@@ -954,21 +1253,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 type="text"
                 value={qrData.location}
                 onChange={(e) => handleInputChange('location', e.target.value)}
-                placeholder="예: Building A, Zone 1"
-                className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                <Building2 size={16} />
-                층수
-              </label>
-              <input
-                type="text"
-                value={qrData.floor}
-                onChange={(e) => handleInputChange('floor', e.target.value)}
-                placeholder="예: 1층, 2층, B1층"
+                placeholder="예: 001"
+                type="number"
+                min="1"
+                step="1"
                 className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
               />
             </div>
@@ -1060,18 +1348,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="flex items-center gap-2 mb-3">
-                  <MapPin size={16} className="text-blue-600" />
-                  <span className="text-sm font-semibold text-slate-700">위치</span>
-                </div>
-                <p className="text-slate-800 font-medium">{selectedQR.location}</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="flex items-center gap-2 mb-3">
                   <Building2 size={16} className="text-blue-600" />
                   <span className="text-sm font-semibold text-slate-700">층수</span>
                 </div>
                 <p className="text-slate-800 font-medium">{selectedQR.floor}</p>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <MapPin size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-slate-700">위치</span>
+                </div>
+                <p className="text-slate-800 font-medium">{selectedQR.location}</p>
               </div>
 
               {(qrData.positionX || qrData.positionY) && (
@@ -1116,6 +1404,46 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           );
         })()}
         </div>
+
+        {/* Floor Plan View - 마지막 순서로 배치 */}
+        <FloorPlanView
+          inspections={inspections}
+          onSelectInspection={(inspection) => {
+            if (onSelectInspection) {
+              onSelectInspection(inspection.id);
+            }
+          }}
+          onUpdateInspections={onUpdateInspections}
+          selectedInspectionId={(() => {
+            if (selectedQR) {
+              try {
+                const qrData = JSON.parse(selectedQR.qrData);
+                return qrData.id || null;
+              } catch (e) {
+                return null;
+              }
+            }
+            return null;
+          })()}
+          onSelectionChange={(id) => {
+            if (id && qrCodes.length > 0) {
+              // 선택된 inspection ID에 해당하는 QR 코드 찾기
+              const matchingQR = qrCodes.find(qr => {
+                try {
+                  const qrData = JSON.parse(qr.qrData);
+                  return qrData.id === id;
+                } catch (e) {
+                  return false;
+                }
+              });
+              if (matchingQR) {
+                setSelectedQR(matchingQR);
+              }
+            }
+          }}
+          selectedFloor={selectedFloor}
+          onFloorChange={setSelectedFloor}
+        />
       </div>
     </div>
   );
