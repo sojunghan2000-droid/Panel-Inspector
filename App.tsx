@@ -1,3 +1,5 @@
+//의미없는 주석
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { InspectionRecord } from './types';
 import Dashboard from './components/Dashboard';
