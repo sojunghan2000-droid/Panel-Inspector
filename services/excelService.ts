@@ -24,12 +24,13 @@ interface ExcelExportData {
   loadCause: string; // 부하 원인
 }
 
-export const exportToExcel = (inspections: InspectionRecord[]) => {
-  // QR 코드 데이터 로드
-  const savedQRCodes: QRCodeData[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  
-  // Reports 데이터 로드
-  const reports: ReportHistory[] = JSON.parse(localStorage.getItem(REPORTS_STORAGE_KEY) || '[]');
+export const exportToExcel = (
+  inspections: InspectionRecord[],
+  qrCodesFromProps?: QRCodeData[],
+  reportsFromProps?: ReportHistory[]
+) => {
+  const savedQRCodes: QRCodeData[] = qrCodesFromProps ?? JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  const reports: ReportHistory[] = reportsFromProps ?? JSON.parse(localStorage.getItem(REPORTS_STORAGE_KEY) || '[]');
   
   // Reports를 ID로 매핑
   const reportMap = new Map<string, ReportHistory>();
@@ -42,11 +43,10 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
   savedQRCodes.forEach(qr => {
     try {
       const qrData = JSON.parse(qr.qrData);
-      // QR 데이터의 id와 inspection id가 정확히 일치하는 경우만 매칭
       if (qrData.id) {
-        const matchingInspection = inspections.find(inspection => inspection.id === qrData.id);
+        const matchingInspection = inspections.find(inspection => inspection.panelNo === qrData.id);
         if (matchingInspection) {
-          qrMap.set(qrData.id, qr);
+          qrMap.set(matchingInspection.panelNo, qr);
         }
       }
     } catch (e) {
@@ -56,8 +56,8 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
 
   // 엑셀 데이터 준비
   const excelData: ExcelExportData[] = inspections.map(inspection => {
-    const qr = qrMap.get(inspection.id);
-    const report = reportMap.get(inspection.id);
+    const qr = qrMap.get(inspection.panelNo);
+    const report = reportMap.get(inspection.panelNo);
     let qrLocation = '';
     let qrFloor = '';
     let qrPosition = '';
@@ -66,11 +66,9 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
     if (qr) {
       try {
         const qrData = JSON.parse(qr.qrData);
-        // QR 데이터에서 정보 추출
-        qrId = qrData.id || inspection.id;
+        qrId = qrData.id || inspection.panelNo;
         qrLocation = qrData.location || qr.location || '';
         qrFloor = qrData.floor || qr.floor || '';
-        // position은 객체일 수 있으므로 처리
         if (typeof qrData.position === 'string') {
           qrPosition = qrData.position;
         } else if (qrData.position && qrData.position.description) {
@@ -82,11 +80,10 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
         qrLocation = qr.location || '';
         qrFloor = qr.floor || '';
         qrPosition = qr.position || '';
-        qrId = inspection.id;
+        qrId = inspection.panelNo;
       }
     } else {
-      // QR이 없어도 ID는 표시
-      qrId = inspection.id;
+      qrId = inspection.panelNo;
     }
 
     // 부하 원인 문자열 생성
@@ -98,7 +95,7 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
     const loadCause = connectedLoads.length > 0 ? connectedLoads.join(', ') : 'None';
 
     return {
-      id: inspection.id,
+      id: inspection.panelNo,
       status: inspection.status,
       lastInspectionDate: inspection.lastInspectionDate,
       welder: inspection.loads.welder ? 'Yes' : 'No',
@@ -123,7 +120,7 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
 
   // 1. Inspection Sheet (검사 현황)
   const inspectionSheetData = [
-    ['분전함 ID', '검사 현황', '점검일', '용접기', '연삭기', '조명', '펌프', '부하 원인', '점검 조치 사항', 'X 좌표 (%)', 'Y 좌표 (%)'],
+    ['PNL NO.', '검사 현황', '점검일', '용접기', '연삭기', '조명', '펌프', '부하 원인', '점검 조치 사항', 'X 좌표 (%)', 'Y 좌표 (%)'],
     ...excelData.map(row => [
       row.id,
       row.status,
@@ -160,10 +157,10 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
 
   // 2. QR List Sheet (위치 정보 및 QR)
   const qrListSheetData = [
-    ['분전함 ID', 'QR ID', 'X 좌표 (%)', 'Y 좌표 (%)', 'QR 위치', 'QR 층수', 'QR 위치 정보'],
+    ['PNL NO.', 'QR ID', 'X 좌표 (%)', 'Y 좌표 (%)', 'QR 위치', 'QR 층수', 'QR 위치 정보'],
     ...excelData.map(row => [
       row.id,
-      row.qrId || row.id, // QR ID는 ID와 동일하거나 QR 데이터에서 가져옴
+      row.qrId || row.id,
       row.positionX,
       row.positionY,
       row.qrLocation || '-',
@@ -190,10 +187,9 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
   // 3. Reports Sheet (완료된 검사만 포함)
   const completeInspections = inspections.filter(i => i.status === 'Complete');
   const reportsSheetData = [
-    ['분전함 ID', 'Report ID', '보고서 생성일', '마지막 점검일', '부하 원인', '점검 조치 사항'],
+    ['PNL NO.', 'Report ID', '보고서 생성일', '마지막 점검일', '부하 원인', '점검 조치 사항'],
     ...completeInspections.map(inspection => {
-      const report = reportMap.get(inspection.id);
-      // 부하 원인 문자열 생성
+      const report = reportMap.get(inspection.panelNo);
       const connectedLoads = [];
       if (inspection.loads.welder) connectedLoads.push('Welder');
       if (inspection.loads.grinder) connectedLoads.push('Grinder');
@@ -202,7 +198,7 @@ export const exportToExcel = (inspections: InspectionRecord[]) => {
       const loadCause = connectedLoads.length > 0 ? connectedLoads.join(', ') : 'None';
       
       return [
-        inspection.id,
+        inspection.panelNo,
         report ? report.reportId : '-',
         report ? new Date(report.generatedAt).toLocaleString('ko-KR') : '-',
         inspection.lastInspectionDate !== '-' ? inspection.lastInspectionDate : '-',

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { InspectionRecord, StatData } from '../types';
+import { InspectionRecord, StatData, QRCodeData, ReportHistory } from '../types';
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
@@ -14,6 +14,9 @@ interface DashboardProps {
   onScan: () => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
+  onReportGenerated?: (report: ReportHistory) => void;
+  qrCodes?: QRCodeData[];
+  reports?: ReportHistory[];
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -21,7 +24,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   onUpdateInspections, 
   onScan,
   selectedInspectionId,
-  onSelectionChange
+  onSelectionChange,
+  onReportGenerated,
+  qrCodes = [],
+  reports = []
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -40,7 +46,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const selectedRecord = useMemo(() => 
-    inspections.find(i => i.id === selectedId) || null, 
+    inspections.find(i => i.panelNo === selectedId) || null, 
   [inspections, selectedId]);
 
   const stats: StatData[] = useMemo(() => {
@@ -61,29 +67,24 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleSave = (updated: InspectionRecord) => {
     const finalRecord = {
       ...updated,
-      lastInspectionDate: updated.status === 'Complete' 
-        ? new Date().toLocaleString() 
+      lastInspectionDate: updated.status === 'Complete'
+        ? new Date().toLocaleString()
         : updated.lastInspectionDate
     };
-    
-    const updatedInspections = inspections.map(item => 
-      item.id === finalRecord.id ? finalRecord : item
+    const updatedInspections = inspections.map(item =>
+      item.panelNo === selectedId ? finalRecord : item
     );
     onUpdateInspections(updatedInspections);
-    
-    // Generate report only if status is Complete (not In Progress)
-    if (finalRecord.status === 'Complete') {
-      generateReport(finalRecord);
-      // Show success message
-      setTimeout(() => {
-        alert("Report generated and saved successfully!");
-      }, 500);
-    } else {
-      // Show save message without report generation
-      setTimeout(() => {
-        alert("Data saved successfully!");
-      }, 100);
+    setTimeout(() => alert('Data saved successfully!'), 100);
+  };
+
+  const handleGenerateReport = (record: InspectionRecord) => {
+    if (record.status !== 'Complete') {
+      alert('상태가 Complete일 때만 보고서를 생성할 수 있습니다.');
+      return;
     }
+    generateReport(record, onReportGenerated);
+    setTimeout(() => alert('Report generated and saved successfully!'), 500);
   };
 
   const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,7 +109,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         // 헤더 찾기
         const headers = jsonData[0] as string[];
-        const idIndex = headers.findIndex(h => h.includes('ID') || h.includes('id'));
+        const idIndex = headers.findIndex(h => h.includes('PNL NO') || h.includes('ID') || h.includes('id'));
         const statusIndex = headers.findIndex(h => h.includes('검사') || h.includes('상황') || h.includes('status'));
         const dateIndex = headers.findIndex(h => h.includes('점검일') || h.includes('일') || h.includes('date'));
         const welderIndex = headers.findIndex(h => h.includes('용접') || h.includes('welder'));
@@ -120,18 +121,17 @@ const Dashboard: React.FC<DashboardProps> = ({
         const yIndex = headers.findIndex(h => h.includes('Y') || h.includes('y'));
 
         if (idIndex === -1) {
-          alert('엑셀 파일에서 ID 열을 찾을 수 없습니다.');
+          alert('엑셀 파일에서 PNL NO. 또는 ID 열을 찾을 수 없습니다.');
           return;
         }
 
-        // 데이터 파싱
         const importedRecords: InspectionRecord[] = [];
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (!row || !row[idIndex]) continue;
 
-          const id = String(row[idIndex]).trim();
-          if (!id) continue;
+          const panelNo = String(row[idIndex]).trim();
+          if (!panelNo) continue;
 
           const status = statusIndex >= 0 ? String(row[statusIndex] || '').trim() : 'Pending';
           const validStatus = ['Complete', 'In Progress', 'Pending'].includes(status) 
@@ -159,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           }
 
           importedRecords.push({
-            id,
+            panelNo,
             status: validStatus,
             lastInspectionDate,
             loads: { welder, grinder, light, pump },
@@ -169,12 +169,11 @@ const Dashboard: React.FC<DashboardProps> = ({
           });
         }
 
-        // 기존 데이터와 병합 (ID 기준으로 업데이트 또는 추가)
-        const existingIds = new Set(inspections.map(i => i.id));
+        const existingPanelNos = new Set(inspections.map(i => i.panelNo));
         const updatedInspections = [...inspections];
 
         importedRecords.forEach(record => {
-          const existingIndex = updatedInspections.findIndex(i => i.id === record.id);
+          const existingIndex = updatedInspections.findIndex(i => i.panelNo === record.panelNo);
           if (existingIndex >= 0) {
             // 기존 항목 업데이트
             updatedInspections[existingIndex] = {
@@ -214,7 +213,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         {/* Action Buttons */}
         <div className="flex gap-2">
           <button
-            onClick={() => exportToExcel(inspections)}
+            onClick={() => exportToExcel(inspections, qrCodes, reports)}
             className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
           >
             <FileSpreadsheet size={18} />
@@ -277,6 +276,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <InspectionDetail 
             record={selectedRecord} 
             onSave={handleSave}
+            onGenerateReport={handleGenerateReport}
             onCancel={() => handleSelectId(null)}
           />
         ) : (

@@ -6,10 +6,11 @@ import { analyzeInspectionPhoto } from '../services/geminiService';
 interface InspectionDetailProps {
   record: InspectionRecord;
   onSave: (updatedRecord: InspectionRecord) => void;
+  onGenerateReport?: (record: InspectionRecord) => void;
   onCancel: () => void;
 }
 
-const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onCancel }) => {
+const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onGenerateReport, onCancel }) => {
   const [formData, setFormData] = useState<InspectionRecord>(record);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
@@ -335,7 +336,15 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
   }, []);
 
   const handleStatusChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, status: e.target.value as InspectionRecord['status'] }));
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InspectionDetail.tsx:337',message:'handleStatusChange called',data:{oldValue:e.target.defaultValue,newValue:e.target.value,selectElement:!!e.target},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    setFormData(prev => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InspectionDetail.tsx:339',message:'handleStatusChange updating formData',data:{oldStatus:prev.status,newStatus:e.target.value},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      return { ...prev, status: e.target.value as InspectionRecord['status'] };
+    });
   }, []);
 
   const handleBasicInfoChange = useCallback((field: string, value: string) => {
@@ -509,8 +518,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
       <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-sm">ID</span>
-            {formData.id}
+            <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-sm">PNL NO.</span>
+            {formData.panelNo}
           </h2>
           <p className="text-sm text-slate-500 mt-1">가설 전기 점검</p>
         </div>
@@ -611,6 +620,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                 value={formData.status} 
                 onChange={handleStatusChange}
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
               >
                 <option value="Complete">양호</option>
                 <option value="In Progress">점검 중</option>
@@ -687,9 +697,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                     <select 
                       value={breaker.breakerNo || '0'} 
                       onChange={(e) => handleBreakerChange(index, 'breakerNo', e.target.value)}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
                         isListening && activeVoiceField === `breaker-${index}-breakerNo` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
+                      style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       {Array.from({ length: 11 }, (_, i) => (
                         <option key={i} value={i.toString()}>{i}</option>
@@ -724,9 +735,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                     <select 
                       value={breaker.category} 
                       onChange={(e) => handleBreakerChange(index, 'category', e.target.value as '1차' | '2차')}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
                         isListening && activeVoiceField === `breaker-${index}-category` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
+                      style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="1차">1차</option>
                       <option value="2차">2차</option>
@@ -794,9 +806,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                     <select 
                       value={breaker.kind} 
                       onChange={(e) => handleBreakerChange(index, 'kind', e.target.value as 'MCCB' | 'ELB')}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
                         isListening && activeVoiceField === `breaker-${index}-kind` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
+                      style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="MCCB">MCCB</option>
                       <option value="ELB">ELB</option>
@@ -830,9 +843,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
                     <select 
                       value={breaker.type || '1P'} 
                       onChange={(e) => handleBreakerChange(index, 'type', e.target.value)}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
                         isListening && activeVoiceField === `breaker-${index}-type` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
+                      style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="1P">1P</option>
                       <option value="2P">2P</option>
@@ -968,7 +982,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
           <select 
             value={formData.grounding || '미점검'} 
             onChange={handleGroundingChange}
-            className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none cursor-pointer bg-white"
+            style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
           >
             <option value="양호">양호</option>
             <option value="불량">불량</option>
@@ -1260,10 +1275,19 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onC
         </button>
         <button
           onClick={() => onSave(formData)}
-          className="flex-[2] py-2.5 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2"
+          className="flex-1 py-2.5 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2"
         >
           <Save size={18} />
-          Save & Generate Report
+          Save
+        </button>
+        <button
+          onClick={() => onGenerateReport?.(formData)}
+          disabled={formData.status !== 'Complete'}
+          className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
+          title={formData.status !== 'Complete' ? '상태가 Complete일 때만 보고서를 생성할 수 있습니다.' : '보고서 생성'}
+        >
+          <FileText size={18} />
+          Report Generate
         </button>
         </div>
 
