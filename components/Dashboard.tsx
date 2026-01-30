@@ -442,91 +442,114 @@ const Dashboard: React.FC<DashboardProps> = ({
                   String(h || '').toLowerCase().includes('has photo')
                 );
                 
-                // 각 행의 이미지 추출
-                for (let rowNum = 2; rowNum <= photosSheet.rowCount; rowNum++) {
-                  const row = photosSheet.getRow(rowNum);
-                  if (!row || row.getCell(1).value === null || row.getCell(1).value === undefined) continue;
+                // 모든 이미지 가져오기
+                const images = photosSheet.getImages();
+                console.log(`Photos 시트에서 ${images.length}개의 이미지 발견`);
+                
+                // 각 행의 이미지 추출 (헤더 제외, 2행부터 시작)
+                for (let dataRowIndex = 1; dataRowIndex < photosData.length; dataRowIndex++) {
+                  const row = photosData[dataRowIndex];
+                  if (!row || !row[panelNoIndex]) continue;
                   
-                  const panelNo = String(row.getCell(1).value || '').trim();
-                  const photoTypeCell = row.getCell(2);
-                  const photoType = photoTypeCell ? String(photoTypeCell.value || '').trim() : '';
-                  const hasPhotoCell = row.getCell(4);
-                  const hasPhoto = hasPhotoCell ? String(hasPhotoCell.value || '').toLowerCase().includes('yes') : false;
+                  const panelNo = String(row[panelNoIndex] || '').trim();
+                  const photoType = photoTypeIndex >= 0 ? String(row[photoTypeIndex] || '').trim() : '';
+                  const hasPhoto = hasPhotoIndex >= 0 ? String(row[hasPhotoIndex] || '').toLowerCase().includes('yes') : false;
                   
-                  if (panelNo && hasPhoto) {
-                    // 해당 inspection 찾기
-                    const inspectionIndex = updatedInspections.findIndex(ins => ins.panelNo === panelNo);
-                    if (inspectionIndex >= 0) {
-                      // 이미지 추출 시도 (C열에 이미지가 있을 수 있음)
-                      const imageCell = row.getCell(3);
-                      if (imageCell && imageCell.type === ExcelJS.ValueType.RichText) {
-                        // RichText는 이미지가 아닐 수 있음
-                        continue;
+                  if (!panelNo || !hasPhoto) continue;
+                  
+                  // ExcelJS 행 번호는 1-based이고, 헤더가 1행이므로 데이터는 2행부터
+                  const excelRowNum = dataRowIndex + 2; // 헤더(1행) + 인덱스 보정
+                  
+                  // 해당 inspection 찾기
+                  const inspectionIndex = updatedInspections.findIndex(ins => ins.panelNo === panelNo);
+                  if (inspectionIndex < 0) {
+                    console.warn(`PNL NO ${panelNo}에 해당하는 inspection을 찾을 수 없습니다.`);
+                    continue;
+                  }
+                  
+                  // 이미지 찾기 (C열 또는 D열에 있을 수 있음, 3열 또는 4열)
+                  // 이미지가 해당 행 범위에 있는지 확인
+                  const imageForRow = images.find(img => {
+                    // ExcelJS의 range는 0-based
+                    const imgTop = img.range.tl.nativeRow + 1; // 0-based를 1-based로 변환
+                    const imgBottom = img.range.br.nativeRow + 1;
+                    const imgLeft = img.range.tl.nativeCol + 1; // 0-based를 1-based로 변환 (A=1, B=2, C=3, D=4)
+                    const imgRight = img.range.br.nativeCol + 1;
+                    
+                    // 이미지가 C열(3열) 또는 D열(4열)에 있고, 행 범위에 포함되는지 확인
+                    const isInColumn = (imgLeft <= 3 && imgRight >= 3) || (imgLeft <= 4 && imgRight >= 4);
+                    const isInRow = imgTop <= excelRowNum && excelRowNum <= imgBottom;
+                    
+                    return isInColumn && isInRow;
+                  });
+                  
+                  if (imageForRow && imageForRow.image) {
+                    try {
+                      // 이미지를 Base64로 변환 (브라우저 호환)
+                      const imageBuffer = imageForRow.image.buffer;
+                      // ArrayBuffer를 Base64로 변환
+                      const bytes = new Uint8Array(imageBuffer);
+                      let binary = '';
+                      for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
                       }
+                      const base64 = btoa(binary);
+                      const extension = imageForRow.image.extension || 'png';
+                      const dataUrl = `data:image/${extension};base64,${base64}`;
                       
-                      // 이미지가 있는지 확인 (ExcelJS의 이미지 API 사용)
-                      const images = photosSheet.getImages();
-                      const imageForRow = images.find(img => {
-                        // 이미지의 위치가 현재 행과 일치하는지 확인
-                        const imgTop = img.range.tl.nativeRow;
-                        const imgBottom = img.range.br.nativeRow;
-                        return imgTop <= rowNum && rowNum <= imgBottom;
-                      });
+                      // Blob으로 변환하여 IndexedDB에 저장
+                      const blob = dataURLToBlob(dataUrl);
                       
-                      if (imageForRow && imageForRow.image) {
-                        try {
-                          // 이미지를 Base64로 변환 (브라우저 호환)
-                          const imageBuffer = imageForRow.image.buffer;
-                          // ArrayBuffer를 Base64로 변환
-                          const bytes = new Uint8Array(imageBuffer);
-                          let binary = '';
-                          for (let i = 0; i < bytes.length; i++) {
-                            binary += String.fromCharCode(bytes[i]);
-                          }
-                          const base64 = btoa(binary);
-                          const extension = imageForRow.image.extension || 'png';
-                          const dataUrl = `data:image/${extension};base64,${base64}`;
-                          
-                          // Blob으로 변환하여 IndexedDB에 저장
-                          const blob = dataURLToBlob(dataUrl);
-                          
-                          if (photoType.includes('현장사진') || photoType.toLowerCase().includes('site')) {
-                            // 현장사진 저장
-                            updatedInspections[inspectionIndex].photoUrl = dataUrl;
-                            await savePhoto(panelNo, blob, null);
-                          } else if (photoType.includes('열화상') || photoType.toLowerCase().includes('thermal')) {
-                            // 열화상 이미지 저장
-                            if (!updatedInspections[inspectionIndex].thermalImage) {
-                              updatedInspections[inspectionIndex].thermalImage = {
-                                imageUrl: dataUrl,
-                                temperature: 0,
-                                maxTemp: 0,
-                                minTemp: 0,
-                                emissivity: 0.95,
-                                measurementTime: new Date().toISOString(),
-                                equipment: ''
-                              };
-                            } else {
-                              updatedInspections[inspectionIndex].thermalImage.imageUrl = dataUrl;
-                            }
-                            await savePhoto(panelNo, null, blob);
-                          }
-                        } catch (error) {
-                          console.error(`이미지 추출 오류 (${panelNo}, ${photoType}):`, error);
+                      if (photoType.includes('현장사진') || photoType.toLowerCase().includes('site') || !photoType.includes('열화상')) {
+                        // 현장사진 저장
+                        updatedInspections[inspectionIndex].photoUrl = dataUrl;
+                        const existingThermalBlob = updatedInspections[inspectionIndex].thermalImage?.imageUrl
+                          ? dataURLToBlob(updatedInspections[inspectionIndex].thermalImage.imageUrl)
+                          : null;
+                        await savePhoto(panelNo, blob, existingThermalBlob);
+                        console.log(`현장사진 저장 완료: ${panelNo}`);
+                      } else if (photoType.includes('열화상') || photoType.toLowerCase().includes('thermal')) {
+                        // 열화상 이미지 저장
+                        if (!updatedInspections[inspectionIndex].thermalImage) {
+                          updatedInspections[inspectionIndex].thermalImage = {
+                            imageUrl: dataUrl,
+                            temperature: 0,
+                            maxTemp: 0,
+                            minTemp: 0,
+                            emissivity: 0.95,
+                            measurementTime: new Date().toISOString(),
+                            equipment: ''
+                          };
+                        } else {
+                          updatedInspections[inspectionIndex].thermalImage.imageUrl = dataUrl;
                         }
+                        const existingPhotoBlob = updatedInspections[inspectionIndex].photoUrl
+                          ? dataURLToBlob(updatedInspections[inspectionIndex].photoUrl)
+                          : null;
+                        await savePhoto(panelNo, existingPhotoBlob, blob);
+                        console.log(`열화상 이미지 저장 완료: ${panelNo}`);
                       }
+                    } catch (error) {
+                      console.error(`이미지 추출 오류 (${panelNo}, ${photoType}):`, error);
                     }
+                  } else {
+                    console.warn(`PNL NO ${panelNo}의 ${photoType} 이미지를 찾을 수 없습니다. (행 ${excelRowNum}, 전체 이미지 수: ${images.length})`);
                   }
                 }
                 
                 // 이미지가 업데이트된 inspections 다시 저장
-                if (updatedInspections.some(ins => ins.photoUrl || ins.thermalImage?.imageUrl)) {
+                const hasUpdatedPhotos = updatedInspections.some(ins => ins.photoUrl || ins.thermalImage?.imageUrl);
+                if (hasUpdatedPhotos) {
                   onUpdateInspections(updatedInspections);
+                  console.log('Photos 시트에서 이미지 읽기 완료');
+                } else {
+                  console.warn('Photos 시트에서 이미지를 찾을 수 없거나 추출에 실패했습니다.');
                 }
               }
             }
           } catch (error) {
             console.error('Photos 시트 읽기 오류:', error);
+            alert('Photos 시트에서 이미지를 읽는 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
             // Photos 시트 읽기 실패는 경고만 하고 계속 진행
           }
         }
