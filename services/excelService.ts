@@ -279,10 +279,16 @@ export const exportToExcel = async (
   reportsSheet.columns = [
     { header: 'PNL NO.', key: 'id', width: 15 },
     { header: 'Report ID', key: 'reportId', width: 25 },
+    { header: 'Status', key: 'status', width: 15 },
     { header: '보고서 생성일', key: 'generatedAt', width: 20 },
     { header: '마지막 점검일', key: 'lastInspectionDate', width: 20 },
     { header: '부하 원인', key: 'loadCause', width: 30 },
     { header: '점검 조치 사항', key: 'memo', width: 40 },
+    { header: 'HTML Content (Base64)', key: 'htmlContentBase64', width: 50 },
+    { header: 'PJT명', key: 'projectName', width: 20 },
+    { header: '시공사', key: 'contractor', width: 20 },
+    { header: '관리번호', key: 'managementNumber', width: 20 },
+    { header: '점검자', key: 'inspectors', width: 30 },
   ];
 
   reportsSheet.getRow(1).font = { bold: true };
@@ -301,13 +307,31 @@ export const exportToExcel = async (
     if (inspection.loads.pump) connectedLoads.push('Pump');
     const loadCause = connectedLoads.length > 0 ? connectedLoads.join(', ') : 'None';
 
+    // HTML 콘텐츠를 Base64로 인코딩
+    let htmlContentBase64 = '';
+    if (report?.htmlContent) {
+      try {
+        // UTF-8 문자열을 Base64로 인코딩
+        htmlContentBase64 = btoa(unescape(encodeURIComponent(report.htmlContent)));
+      } catch (error) {
+        console.error('HTML 콘텐츠 인코딩 오류:', error);
+        htmlContentBase64 = '';
+      }
+    }
+
     reportsSheet.addRow({
       id: inspection.panelNo,
       reportId: report ? report.reportId : '-',
+      status: inspection.status,
       generatedAt: report ? new Date(report.generatedAt).toLocaleString('ko-KR') : '-',
       lastInspectionDate: inspection.lastInspectionDate !== '-' ? inspection.lastInspectionDate : '-',
       loadCause: loadCause,
       memo: inspection.memo || '-',
+      htmlContentBase64: htmlContentBase64,
+      projectName: inspection.projectName || '-',
+      contractor: inspection.contractor || '-',
+      managementNumber: inspection.managementNumber || '-',
+      inspectors: (inspection.inspectors || []).join(', ') || '-',
     });
   });
 

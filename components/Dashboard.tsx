@@ -7,6 +7,8 @@ import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
 import { generateReport } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { savePhoto, dataURLToBlob } from '../services/indexedDBService';
 
 interface DashboardProps {
   inspections: InspectionRecord[];
@@ -135,8 +137,98 @@ const Dashboard: React.FC<DashboardProps> = ({
     setTimeout(() => alert('Report generated and saved successfully!'), 500);
   };
 
+  // HTML 콘텐츠 생성 함수
+  const generateHtmlFromData = (
+    reportId: string,
+    panelNo: string,
+    generatedAt: string,
+    lastInspectionDate: string,
+    loadCause: string,
+    memo: string,
+    projectName?: string,
+    contractor?: string,
+    managementNumber?: string,
+    inspectors?: string[]
+  ): string => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${reportId}</title>
+  <style>
+    body { 
+      font-family: 'Malgun Gothic', Arial, sans-serif; 
+      padding: 20px; 
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 { 
+      color: #1e40af; 
+      border-bottom: 3px solid #1e40af;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    .info { 
+      margin: 15px 0; 
+      padding: 10px;
+      background-color: #f9fafb;
+      border-left: 4px solid #3b82f6;
+      border-radius: 4px;
+    }
+    .label { 
+      font-weight: bold; 
+      color: #374151; 
+      display: inline-block;
+      min-width: 150px;
+    }
+    .value {
+      color: #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>${reportId}</h1>
+    ${projectName && projectName !== '-' ? `<div class="info"><span class="label">PJT명:</span><span class="value">${projectName}</span></div>` : ''}
+    ${contractor && contractor !== '-' ? `<div class="info"><span class="label">시공사:</span><span class="value">${contractor}</span></div>` : ''}
+    ${managementNumber && managementNumber !== '-' ? `<div class="info"><span class="label">관리번호:</span><span class="value">${managementNumber}</span></div>` : ''}
+    ${inspectors && inspectors.length > 0 && inspectors[0] !== '-' ? `<div class="info"><span class="label">점검자:</span><span class="value">${inspectors.join(', ')}</span></div>` : ''}
+    <div class="info">
+      <span class="label">PNL NO.:</span>
+      <span class="value">${panelNo}</span>
+    </div>
+    <div class="info">
+      <span class="label">보고서 생성일:</span>
+      <span class="value">${new Date(generatedAt).toLocaleString('ko-KR')}</span>
+    </div>
+    <div class="info">
+      <span class="label">마지막 점검일:</span>
+      <span class="value">${lastInspectionDate !== '-' ? lastInspectionDate : '-'}</span>
+    </div>
+    <div class="info">
+      <span class="label">부하 원인:</span>
+      <span class="value">${loadCause}</span>
+    </div>
+    <div class="info">
+      <span class="label">점검 조치 사항:</span>
+      <span class="value">${memo}</span>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
+  };
+
   // 엑셀 데이터 처리 함수 (공통)
-  const processExcelData = (data: ArrayBuffer) => {
+  const processExcelData = async (data: ArrayBuffer) => {
     try {
       const workbook = XLSX.read(data, { type: 'array' });
         
@@ -319,6 +411,126 @@ const Dashboard: React.FC<DashboardProps> = ({
           }
         });
 
+        // 4.5. Photos 시트에서 이미지 읽기 (ExcelJS 사용)
+        const photosSheetName = workbook.SheetNames.find(name => 
+          name.toLowerCase().includes('photos') || name.toLowerCase().includes('사진')
+        );
+        
+        if (photosSheetName) {
+          try {
+            // ExcelJS로 이미지 추출을 위해 파일을 다시 읽기
+            const exceljsWorkbook = new ExcelJS.Workbook();
+            await exceljsWorkbook.xlsx.load(data);
+            const photosSheet = exceljsWorkbook.getWorksheet(photosSheetName);
+            
+            if (photosSheet) {
+              // Photos 시트의 데이터 읽기 (XLSX로)
+              const photosData = XLSX.utils.sheet_to_json(workbook.Sheets[photosSheetName], { header: 1 }) as any[][];
+              
+              if (photosData.length > 1) {
+                const photosHeaders = photosData[0] as string[];
+                const panelNoIndex = photosHeaders.findIndex(h => 
+                  String(h || '').toLowerCase().includes('pnl no') || 
+                  String(h || '').toLowerCase().includes('id')
+                );
+                const photoTypeIndex = photosHeaders.findIndex(h => 
+                  String(h || '').toLowerCase().includes('사진 종류') || 
+                  String(h || '').toLowerCase().includes('photo type')
+                );
+                const hasPhotoIndex = photosHeaders.findIndex(h => 
+                  String(h || '').toLowerCase().includes('사진 존재') || 
+                  String(h || '').toLowerCase().includes('has photo')
+                );
+                
+                // 각 행의 이미지 추출
+                for (let rowNum = 2; rowNum <= photosSheet.rowCount; rowNum++) {
+                  const row = photosSheet.getRow(rowNum);
+                  if (!row || row.getCell(1).value === null || row.getCell(1).value === undefined) continue;
+                  
+                  const panelNo = String(row.getCell(1).value || '').trim();
+                  const photoTypeCell = row.getCell(2);
+                  const photoType = photoTypeCell ? String(photoTypeCell.value || '').trim() : '';
+                  const hasPhotoCell = row.getCell(4);
+                  const hasPhoto = hasPhotoCell ? String(hasPhotoCell.value || '').toLowerCase().includes('yes') : false;
+                  
+                  if (panelNo && hasPhoto) {
+                    // 해당 inspection 찾기
+                    const inspectionIndex = updatedInspections.findIndex(ins => ins.panelNo === panelNo);
+                    if (inspectionIndex >= 0) {
+                      // 이미지 추출 시도 (C열에 이미지가 있을 수 있음)
+                      const imageCell = row.getCell(3);
+                      if (imageCell && imageCell.type === ExcelJS.ValueType.RichText) {
+                        // RichText는 이미지가 아닐 수 있음
+                        continue;
+                      }
+                      
+                      // 이미지가 있는지 확인 (ExcelJS의 이미지 API 사용)
+                      const images = photosSheet.getImages();
+                      const imageForRow = images.find(img => {
+                        // 이미지의 위치가 현재 행과 일치하는지 확인
+                        const imgTop = img.range.tl.nativeRow;
+                        const imgBottom = img.range.br.nativeRow;
+                        return imgTop <= rowNum && rowNum <= imgBottom;
+                      });
+                      
+                      if (imageForRow && imageForRow.image) {
+                        try {
+                          // 이미지를 Base64로 변환 (브라우저 호환)
+                          const imageBuffer = imageForRow.image.buffer;
+                          // ArrayBuffer를 Base64로 변환
+                          const bytes = new Uint8Array(imageBuffer);
+                          let binary = '';
+                          for (let i = 0; i < bytes.length; i++) {
+                            binary += String.fromCharCode(bytes[i]);
+                          }
+                          const base64 = btoa(binary);
+                          const extension = imageForRow.image.extension || 'png';
+                          const dataUrl = `data:image/${extension};base64,${base64}`;
+                          
+                          // Blob으로 변환하여 IndexedDB에 저장
+                          const blob = dataURLToBlob(dataUrl);
+                          
+                          if (photoType.includes('현장사진') || photoType.toLowerCase().includes('site')) {
+                            // 현장사진 저장
+                            updatedInspections[inspectionIndex].photoUrl = dataUrl;
+                            await savePhoto(panelNo, blob, null);
+                          } else if (photoType.includes('열화상') || photoType.toLowerCase().includes('thermal')) {
+                            // 열화상 이미지 저장
+                            if (!updatedInspections[inspectionIndex].thermalImage) {
+                              updatedInspections[inspectionIndex].thermalImage = {
+                                imageUrl: dataUrl,
+                                temperature: 0,
+                                maxTemp: 0,
+                                minTemp: 0,
+                                emissivity: 0.95,
+                                measurementTime: new Date().toISOString(),
+                                equipment: ''
+                              };
+                            } else {
+                              updatedInspections[inspectionIndex].thermalImage.imageUrl = dataUrl;
+                            }
+                            await savePhoto(panelNo, null, blob);
+                          }
+                        } catch (error) {
+                          console.error(`이미지 추출 오류 (${panelNo}, ${photoType}):`, error);
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                // 이미지가 업데이트된 inspections 다시 저장
+                if (updatedInspections.some(ins => ins.photoUrl || ins.thermalImage?.imageUrl)) {
+                  onUpdateInspections(updatedInspections);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Photos 시트 읽기 오류:', error);
+            // Photos 시트 읽기 실패는 경고만 하고 계속 진행
+          }
+        }
+        
         onUpdateInspections(updatedInspections);
         
         // 5. Reports 시트 읽기 (있는 경우)
@@ -350,6 +562,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               const generatedAtIndex = findReportsHeaderIndex(['보고서 생성일', 'generated at', '생성일', 'generated']);
               const panelNoIndex = findReportsHeaderIndex(['pnl no', 'pnl no.', 'id', 'board id']);
               const statusIndex = findReportsHeaderIndex(['status', '상태', '검사 현황']);
+              const htmlContentBase64Index = findReportsHeaderIndex(['html content', 'html', 'base64']);
+              const projectNameIndex = findReportsHeaderIndex(['pjt명', 'project name', 'pjt', 'pjt명']);
+              const contractorIndex = findReportsHeaderIndex(['시공사', 'contractor']);
+              const managementNumberIndex = findReportsHeaderIndex(['관리번호', 'management number', '판넬명']);
+              const inspectorsIndex = findReportsHeaderIndex(['점검자', 'inspectors']);
               
               const importedReports: ReportHistory[] = [];
               
@@ -387,13 +604,99 @@ const Dashboard: React.FC<DashboardProps> = ({
                     // 해당 inspection 찾기
                     const matchingInspection = updatedInspections.find(ins => ins.panelNo === panelNo);
                     
+                    // Reports 시트에서 추가 데이터 읽기
+                    const loadCauseIndex = findReportsHeaderIndex(['부하 원인', 'load cause', 'load']);
+                    const memoIndex = findReportsHeaderIndex(['점검 조치 사항', 'memo', '조치', '사항']);
+                    const lastInspectionDateIndex = findReportsHeaderIndex(['마지막 점검일', 'last inspection date', 'inspection date']);
+                    
+                    const loadCause = loadCauseIndex >= 0 ? String(row[loadCauseIndex] || '').trim() : 
+                      (matchingInspection 
+                        ? [
+                            matchingInspection.loads.welder ? 'Welder' : null,
+                            matchingInspection.loads.grinder ? 'Grinder' : null,
+                            matchingInspection.loads.light ? 'Light' : null,
+                            matchingInspection.loads.pump ? 'Pump' : null,
+                          ].filter(Boolean).join(', ') || 'None'
+                        : 'Unknown');
+                    
+                    const memo = memoIndex >= 0 ? String(row[memoIndex] || '').trim() : (matchingInspection?.memo || '-');
+                    const lastInspectionDate = lastInspectionDateIndex >= 0 
+                      ? String(row[lastInspectionDateIndex] || '').trim() 
+                      : (matchingInspection?.lastInspectionDate || '-');
+                    
+                    // 추가 정보 읽기
+                    const projectName = projectNameIndex >= 0 ? String(row[projectNameIndex] || '').trim() : 
+                      (matchingInspection?.projectName || '');
+                    const contractor = contractorIndex >= 0 ? String(row[contractorIndex] || '').trim() : 
+                      (matchingInspection?.contractor || '');
+                    const managementNumber = managementNumberIndex >= 0 ? String(row[managementNumberIndex] || '').trim() : 
+                      (matchingInspection?.managementNumber || '');
+                    const inspectorsStr = inspectorsIndex >= 0 ? String(row[inspectorsIndex] || '').trim() : 
+                      ((matchingInspection?.inspectors || []).join(', ') || '');
+                    const inspectors = inspectorsStr ? inspectorsStr.split(',').map(s => s.trim()).filter(s => s) : [];
+                    
+                    // InspectionRecord에 추가 정보 반영
+                    if (matchingInspection) {
+                      const inspectionIndex = updatedInspections.findIndex(ins => ins.panelNo === panelNo);
+                      if (inspectionIndex >= 0) {
+                        updatedInspections[inspectionIndex] = {
+                          ...updatedInspections[inspectionIndex],
+                          projectName: projectName || updatedInspections[inspectionIndex].projectName,
+                          contractor: contractor || updatedInspections[inspectionIndex].contractor,
+                          managementNumber: managementNumber || updatedInspections[inspectionIndex].managementNumber,
+                          inspectors: inspectors.length > 0 ? inspectors : updatedInspections[inspectionIndex].inspectors,
+                        };
+                      }
+                    }
+                    
+                    // HTML 콘텐츠 읽기 (Base64 디코딩 시도)
+                    let htmlContent = '';
+                    if (htmlContentBase64Index >= 0 && row[htmlContentBase64Index]) {
+                      try {
+                        const base64Content = String(row[htmlContentBase64Index] || '').trim();
+                        if (base64Content) {
+                          // Base64 디코딩
+                          htmlContent = decodeURIComponent(escape(atob(base64Content)));
+                        }
+                      } catch (error) {
+                        console.error('HTML 콘텐츠 디코딩 오류:', error);
+                        // 디코딩 실패 시 기존 방식으로 HTML 생성
+                        htmlContent = generateHtmlFromData(
+                          reportId,
+                          panelNo,
+                          generatedAt,
+                          lastInspectionDate,
+                          loadCause,
+                          memo,
+                          projectName,
+                          contractor,
+                          managementNumber,
+                          inspectors
+                        );
+                      }
+                    } else {
+                      // HTML 콘텐츠가 없으면 기존 방식으로 생성
+                      htmlContent = generateHtmlFromData(
+                        reportId,
+                        panelNo,
+                        generatedAt,
+                        lastInspectionDate,
+                        loadCause,
+                        memo,
+                        projectName,
+                        contractor,
+                        managementNumber,
+                        inspectors
+                      );
+                    }
+                    
                     importedReports.push({
                       id: `report-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                       reportId,
                       boardId: panelNo,
                       generatedAt,
                       status: matchingInspection?.status || validStatus,
-                      htmlContent: '' // Reports 시트에는 HTML 내용이 없으므로 빈 문자열
+                      htmlContent: htmlContent
                     });
                   }
                 } catch (error) {
@@ -463,7 +766,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       // ArrayBuffer로 변환
       const buffer = new Uint8Array(result.buffer).buffer;
-      processExcelData(buffer);
+      await processExcelData(buffer);
     } catch (error) {
       console.error('파일 열기 오류:', error);
       alert('파일 열기 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
@@ -479,10 +782,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = e.target?.result as ArrayBuffer;
-        processExcelData(data);
+        await processExcelData(data);
       } catch (error) {
         console.error('엑셀 파일 읽기 오류:', error);
         alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');

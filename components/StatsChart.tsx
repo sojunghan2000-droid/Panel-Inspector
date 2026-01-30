@@ -6,20 +6,17 @@ interface StatsChartProps {
   data: StatData[];
 }
 
-const CHART_WIDTH = 300;
-const CHART_HEIGHT = 256;
-
 const StatsChart: React.FC<StatsChartProps> = ({ data }) => {
   return (
-    <div className="w-full min-h-[200px]" style={{ height: CHART_HEIGHT }}>
-      <ResponsiveContainer width="100%" height={CHART_HEIGHT} minWidth={CHART_WIDTH} minHeight={CHART_HEIGHT}>
+    <div className="w-full h-full min-h-[200px]">
+      <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={80}
+            innerRadius="40%"
+            outerRadius="60%"
             paddingAngle={5}
             dataKey="value"
           >
