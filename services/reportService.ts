@@ -1,5 +1,6 @@
 import { InspectionRecord, ReportHistory } from '../types';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const STORAGE_KEY = 'safetyguard_reports';
 
@@ -91,9 +92,65 @@ export const deleteReport = (
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
 };
 
-// Excel 파일 생성 함수
-export const generateExcelReport = (record: InspectionRecord): void => {
-  const wb = XLSX.utils.book_new();
+/**
+ * 이미지 URL을 Base64로 변환하는 헬퍼 함수 (ExcelJS용 - 브라우저 환경)
+ */
+const imageUrlToBase64 = async (url: string): Promise<{ base64: string; extension: 'jpeg' | 'png' | 'gif' } | null> => {
+  try {
+    let base64String: string;
+    let extension: 'jpeg' | 'png' | 'gif' = 'jpeg';
+
+    // Base64 데이터 URL인 경우
+    if (url.startsWith('data:image')) {
+      base64String = url.split(',')[1];
+      const mimeType = url.split(',')[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      if (mimeType.includes('png')) {
+        extension = 'png';
+      } else if (mimeType.includes('gif')) {
+        extension = 'gif';
+      } else {
+        extension = 'jpeg';
+      }
+    } else {
+      // 외부 URL인 경우 fetch로 가져오기
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+      const blob = await response.blob();
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('png')) {
+        extension = 'png';
+      } else if (contentType.includes('gif')) {
+        extension = 'gif';
+      } else {
+        extension = 'jpeg';
+      }
+
+      // Blob을 Base64로 변환
+      base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          // data:image/jpeg;base64, 부분 제거
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    return { base64: base64String, extension };
+  } catch (error) {
+    console.error('이미지 변환 오류:', error);
+    return null;
+  }
+};
+
+// Excel 파일 생성 함수 (ExcelJS 사용)
+export const generateExcelReport = async (record: InspectionRecord): Promise<void> => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('점검 보고서');
 
   // 기본 정보 행
   const basicInfoRows: any[][] = [
@@ -183,57 +240,130 @@ export const generateExcelReport = (record: InspectionRecord): void => {
     ...summaryRows
   ];
 
-  const ws = XLSX.utils.aoa_to_sheet(allRows);
+  // ExcelJS 워크시트에 데이터 추가
+  let thermalImageRow = -1; // 열화상 이미지가 삽입될 행 번호 (1-based)
+  
+  allRows.forEach((row, rowIndex) => {
+    const worksheetRow = worksheet.addRow(row);
+    const rowNumber = rowIndex + 1; // 1-based 행 번호
+    
+    // 스타일 설정
+    if (rowIndex === 0) {
+      // 헤더 행
+      worksheetRow.font = { bold: true, size: 14 };
+      worksheetRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE8F5E9' }
+      };
+      worksheet.mergeCells(`A1:O1`); // 공사용 가설 분전반
+      worksheet.getCell('P1').value = '가설 전기 점검';
+    } else if (rowIndex >= 2 && rowIndex <= 6) {
+      // 기본 정보 행 병합
+      const colMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+      worksheet.mergeCells(`${colMap[1]}${rowNumber}:${colMap[15]}${rowNumber}`);
+    }
+    
+    // 열화상 섹션의 "점검 내용" 행 찾기 (O13셀 근처)
+    // 열화상 섹션은 thermalRows에 있고, "점검 내용" 행은 thermalRows[2]입니다
+    const thermalSectionStart = basicInfoRows.length + breakerRows.length;
+    if (rowIndex === thermalSectionStart + 2) {
+      // "점검 내용" 행 (O13셀 근처)
+      thermalImageRow = rowNumber; // 이 행이 O13셀 근처
+    }
+  });
 
   // 열 너비 설정
-  ws['!cols'] = [
-    { wch: 12 }, // 차단기 No.
-    { wch: 12 }, // 구분
-    { wch: 12 }, // 차단기 용량
-    { wch: 30 }, // 부하명
-    { wch: 10 }, // 형식
-    { wch: 12 }, // 종류
-    { wch: 10 }, // L1
-    { wch: 10 }, // L2
-    { wch: 10 }, // L3
-    { wch: 10 }, // R
-    { wch: 10 }, // S
-    { wch: 10 }, // T
-    { wch: 10 }, // N
-    { wch: 15 }, // 접지
-    { wch: 10 }, // 상태
-    { wch: 20 }, // 비고
-    { wch: 20 }  // 추가 열
+  worksheet.columns = [
+    { width: 12 }, // A: 차단기 No.
+    { width: 12 }, // B: 구분
+    { width: 12 }, // C: 차단기 용량
+    { width: 30 }, // D: 부하명
+    { width: 10 }, // E: 형식
+    { width: 12 }, // F: 종류
+    { width: 10 }, // G: L1
+    { width: 10 }, // H: L2
+    { width: 10 }, // I: L3
+    { width: 10 }, // J: R
+    { width: 10 }, // K: S
+    { width: 10 }, // L: T
+    { width: 10 }, // M: N
+    { width: 15 }, // N: 접지
+    { width: 10 }, // O: 상태
+    { width: 20 }, // P: 비고
   ];
 
-  // 셀 병합 및 스타일 설정
-  const merges: XLSX.Range[] = [];
-  
-  // 헤더 병합
-  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } }); // 공사용 가설 분전반
-  merges.push({ s: { r: 0, c: 15 }, e: { r: 0, c: 15 } }); // 가설 전기 점검
-  
-  // 기본 정보 행 병합
-  merges.push({ s: { r: 2, c: 1 }, e: { r: 2, c: 15 } }); // PNL NO. 값
-  merges.push({ s: { r: 3, c: 1 }, e: { r: 3, c: 15 } }); // PJT명 값
-  merges.push({ s: { r: 4, c: 1 }, e: { r: 4, c: 15 } }); // 시공사 값
-  merges.push({ s: { r: 5, c: 1 }, e: { r: 5, c: 15 } }); // 관리번호 값
-  merges.push({ s: { r: 6, c: 1 }, e: { r: 6, c: 15 } }); // 점검자 값
+  // 차단기 헤더 병합
+  const breakerHeaderRow = basicInfoRows.length + 1; // 1-based
+  worksheet.mergeCells(`G${breakerHeaderRow}:I${breakerHeaderRow}`); // 전류 (A) (후크메가)
+  worksheet.mergeCells(`K${breakerHeaderRow}:N${breakerHeaderRow}`); // 부하 용량[W]
 
-  // 전류 헤더 병합
-  const breakerHeaderRow = basicInfoRows.length;
-  merges.push({ s: { r: breakerHeaderRow, c: 6 }, e: { r: breakerHeaderRow, c: 8 } }); // 전류 (A) (후크메가)
+  // 열화상 이미지를 O13셀에 삽입
+  // 열화상 섹션의 "점검 내용" 행 찾기
+  // basicInfoRows.length = 8, breakerRows.length = 2 + 차단기 개수
+  // 열화상 섹션 시작 = basicInfoRows.length + breakerRows.length
+  // "점검 내용" 행 = 열화상 섹션 시작 + 2 (빈 행, 헤더, 점검 내용)
+  const thermalSectionStartRow = basicInfoRows.length + breakerRows.length;
+  const thermalContentRow = thermalSectionStartRow + 2; // "점검 내용" 행 (1-based)
   
-  // 부하 용량 헤더 병합
-  merges.push({ s: { r: breakerHeaderRow, c: 10 }, e: { r: breakerHeaderRow, c: 13 } }); // 부하 용량[W]
+  // O13셀에 삽입 (O = 15번째 열, 0-based로는 14)
+  const targetRow = 13; // O13셀의 행 번호 (1-based)
+  const targetCol = 14; // O열의 인덱스 (0-based)
+  
+  if (record.thermalImage?.imageUrl) {
+    try {
+      console.log('열화상 이미지 삽입 시작:', {
+        imageUrl: record.thermalImage.imageUrl,
+        targetRow,
+        targetCol,
+        thermalContentRow,
+        thermalSectionStartRow,
+        basicInfoRowsLength: basicInfoRows.length,
+        breakerRowsLength: breakerRows.length
+      });
+      
+      const imageData = await imageUrlToBase64(record.thermalImage.imageUrl);
+      if (imageData) {
+        const imageId = workbook.addImage({
+          base64: imageData.base64,
+          extension: imageData.extension,
+        });
 
-  ws['!merges'] = merges;
+        // O13셀에 이미지 삽입
+        // ExcelJS의 addImage는 셀 범위 문자열을 사용하는 것이 더 안정적일 수 있습니다
+        // 또는 0-based 인덱스 사용: col=14 (O열), row=12 (13행)
+        worksheet.addImage(imageId, `O${targetRow}:P${targetRow}`);
 
-  XLSX.utils.book_append_sheet(wb, ws, '점검 보고서');
+        // 행 높이 조정 (13번째 행)
+        worksheet.getRow(targetRow).height = 120;
+        // O열(15번째 열) 너비 조정
+        worksheet.getColumn(15).width = 25;
+        
+        console.log('열화상 이미지 삽입 완료: O13셀');
+      } else {
+        console.error('이미지 데이터 변환 실패');
+      }
+    } catch (error) {
+      console.error('열화상 이미지 삽입 오류:', error);
+    }
+  } else {
+    console.log('열화상 이미지 URL이 없습니다:', record.thermalImage);
+  }
 
   // 파일 다운로드
   const fileName = `가설전기점검_${record.panelNo}_${new Date().toISOString().split('T')[0]}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 export const generateReport = (
@@ -253,8 +383,11 @@ export const generateReport = (
     minute: '2-digit'
   });
 
-  // Excel 파일 생성
-  generateExcelReport(record);
+  // Excel 파일 생성 (async 처리)
+  generateExcelReport(record).catch((error) => {
+    console.error('Excel 생성 오류:', error);
+    alert('Excel 파일 생성 중 오류가 발생했습니다.');
+  });
 
   // HTML Report 생성 (사진의 엑셀 보고서 형태)
   const htmlContent = `
@@ -548,7 +681,10 @@ export const exportReportToExcel = (report: ReportHistory, inspections?: Inspect
   const list = inspections ?? JSON.parse(localStorage.getItem('safetyguard_inspections') || '[]');
   const record = list.find((i: InspectionRecord) => i.panelNo === report.boardId);
   if (record) {
-    generateExcelReport(record);
+    generateExcelReport(record).catch((error) => {
+      console.error('Excel 생성 오류:', error);
+      alert('Excel 파일 생성 중 오류가 발생했습니다.');
+    });
   } else {
     alert('해당 분전반 정보를 찾을 수 없습니다.');
   }

@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import { getPhoto, getThermalImage, blobToDataURL } from './indexedDBService';
 
 const STORAGE_KEY = 'safetyguard_qrcodes';
 const REPORTS_STORAGE_KEY = 'safetyguard_reports';
@@ -343,7 +344,18 @@ export const exportToExcel = async (
     let hasAnyPhoto = false;
 
     // 1. 현장사진 처리
-    if (inspection.photoUrl) {
+    // IndexedDB에서 사진 가져오기 시도, 없으면 inspection.photoUrl 사용
+    let photoUrl = inspection.photoUrl;
+    try {
+      const photoBlob = await getPhoto(inspection.panelNo);
+      if (photoBlob) {
+        photoUrl = await blobToDataURL(photoBlob);
+      }
+    } catch (error) {
+      console.log(`IndexedDB에서 사진 가져오기 실패 (${inspection.panelNo}), photoUrl 사용:`, error);
+    }
+
+    if (photoUrl) {
       hasAnyPhoto = true;
       photosSheet.addRow({
         id: inspection.panelNo,
@@ -353,7 +365,7 @@ export const exportToExcel = async (
       });
 
       try {
-        const imageData = await imageUrlToBase64(inspection.photoUrl);
+        const imageData = await imageUrlToBase64(photoUrl);
         if (imageData) {
           const imageId = workbook.addImage({
             base64: imageData.base64,
@@ -374,7 +386,18 @@ export const exportToExcel = async (
     }
 
     // 2. 열화상 이미지 처리
-    if (inspection.thermalImage?.imageUrl) {
+    // IndexedDB에서 열화상 이미지 가져오기 시도, 없으면 inspection.thermalImage.imageUrl 사용
+    let thermalImageUrl = inspection.thermalImage?.imageUrl;
+    try {
+      const thermalImageBlob = await getThermalImage(inspection.panelNo);
+      if (thermalImageBlob) {
+        thermalImageUrl = await blobToDataURL(thermalImageBlob);
+      }
+    } catch (error) {
+      console.log(`IndexedDB에서 열화상 이미지 가져오기 실패 (${inspection.panelNo}), imageUrl 사용:`, error);
+    }
+
+    if (thermalImageUrl) {
       hasAnyPhoto = true;
       photosSheet.addRow({
         id: inspection.panelNo,
@@ -384,7 +407,7 @@ export const exportToExcel = async (
       });
 
       try {
-        const imageData = await imageUrlToBase64(inspection.thermalImage.imageUrl);
+        const imageData = await imageUrlToBase64(thermalImageUrl);
         if (imageData) {
           const imageId = workbook.addImage({
             base64: imageData.base64,
@@ -420,43 +443,44 @@ export const exportToExcel = async (
   const fileName = `분전함_검사현황_v${FORMAT_VERSION}_${new Date().toISOString().split('T')[0]}.xlsx`;
   const buffer = await workbook.xlsx.writeBuffer();
   
-  // Blob 생성 및 다운로드
-  const blob = new Blob([buffer], { 
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-  });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-
-  // 내보낸 PNL NO 목록 반환 (사진 삭제용)
-  return inspections.map(i => i.panelNo);
-};
-
-/**
- * 엑셀 내보내기 완료 후 로컬 사진 삭제 (옵션 A: 사진만 삭제)
- * 텍스트/숫자 데이터는 유지하고 이미지 Blob/Base64만 제거합니다.
- * 
- * @param panelNos 삭제할 PNL NO 목록
- * @param inspections 검사 기록 배열 (업데이트용)
- * @returns 사진이 삭제된 검사 기록 배열
- */
-export const deleteLocalPhotosAfterExport = (
-  panelNos: string[],
-  inspections: InspectionRecord[]
-): InspectionRecord[] => {
-  return inspections.map(inspection => {
-    if (panelNos.includes(inspection.panelNo)) {
-      // 사진만 삭제하고 나머지 데이터는 유지
-      return {
-        ...inspection,
-        photoUrl: null
-      };
+  // Electron 환경 확인
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
+  
+  if (isElectron) {
+    // Electron 환경: 파일 다이얼로그 사용
+    try {
+      const result = await window.electronAPI!.saveExcelFile(
+        Array.from(new Uint8Array(buffer)),
+        fileName
+      );
+      
+      if (result.success && !result.canceled) {
+        console.log('파일 저장 완료:', result.filePath);
+      } else if (result.canceled) {
+        console.log('파일 저장 취소됨');
+        throw new Error('파일 저장이 취소되었습니다.');
+      } else {
+        throw new Error(result.error || '파일 저장 실패');
+      }
+    } catch (error) {
+      console.error('Electron 파일 저장 오류:', error);
+      throw error;
     }
-    return inspection;
-  });
+  } else {
+    // 웹 환경: Blob 다운로드
+    const blob = new Blob([buffer], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
+
+  // 내보낸 PNL NO 목록 반환
+  return inspections.map(i => i.panelNo);
 };

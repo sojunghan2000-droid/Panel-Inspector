@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       root: '.',
+      base: './',
       server: {
         port: 3000,
         host: '0.0.0.0',
@@ -22,13 +23,7 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
-        rollupOptions: {
-          output: {
-            entryFileNames: `assets/[name].[hash].js`,
-            chunkFileNames: `assets/[name].[hash].js`,
-            assetFileNames: `assets/[name].[hash].[ext]`
-          }
-        }
+        outDir: 'dist'
       }
     };
 });

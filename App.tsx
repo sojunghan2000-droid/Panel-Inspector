@@ -9,6 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X } from 'lucide-react';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob } from './services/indexedDBService';
 
 /** PNL NO. 형식: 층 1=F1, 2=F2, 3=F3, 4=F4, 5=F5, 6=F6, 7=B1, 8=B2 / TR 1=A, 2=B, 3=C, 4=D. 80% F1 또는 B1, 20% 그 외 층 */
 const MOCK_DATA: InspectionRecord[] = [
@@ -114,10 +115,8 @@ const migrateFloorFormat = (data: any): any => {
 };
 
 const App: React.FC = () => {
-  // 동적 데이터: localStorage 미사용 (테스트용)
-  const [inspections, setInspections] = useState<InspectionRecord[]>(() =>
-    MOCK_DATA.map(item => ensurePosition(item))
-  );
+  const [inspections, setInspections] = useState<InspectionRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [qrCodes, setQrCodes] = useState<QRCodeData[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -126,12 +125,39 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
+
+  // IndexedDB 초기화 및 데이터 로드
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        await initIndexedDB();
+        const loadedInspections = await getAllInspectionsWithPhotos();
+        
+        if (loadedInspections.length > 0) {
+          setInspections(loadedInspections.map(item => ensurePosition(item)));
+        } else {
+          // IndexedDB에 데이터가 없으면 MOCK_DATA 사용
+          setInspections(MOCK_DATA.map(item => ensurePosition(item)));
+        }
+      } catch (error) {
+        console.error('IndexedDB 로드 오류:', error);
+        // 오류 발생 시 MOCK_DATA 사용
+        setInspections(MOCK_DATA.map(item => ensurePosition(item)));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   /**
-   * inspections 업데이트 함수: panelNo 기준 중복 제거
+   * inspections 업데이트 함수: panelNo 기준 중복 제거 + IndexedDB 저장
    * PNL NO당 저장 데이터는 항상 1개만 유지 (덮어쓰기 정책)
    * 같은 panelNo가 여러 개 있으면 마지막 항목만 유지
    */
-  const updateInspections = useCallback((newInspections: InspectionRecord[]) => {
+  const updateInspections = useCallback(async (newInspections: InspectionRecord[]) => {
     // panelNo 기준으로 중복 제거: 같은 panelNo가 여러 개 있으면 마지막 항목만 유지
     const seen = new Set<string>();
     const uniqueInspections: InspectionRecord[] = [];
@@ -146,6 +172,30 @@ const App: React.FC = () => {
     }
     
     setInspections(uniqueInspections);
+
+    // IndexedDB에 저장
+    try {
+      await Promise.all(
+        uniqueInspections.map(async (inspection) => {
+          // Inspection 데이터 저장
+          await saveInspection(inspection);
+
+          // 사진이 있으면 Blob으로 변환하여 저장
+          if (inspection.photoUrl) {
+            const photoBlob = dataURLToBlob(inspection.photoUrl);
+            const thermalImageBlob = inspection.thermalImage?.imageUrl
+              ? dataURLToBlob(inspection.thermalImage.imageUrl)
+              : null;
+            await savePhoto(inspection.panelNo, photoBlob, thermalImageBlob);
+          } else {
+            // 사진이 없으면 null로 저장 (덮어쓰기)
+            await savePhoto(inspection.panelNo, null, null);
+          }
+        })
+      );
+    } catch (error) {
+      console.error('IndexedDB 저장 오류:', error);
+    }
   }, []);
 
   // 알림 드롭다운 외부 클릭 시 닫기
@@ -433,43 +483,54 @@ const App: React.FC = () => {
 
         {/* Main Content */}
         <main ref={mainScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
-          {currentPage === 'dashboard-overview' ? (
-            <DashboardOverview 
-              inspections={inspections} 
-              onUpdateInspections={updateInspections}
-              selectedInspectionId={selectedInspectionId}
-              onSelectionChange={setSelectedInspectionId}
-            />
-          ) : currentPage === 'dashboard' ? (
-            <ErrorBoundary>
-              <Dashboard 
-                inspections={inspections}
-                onUpdateInspections={updateInspections}
-                onScan={() => setShowScanner(true)}
-                selectedInspectionId={selectedInspectionId}
-                onSelectionChange={setSelectedInspectionId}
-                onReportGenerated={(report) => setReports(prev => [report, ...prev])}
-                qrCodes={qrCodes}
-                reports={reports}
-              />
-            </ErrorBoundary>
-          ) : currentPage === 'reports' ? (
-            <ReportsList 
-              reports={reports}
-              onDeleteReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
-              inspections={inspections}
-            />
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                <p className="text-slate-600">데이터를 불러오는 중...</p>
+              </div>
+            </div>
           ) : (
-            <QRGenerator 
-              inspections={inspections}
-              qrCodes={qrCodes}
-              onQrCodesChange={setQrCodes}
-              onSelectInspection={(inspectionId) => {
-                setSelectedInspectionId(inspectionId);
-              }}
-              onUpdateInspections={setInspections}
-              mainScrollRef={mainScrollRef}
-            />
+            <>
+              {currentPage === 'dashboard-overview' ? (
+                <DashboardOverview 
+                  inspections={inspections} 
+                  onUpdateInspections={updateInspections}
+                  selectedInspectionId={selectedInspectionId}
+                  onSelectionChange={setSelectedInspectionId}
+                />
+              ) : currentPage === 'dashboard' ? (
+                <ErrorBoundary>
+                  <Dashboard 
+                    inspections={inspections}
+                    onUpdateInspections={updateInspections}
+                    onScan={() => setShowScanner(true)}
+                    selectedInspectionId={selectedInspectionId}
+                    onSelectionChange={setSelectedInspectionId}
+                    onReportGenerated={(report) => setReports(prev => [report, ...prev])}
+                    qrCodes={qrCodes}
+                    reports={reports}
+                  />
+                </ErrorBoundary>
+              ) : currentPage === 'reports' ? (
+                <ReportsList 
+                  reports={reports}
+                  onDeleteReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
+                  inspections={inspections}
+                />
+              ) : (
+                <QRGenerator 
+                  inspections={inspections}
+                  qrCodes={qrCodes}
+                  onQrCodesChange={setQrCodes}
+                  onSelectInspection={(inspectionId) => {
+                    setSelectedInspectionId(inspectionId);
+                  }}
+                  onUpdateInspections={updateInspections}
+                  mainScrollRef={mainScrollRef}
+                />
+              )}
+            </>
           )}
         </main>
 

@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="./electron.d.ts" />
 
 interface ImportMetaEnv {
   readonly VITE_GEMINI_API_KEY: string;

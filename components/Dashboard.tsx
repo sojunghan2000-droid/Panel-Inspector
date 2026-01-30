@@ -5,7 +5,7 @@ import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
 import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
 import { generateReport } from '../services/reportService';
-import { exportToExcel, deleteLocalPhotosAfterExport } from '../services/excelService';
+import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
 
 interface DashboardProps {
@@ -81,6 +81,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Electron 환경 확인
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
 
   /**
    * PNL NO 저장 로직: 항상 직전 1개만 유지 (덮어쓰기)
@@ -129,15 +133,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     setTimeout(() => alert('Report generated and saved successfully!'), 500);
   };
 
-  const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
+  // 엑셀 데이터 처리 함수 (공통)
+  const processExcelData = (data: ArrayBuffer) => {
+    try {
+      const workbook = XLSX.read(data, { type: 'array' });
         
         // 1. 포맷 버전 검증 (메타 시트 확인)
         let formatVersion: string | null = null;
@@ -340,8 +339,50 @@ const Dashboard: React.FC<DashboardProps> = ({
         console.error('엑셀 파일 읽기 오류:', error);
         alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
       }
-    };
+  };
 
+  // Electron 환경에서 파일 열기
+  const handleElectronFileImport = async () => {
+    if (!isElectron) return;
+    
+    setIsImporting(true);
+    try {
+      const result = await window.electronAPI!.openExcelFile();
+      
+      if (!result.success || result.canceled) {
+        setIsImporting(false);
+        return;
+      }
+
+      // ArrayBuffer로 변환
+      const buffer = new Uint8Array(result.buffer).buffer;
+      processExcelData(buffer);
+    } catch (error) {
+      console.error('파일 열기 오류:', error);
+      alert('파일 열기 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // 웹 환경에서 파일 입력
+  const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result as ArrayBuffer;
+        processExcelData(data);
+      } catch (error) {
+        console.error('엑셀 파일 읽기 오류:', error);
+        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+      } finally {
+        setIsImporting(false);
+      }
+    };
     reader.readAsArrayBuffer(file);
   };
 
@@ -370,13 +411,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 }
 
                 // 엑셀 내보내기 실행
-                const exportedPanelNos = await exportToExcel(inspectionsToExport, qrCodes, reports);
+                await exportToExcel(inspectionsToExport, qrCodes, reports);
                 
-                // 내보내기 완료 후 로컬 사진 삭제 (옵션 A: 사진만 삭제)
-                const updatedInspections = deleteLocalPhotosAfterExport(exportedPanelNos, inspectionsToExport);
-                onUpdateInspections(updatedInspections);
+                // 로컬 사진은 유지됨 (내보내기 후에도 최신 사진 유지)
                 
-                alert(`엑셀 내보내기가 완료되었습니다.\n${exportedPanelNos.length}개의 분전반 데이터가 내보내졌으며, 로컬 사진은 삭제되었습니다.\n(사진은 엑셀 파일에만 보관됩니다.)`);
+                alert(`엑셀 내보내기가 완료되었습니다.\n${inspectionsToExport.length}개의 분전반 데이터가 내보내졌습니다.`);
               } catch (error) {
                 console.error('엑셀 내보내기 오류:', error);
                 alert('엑셀 내보내기 중 오류가 발생했습니다.\n오류: ' + (error instanceof Error ? error.message : String(error)));
@@ -403,17 +442,29 @@ const Dashboard: React.FC<DashboardProps> = ({
               </>
             )}
           </button>
-          <label className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm cursor-pointer">
-            <FileUp size={18} />
-            엑셀 입력
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleExcelImport}
-              className="hidden"
-            />
-          </label>
+          {isElectron ? (
+            <button
+              onClick={handleElectronFileImport}
+              disabled={isImporting}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileUp size={18} />
+              {isImporting ? '로딩 중...' : '엑셀 입력'}
+            </button>
+          ) : (
+            <label className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm cursor-pointer">
+              <FileUp size={18} />
+              {isImporting ? '로딩 중...' : '엑셀 입력'}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleExcelImport}
+                className="hidden"
+                disabled={isImporting}
+              />
+            </label>
+          )}
         </div>
 
         {/* Stats Card */}
