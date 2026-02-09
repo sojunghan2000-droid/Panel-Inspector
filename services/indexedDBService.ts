@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { InspectionRecord, QRCodeData } from '../types';
+import { InspectionRecord, QRCodeData, ReportHistory } from '../types';
 
 interface InspectionsDB extends DBSchema {
   inspections: {
@@ -31,6 +31,11 @@ interface InspectionsDB extends DBSchema {
     };
     indexes: { 'by-floor': string };
   };
+  reports: {
+    key: string; // id
+    value: ReportHistory;
+    indexes: { 'by-boardId': string };
+  };
 }
 
 let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
@@ -38,13 +43,14 @@ let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
 /**
  * IndexedDB 초기화
  * 버전 2: qrCodes, floorPlanImages 저장소 추가
+ * 버전 3: reports 저장소 추가
  */
 export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
   if (dbInstance) {
     return dbInstance;
   }
 
-  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 2, {
+  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 3, {
     upgrade(db, oldVersion, newVersion) {
       // Inspections 저장소
       if (!db.objectStoreNames.contains('inspections')) {
@@ -77,6 +83,14 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
           keyPath: 'floor',
         });
         floorPlanStore.createIndex('by-floor', 'floor', { unique: true });
+      }
+
+      // Reports 저장소 (버전 3에서 추가)
+      if (!db.objectStoreNames.contains('reports')) {
+        const reportStore = db.createObjectStore('reports', {
+          keyPath: 'id',
+        });
+        reportStore.createIndex('by-boardId', 'boardId', { unique: false });
       }
     },
   });
@@ -378,4 +392,58 @@ export const getAllFloorPlanImages = async (): Promise<{ floor: string; imageUrl
   );
 
   return imagesWithUrls;
+};
+
+// ============================================
+// Reports 관련 함수들
+// ============================================
+
+/**
+ * Report 저장
+ */
+export const saveReport = async (report: ReportHistory): Promise<void> => {
+  const db = await initIndexedDB();
+  await db.put('reports', report);
+};
+
+/**
+ * 모든 Report 조회
+ */
+export const getAllReports = async (): Promise<ReportHistory[]> => {
+  const db = await initIndexedDB();
+  return await db.getAll('reports');
+};
+
+/**
+ * 특정 Report 조회 (by ID)
+ */
+export const getReport = async (id: string): Promise<ReportHistory | undefined> => {
+  const db = await initIndexedDB();
+  return await db.get('reports', id);
+};
+
+/**
+ * boardId로 Report 조회
+ */
+export const getReportByBoardId = async (boardId: string): Promise<ReportHistory | undefined> => {
+  const db = await initIndexedDB();
+  const allReports = await db.getAllFromIndex('reports', 'by-boardId', boardId);
+  // 가장 최근 report 반환
+  return allReports.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())[0];
+};
+
+/**
+ * Report 삭제
+ */
+export const deleteReport = async (id: string): Promise<void> => {
+  const db = await initIndexedDB();
+  await db.delete('reports', id);
+};
+
+/**
+ * 모든 Report 삭제
+ */
+export const clearAllReports = async (): Promise<void> => {
+  const db = await initIndexedDB();
+  await db.clear('reports');
 };

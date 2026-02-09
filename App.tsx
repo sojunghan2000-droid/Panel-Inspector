@@ -8,8 +8,8 @@ import ReportsList from './components/ReportsList';
 import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes } from './services/indexedDBService';
+import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone } from 'lucide-react';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
@@ -166,24 +166,50 @@ const App: React.FC = () => {
   const [showExportPreview, setShowExportPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // IndexedDB 초기화 및 데이터 로드
+  // PWA 설치 프롬프트 상태
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  // IndexedDB 초기화 및 데이터 로드 (스마트 머지: 로컬 데이터 유지 + MOCK_DATA 새 패널만 추가)
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        // 기존 캐시 삭제 후 MOCK_DATA 65면으로 초기화
-        const db = await initIndexedDB();
-        if (db) {
-          try {
-            const tx = db.transaction(['inspections', 'photos', 'qrCodes'], 'readwrite');
-            await tx.objectStore('inspections').clear();
-            await tx.objectStore('photos').clear();
-            await tx.objectStore('qrCodes').clear();
-            await tx.done;
-          } catch (e) { console.warn('캐시 클리어 오류 (무시):', e); }
+        await initIndexedDB();
+
+        // 1. IndexedDB에서 기존 데이터 로드
+        const savedInspections = await getAllInspectionsWithPhotos();
+        const savedQRCodes = await getAllQRCodes();
+
+        // 2. 스마트 머지: IndexedDB 데이터 우선, MOCK_DATA에서 새 패널만 추가
+        const savedPanelNos = new Set(savedInspections.map(i => i.panelNo));
+
+        // IndexedDB에 없는 MOCK_DATA 패널만 추가
+        const newPanels = MOCK_DATA
+          .filter(item => !savedPanelNos.has(item.panelNo))
+          .map(item => ensurePosition(item));
+
+        // 머지: 기존 데이터 + 새 패널
+        const mergedInspections = [...savedInspections, ...newPanels];
+
+        // 3. state 설정
+        setInspections(mergedInspections);
+        setQrCodesState(savedQRCodes);
+
+        // 4. 새 패널이 있으면 IndexedDB에 저장
+        if (newPanels.length > 0) {
+          await Promise.all(newPanels.map(p => saveInspection(p)));
+          console.log(`[스마트 머지] ${newPanels.length}개 새 패널 추가됨:`, newPanels.map(p => p.panelNo));
         }
-        setInspections(MOCK_DATA.map(item => ensurePosition(item)));
-        setQrCodesState([]);
+
+        // 5. Reports 로드
+        const savedReports = await getAllReports();
+        if (savedReports && savedReports.length > 0) {
+          setReports(savedReports);
+        }
+
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length}개, 새 패널: ${newPanels.length}개, 총: ${mergedInspections.length}개`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
         // 오류 발생 시 MOCK_DATA 사용
@@ -195,6 +221,66 @@ const App: React.FC = () => {
 
     loadData();
   }, []);
+
+  // PWA 설치 프롬프트 이벤트 리스너
+  useEffect(() => {
+    // 이미 설치된 앱인지 확인
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    // "다시 보지 않기" 확인
+    const dismissed = localStorage.getItem('pwa-install-dismissed');
+    if (dismissed) {
+      const dismissedTime = parseInt(dismissed, 10);
+      // 7일 후에 다시 표시
+      if (Date.now() - dismissedTime < 7 * 24 * 60 * 60 * 1000) {
+        return;
+      }
+    }
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      // 3초 후에 프롬프트 표시
+      setTimeout(() => {
+        setShowInstallPrompt(true);
+      }, 3000);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    // 설치 완료 이벤트
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true);
+      setShowInstallPrompt(false);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  // PWA 설치 핸들러
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const result = await deferredPrompt.userChoice;
+
+    if (result.outcome === 'accepted') {
+      setShowInstallPrompt(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  // "다시 보지 않기" 핸들러
+  const handleDismissInstall = () => {
+    setShowInstallPrompt(false);
+    localStorage.setItem('pwa-install-dismissed', Date.now().toString());
+  };
 
   /**
    * inspections 업데이트 함수: panelNo 기준 중복 제거 + IndexedDB 저장
@@ -682,17 +768,25 @@ const App: React.FC = () => {
                     onScan={() => setShowScanner(true)}
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
-                    onReportGenerated={(report) => setReports(prev => [report, ...prev])}
-                    onReportsUpdate={(reports) => setReports(reports)}
+                    onReportGenerated={async (report) => {
+                      setReports(prev => [report, ...prev]);
+                      await saveReport(report); // IndexedDB에도 저장
+                    }}
+                    onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
                     reports={reports}
                   />
                 </ErrorBoundary>
               ) : currentPage === 'reports' ? (
-                <ReportsList 
+                <ReportsList
                   reports={reports}
                   onDeleteReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
                   inspections={inspections}
+                  onEditReport={(boardId) => {
+                    // Inspection 페이지로 이동하면서 해당 패널 선택
+                    setSelectedInspectionId(boardId);
+                    setCurrentPage('dashboard');
+                  }}
                 />
               ) : (
                 <QRGenerator 
@@ -746,6 +840,38 @@ const App: React.FC = () => {
             onCancel={() => setShowExportPreview(false)}
             isExporting={isExporting}
           />
+        )}
+
+        {/* PWA 설치 프롬프트 배너 */}
+        {showInstallPrompt && !isInstalled && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg animate-fade-in-up">
+            <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Smartphone size={24} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">앱으로 설치하기</h3>
+                  <p className="text-blue-100 text-sm">홈 화면에 추가하여 더 빠르게 접근하세요</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDismissInstall}
+                  className="px-4 py-2 text-blue-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-sm"
+                >
+                  나중에
+                </button>
+                <button
+                  onClick={handleInstallApp}
+                  className="px-4 py-2 bg-white text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                >
+                  <Download size={18} />
+                  설치하기
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

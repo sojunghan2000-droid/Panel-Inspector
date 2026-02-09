@@ -86,6 +86,7 @@ export interface ReportHistory {
   generatedAt: string;
   status: InspectionRecord['status'];
   htmlContent: string;
+  isGenerated?: boolean; // true = Generate 버튼으로 생성됨, false = Save 시 자동 저장
 }
 
 export interface QRCodeData {

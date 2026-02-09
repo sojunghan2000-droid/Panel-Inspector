@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown } from 'lucide-react';
+import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown, Hash, Zap, GitBranch } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
 import FloorPlanView from './FloorPlanView';
 
@@ -313,16 +313,27 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       const idParts = inspection.panelNo.split('-');
       let location = '';
       let floor = '';
-      
-      if (idParts.length >= 3) {
+
+      // 1. inspection.floor 필드 우선 사용 (MOCK_DATA의 명시적 층 정보)
+      if (inspection.floor) {
+        floor = inspection.floor;
+      } else if (idParts.length >= 3) {
         floor = idParts[1] || '';
-        location = idParts[2] || '';
       } else if (idParts.length >= 2) {
         floor = idParts[1] || '';
       }
 
+      // 2. inspection.tr 필드에서 location 추출 (TR-1 = A, TR-2 = B)
+      if (inspection.tr) {
+        location = inspection.tr;
+      } else if (idParts.length >= 3) {
+        location = idParts[2] || '';
+      } else if (idParts.length >= 2) {
+        location = idParts[1] || '';
+      }
+
       if (!location) location = inspection.panelNo;
-      if (!floor) floor = '1';
+      if (!floor) floor = 'F1';
 
       const position = {
         description: inspection.memo || '',
@@ -693,6 +704,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     setSelectedQR(qr);
     setIsEditing(true);
     setShowForm(true);
+    setShowInlineCreateForm(true); // 인라인 폼도 열기
     try {
       const data = JSON.parse(qr.qrData);
       const position = data.position || {};
@@ -1575,6 +1587,33 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         className="flex-1 overflow-y-auto"
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
+        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 */}
+        {!selectedQR && !showInlineCreateForm ? (
+          <div className="h-full flex items-center justify-center text-slate-500">
+            <div className="text-center">
+              <div className="p-4 bg-slate-100 rounded-full inline-block mb-4">
+                <QrCode size={48} className="text-slate-400" />
+              </div>
+              <p className="text-lg font-medium text-slate-600">패널을 선택해주세요</p>
+              <p className="text-sm mt-2 text-slate-500">
+                좌측 목록에서 패널을 선택하거나<br/>
+                아래 버튼을 클릭하세요
+              </p>
+              <button
+                onClick={() => {
+                  setShowInlineCreateForm(true);
+                  resetForm();
+                  setSelectedQR(null);
+                  setIsEditing(false);
+                }}
+                className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg mx-auto"
+              >
+                <QrCode size={20} />
+                패널 신규 등록
+              </button>
+            </div>
+          </div>
+        ) : (
         <div
           className="max-w-4xl mx-auto p-6 space-y-6"
           style={{ overflow: isSelectFocused ? 'visible' : undefined, position: 'relative' }}
@@ -1601,27 +1640,29 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   if (!showInlineCreateForm) {
                     resetForm();
                     setSelectedQR(null);
+                    setIsEditing(false);
                   }
                 }}
                 className={`${showInlineCreateForm ? 'bg-slate-600 hover:bg-slate-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg`}
               >
                 <QrCode size={20} />
-                {showInlineCreateForm ? '신규 등록 닫기' : '패널 신규 등록'}
+                {showInlineCreateForm ? (isEditing ? '수정 닫기' : '신규 등록 닫기') : '패널 신규 등록'}
               </button>
             </div>
           </div>
 
-          {/* Inline Create Form - 패널 신규 등록 */}
+          {/* Inline Create/Edit Form - 패널 신규 등록 또는 수정 */}
           {showInlineCreateForm && (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-l-4 border-l-blue-500">
+            <div className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-l-4 ${isEditing ? 'border-l-amber-500' : 'border-l-blue-500'}`}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                  <QrCode size={20} className="text-blue-600" />
-                  신규 패널 등록
+                  <QrCode size={20} className={isEditing ? 'text-amber-600' : 'text-blue-600'} />
+                  {isEditing ? '패널 정보 수정' : '신규 패널 등록'}
                 </h2>
                 <button
                   onClick={() => {
                     setShowInlineCreateForm(false);
+                    setIsEditing(false);
                     resetForm();
                   }}
                   className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
@@ -1782,16 +1823,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     onClick={() => {
                       generateQR();
                       setShowInlineCreateForm(false);
+                      setIsEditing(false);
                     }}
                     disabled={!qrData.location || !qrData.floor}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                    className={`flex-1 ${isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2`}
                   >
-                    <QrCode size={18} />
-                    QR 코드 생성 및 등록
+                    {isEditing ? <Save size={18} /> : <QrCode size={18} />}
+                    {isEditing ? '패널 정보 수정' : 'QR 코드 생성 및 등록'}
                   </button>
                   <button
                     onClick={() => {
                       setShowInlineCreateForm(false);
+                      setIsEditing(false);
                       resetForm();
                     }}
                     className="px-6 py-3 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition-colors"
@@ -2317,45 +2360,80 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       </p>
                     </div>
 
-                    {/* QR Info */}
-                    <div className="flex-1 space-y-4">
+                    {/* QR Info - Panel Master 연동 */}
+                    {(() => {
+                      const linkedInsp = inspections.find(i => i.panelNo === qrData.id);
+                      const trCode = linkedInsp?.tr || qrData.location;
+                      const trLabel = TR_DISPLAY_LABELS[trCode] || trCode || '-';
+                      const floorLabel = linkedInsp?.floor || qrData.floor || '-';
+                      const trColor = trCode === 'A' ? '#3b82f6' : trCode === 'B' ? '#f97316' : '#94a3b8';
+                      return (
+                    <div className="flex-1 space-y-3">
+                      {/* PNL NO. */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Building2 size={16} className="text-blue-600" />
-                          <span className="text-sm font-semibold text-slate-700">층수</span>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Hash size={16} className="text-slate-600" />
+                          <span className="text-sm font-semibold text-slate-700">PNL NO.</span>
                         </div>
-                        <p className="text-slate-800 font-medium">{qrData.floor}</p>
+                        <p className="text-slate-800 font-bold text-lg">{qrData.id || '-'}</p>
                       </div>
 
+                      {/* TR */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
                           <MapPin size={16} className="text-blue-600" />
                           <span className="text-sm font-semibold text-slate-700">TR</span>
                         </div>
-                        <p className="text-slate-800 font-medium">{qrData.location}</p>
+                        <p className="font-medium flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: trColor }} />
+                          <span className="text-slate-800">{trLabel}</span>
+                        </p>
                       </div>
 
-                      {(qrData.positionX || qrData.positionY) && (
+                      {/* 층수 */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Building2 size={16} className="text-blue-600" />
+                          <span className="text-sm font-semibold text-slate-700">층수</span>
+                        </div>
+                        <p className="text-slate-800 font-medium">{floorLabel}</p>
+                      </div>
+
+                      {/* 공칭 단면적 */}
+                      {linkedInsp?.nominalCrossSection && (
                         <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                          <div className="flex items-center gap-2 mb-3">
-                            <MapPin size={16} className="text-emerald-600" />
-                            <span className="text-sm font-semibold text-slate-700">좌표</span>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap size={16} className="text-amber-600" />
+                            <span className="text-sm font-semibold text-slate-700">공칭 단면적</span>
                           </div>
-                          <p className="text-slate-800 font-medium">
-                            X: {qrData.positionX || '-'}%, Y: {qrData.positionY || '-'}%
-                          </p>
+                          <p className="text-slate-800 font-medium">{linkedInsp.nominalCrossSection} mm²</p>
+                        </div>
+                      )}
+
+                      {/* 상위 패널 */}
+                      {linkedInsp?.parentPanelNo && (
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <GitBranch size={16} className="text-purple-600" />
+                            <span className="text-sm font-semibold text-slate-700">상위 패널</span>
+                          </div>
+                          <p className="text-slate-800 font-medium">{linkedInsp.parentPanelNo}</p>
+                        </div>
+                      )}
+
+                      {/* 비고 */}
+                      {linkedInsp?.notes && (
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText size={16} className="text-slate-600" />
+                            <span className="text-sm font-semibold text-slate-700">비고</span>
+                          </div>
+                          <p className="text-slate-700 font-medium text-sm">{linkedInsp.notes}</p>
                         </div>
                       )}
 
                       {/* Action Buttons */}
                       <div className="flex flex-col gap-2 pt-2">
-                        <button
-                          onClick={handleMapToDashboard}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                        >
-                          <MapPin size={18} />
-                          Dashboard에 위치 매핑
-                        </button>
                         <div className="flex gap-2">
                           <button
                             onClick={handlePrint}
@@ -2374,6 +2452,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         </div>
                       </div>
                     </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2381,7 +2461,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </React.Fragment>,
           document.body
         )}
-        </div>
 
         {/* Floor Plan View - 마지막 순서로 배치 */}
         <FloorPlanView
@@ -2419,11 +2498,25 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           }}
           qrCodes={qrCodes}
           selectedFloor={selectedFloor}
-          onFloorChange={setSelectedFloor}
+          onFloorChange={(floor) => {
+            // 스크롤 위치 저장
+            const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
+            const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
+            setSelectedFloor(floor);
+            // React 렌더 후 스크롤 복원
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (mainScrollRef?.current) mainScrollRef.current.scrollTop = savedMainScroll;
+                if (rightPanelScrollRef.current) rightPanelScrollRef.current.scrollTop = savedRightScroll;
+              });
+            });
+          }}
           showDetailPanel={openDetailPanelForMapping}
           startInEditMode={openDetailPanelForMapping}
         />
-      </div>
+        </div>
+        )}
+        </div>
     </div>
   );
 };

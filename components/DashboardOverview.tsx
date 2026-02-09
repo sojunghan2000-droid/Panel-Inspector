@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { InspectionRecord, StatData } from '../types';
 import StatsChart from './StatsChart';
 import FloorPlanView from './FloorPlanView';
-import { CheckCircle2, Clock, AlertCircle, TrendingUp, Activity, ShieldCheck } from 'lucide-react';
+import InspectionDetail from './InspectionDetail';
+import { CheckCircle2, Clock, AlertCircle, TrendingUp, Activity, ShieldCheck, X } from 'lucide-react';
 
 interface DashboardOverviewProps {
   inspections: InspectionRecord[];
@@ -11,12 +13,21 @@ interface DashboardOverviewProps {
   onSelectionChange?: (id: string | null) => void;
 }
 
-const DashboardOverview: React.FC<DashboardOverviewProps> = ({ 
-  inspections, 
+const DashboardOverview: React.FC<DashboardOverviewProps> = ({
+  inspections,
   onUpdateInspections,
   selectedInspectionId,
   onSelectionChange
 }) => {
+  // InspectionDetail Modal 상태
+  const [showInspectionModal, setShowInspectionModal] = useState(false);
+  const [modalInspection, setModalInspection] = useState<InspectionRecord | null>(null);
+
+  const handleShowInspectionModal = (inspection: InspectionRecord) => {
+    setModalInspection(inspection);
+    setShowInspectionModal(true);
+  };
+
   const stats: StatData[] = useMemo(() => {
     const counts = inspections.reduce((acc, curr) => {
       acc[curr.status] = (acc[curr.status] || 0) + 1;
@@ -180,12 +191,15 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
 
-        {/* Floor Plan View */}
-        <FloorPlanView 
-          inspections={inspections} 
+        {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
+        <FloorPlanView
+          inspections={inspections}
           onUpdateInspections={onUpdateInspections}
           selectedInspectionId={selectedInspectionId}
           onSelectionChange={onSelectionChange}
+          mode="dashboard"
+          readOnly={true}
+          onShowInspectionModal={handleShowInspectionModal}
         />
 
         {/* Pending Inspections Alert */}
@@ -205,6 +219,44 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         )}
       </div>
+
+      {/* InspectionDetail Modal - Dashboard 위젯 클릭 시 표시 (읽기 전용) */}
+      {showInspectionModal && modalInspection && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => setShowInspectionModal(false)}
+          />
+          {/* Modal Content */}
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto z-10">
+            {/* Close Button */}
+            <button
+              onClick={() => setShowInspectionModal(false)}
+              className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors z-20"
+              title="닫기"
+            >
+              <X size={20} />
+            </button>
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 z-10">
+              <h2 className="text-lg font-semibold text-slate-800">
+                패널 상세 정보 - {modalInspection.panelNo}
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">읽기 전용 모드</p>
+            </div>
+            {/* InspectionDetail - 읽기 전용 */}
+            <div className="p-6">
+              <InspectionDetail
+                inspection={modalInspection}
+                onSave={() => {}}
+                onCancel={() => setShowInspectionModal(false)}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

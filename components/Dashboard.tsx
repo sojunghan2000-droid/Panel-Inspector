@@ -4,11 +4,11 @@ import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
 import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
-import { generateReport } from '../services/reportService';
+import { generateReport, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
-import { savePhoto, dataURLToBlob } from '../services/indexedDBService';
+import { savePhoto, dataURLToBlob, saveReport } from '../services/indexedDBService';
 
 interface DashboardProps {
   inspections: InspectionRecord[];
@@ -34,7 +34,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   reports = []
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(false);
+  const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -97,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({
    * - 새로 저장하면 이전 데이터는 덮어쓰기
    * - 이력 보관 없음
    */
-  const handleSave = (updated: InspectionRecord) => {
+  const handleSave = async (updated: InspectionRecord) => {
     try {
       const finalRecord = {
         ...updated,
@@ -109,19 +109,30 @@ const Dashboard: React.FC<DashboardProps> = ({
       // PNL NO 기준으로 중복 제거: 같은 panelNo를 가진 항목은 모두 제거하고 최신 1개만 유지
       const otherInspections = inspections.filter(item => item.panelNo !== selectedId);
       const updatedInspections = [...otherInspections, finalRecord];
-      
+
       // panelNo 기준으로 다시 한 번 중복 제거 (안전장치)
       const uniqueInspections = updatedInspections.filter((inspection, index, self) =>
         index === self.findIndex(i => i.panelNo === inspection.panelNo)
       );
 
       onUpdateInspections(uniqueInspections);
-      
+
       // 저장 후 currentFormData도 업데이트하여 화면이 사라지지 않도록
       setCurrentFormData(finalRecord);
-      
+
+      // Report 자동 저장 (Generate 상태 = false)
+      const simpleHtml = `<html><body><h1>Inspection Report: ${finalRecord.panelNo}</h1><p>Status: ${finalRecord.status}</p><p>Last Inspection: ${finalRecord.lastInspectionDate}</p></body></html>`;
+      const report = createReportFromRecord(finalRecord, simpleHtml);
+      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = false;
+      await saveReport(report);
+
+      // 상위 컴포넌트에도 알림
+      if (onReportGenerated) {
+        onReportGenerated(report);
+      }
+
       setTimeout(() => {
-        alert(`PNL NO "${selectedId}" 데이터가 저장되었습니다.\n(이전 데이터는 덮어쓰기되었습니다.)`);
+        alert(`PNL NO "${selectedId}" 데이터가 저장되었습니다.\n(Report도 함께 저장됨)`);
       }, 100);
     } catch (error) {
       console.error('Error saving inspection:', error);
