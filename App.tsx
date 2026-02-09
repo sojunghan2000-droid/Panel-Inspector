@@ -669,7 +669,23 @@ const App: React.FC = () => {
                   {/* QR 스캔 시뮬레이션 */}
                   <button
                     onClick={() => {
-                      handleScanButtonClick();
+                      // qrCodes 배열에서 첫 번째 QR 코드의 데이터를 사용하여 스캔 시뮬레이션
+                      if (qrCodes.length > 0) {
+                        const testQR = qrCodes[0];
+                        handleQRScanSuccess(testQR.qrData);
+                      } else {
+                        // QR 코드가 없으면 기본 테스트 데이터 사용
+                        const testData = JSON.stringify({
+                          id: 'TEST-001',
+                          panelNo: 'TEST-001',
+                          floor: 'F1',
+                          location: 'A',
+                          projectName: '테스트 프로젝트',
+                          contractor: '테스트 시공사',
+                          managementNumber: 'MGT-001'
+                        });
+                        handleQRScanSuccess(testData);
+                      }
                       setShowMoreMenu(false);
                     }}
                     className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
