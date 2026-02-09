@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { InspectionRecord, Loads, BreakerInfo, ThermalImageData, LoadSummary } from '../types';
-import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin, Plus, Trash2, Thermometer } from 'lucide-react';
+import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin, Plus, Trash2, Thermometer, ChevronLeft } from 'lucide-react';
 import { analyzeInspectionPhoto } from '../services/geminiService';
 
 interface InspectionDetailProps {
@@ -662,6 +662,15 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
 
   return (
     <div className="bg-white h-full flex flex-col shadow-xl border-l-0 md:border-l border-slate-200 overflow-hidden">
+      {/* 목록으로 버튼 - 모바일에서만 표시 */}
+      <button
+        onClick={onCancel}
+        className="lg:hidden flex items-center gap-2 text-slate-600 hover:text-slate-800 px-4 pt-3 text-sm font-medium"
+      >
+        <ChevronLeft size={18} />
+        목록으로
+      </button>
+
       {/* Header */}
       <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-100 flex justify-between items-center gap-2 bg-slate-50/50 shrink-0">
         <div className="min-w-0">
