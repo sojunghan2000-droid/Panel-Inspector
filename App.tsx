@@ -8,7 +8,7 @@ import ReportsList from './components/ReportsList';
 import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone } from 'lucide-react';
+import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical } from 'lucide-react';
 import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
@@ -165,6 +165,7 @@ const App: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // PWA 설치 프롬프트 상태
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -351,23 +352,26 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 알림 드롭다운 외부 클릭 시 닫기
+  // 알림 드롭다운 및 더보기 메뉴 외부 클릭 시 닫기
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (showNotifications && !target.closest('.notification-dropdown')) {
         setShowNotifications(false);
       }
+      if (showMoreMenu && !target.closest('.more-menu-dropdown')) {
+        setShowMoreMenu(false);
+      }
     };
 
-    if (showNotifications) {
+    if (showNotifications || showMoreMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showNotifications]);
+  }, [showNotifications, showMoreMenu]);
 
   const handleQRScanSuccess = useCallback((qrData: string) => {
     try {
@@ -550,108 +554,120 @@ const App: React.FC = () => {
             </button>
             <h2 className="text-sm md:text-lg font-semibold text-slate-800 truncate">Distribution Board Manager</h2>
           </div>
-          <div className="flex items-center gap-4">
-            {/* 엑셀 내보내기 버튼 */}
-            <button
-              onClick={() => setShowExportPreview(true)}
-              disabled={isExporting}
-              className={`hidden md:flex items-center gap-2 ${
-                isExporting 
-                  ? 'bg-emerald-400 cursor-not-allowed' 
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              } text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm`}
-            >
-              {isExporting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>내보내는 중...</span>
-                </>
-              ) : (
-                <>
-                  <FileSpreadsheet size={18} />
-                  <span>엑셀 내보내기</span>
-                </>
-              )}
-            </button>
-            
-            {/* 엑셀 입력 버튼 */}
-            <label className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm cursor-pointer">
-              <FileUp size={18} />
-              {isImporting ? '로딩 중...' : '엑셀 입력'}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  
-                  setIsImporting(true);
-                  
-                  try {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                      try {
-                        const data = event.target?.result as ArrayBuffer;
-                        if (!data) {
-                          alert('파일을 읽을 수 없습니다.');
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* 더보기 메뉴 버튼 - 항상 표시 */}
+            <div className="relative more-menu-dropdown">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+              >
+                <MoreVertical size={20} />
+              </button>
+
+              {/* 더보기 드롭다운 메뉴 */}
+              {showMoreMenu && (
+                <div className="absolute right-0 top-10 w-52 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+                  {/* 엑셀 내보내기 */}
+                  <button
+                    onClick={() => {
+                      setShowExportPreview(true);
+                      setShowMoreMenu(false);
+                    }}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 disabled:opacity-50"
+                  >
+                    <FileSpreadsheet size={18} className="text-emerald-600" />
+                    {isExporting ? '내보내는 중...' : '엑셀 내보내기'}
+                  </button>
+
+                  {/* 엑셀 입력 */}
+                  <label className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 cursor-pointer">
+                    <FileUp size={18} className="text-blue-600" />
+                    {isImporting ? '로딩 중...' : '엑셀 입력'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setIsImporting(true);
+                        setShowMoreMenu(false);
+
+                        try {
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            try {
+                              const data = event.target?.result as ArrayBuffer;
+                              if (!data) {
+                                alert('파일을 읽을 수 없습니다.');
+                                setIsImporting(false);
+                                return;
+                              }
+
+                              // Dashboard 페이지로 이동
+                              setCurrentPage('dashboard');
+
+                              // Dashboard의 파일 입력을 트리거
+                              setTimeout(() => {
+                                const dashboardExcelInput = document.querySelector('[data-excel-import-button] input[type="file"]') as HTMLInputElement;
+                                if (dashboardExcelInput) {
+                                  // 파일을 Dashboard의 input에 설정
+                                  const dataTransfer = new DataTransfer();
+                                  dataTransfer.items.add(new File([data], file.name));
+                                  dashboardExcelInput.files = dataTransfer.files;
+                                  dashboardExcelInput.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                              }, 300);
+                            } catch (error) {
+                              console.error('엑셀 파일 읽기 오류:', error);
+                              alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+                            } finally {
+                              setIsImporting(false);
+                              if (fileInputRef.current) {
+                                fileInputRef.current.value = '';
+                              }
+                            }
+                          };
+                          reader.onerror = () => {
+                            alert('파일 읽기 중 오류가 발생했습니다.');
+                            setIsImporting(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = '';
+                            }
+                          };
+                          reader.readAsArrayBuffer(file);
+                        } catch (error) {
+                          console.error('엑셀 파일 처리 오류:', error);
+                          alert('엑셀 파일 처리 중 오류가 발생했습니다.');
                           setIsImporting(false);
-                          return;
-                        }
-                        
-                        // Dashboard 페이지로 이동
-                        setCurrentPage('dashboard');
-                        
-                        // Dashboard의 파일 입력을 트리거
-                        setTimeout(() => {
-                          const dashboardExcelInput = document.querySelector('[data-excel-import-button] input[type="file"]') as HTMLInputElement;
-                          if (dashboardExcelInput) {
-                            // 파일을 Dashboard의 input에 설정
-                            const dataTransfer = new DataTransfer();
-                            dataTransfer.items.add(new File([data], file.name));
-                            dashboardExcelInput.files = dataTransfer.files;
-                            dashboardExcelInput.dispatchEvent(new Event('change', { bubbles: true }));
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
                           }
-                        }, 300);
-                      } catch (error) {
-                        console.error('엑셀 파일 읽기 오류:', error);
-                        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
-                      } finally {
-                        setIsImporting(false);
-                        if (fileInputRef.current) {
-                          fileInputRef.current.value = '';
                         }
-                      }
-                    };
-                    reader.onerror = () => {
-                      alert('파일 읽기 중 오류가 발생했습니다.');
-                      setIsImporting(false);
-                      if (fileInputRef.current) {
-                        fileInputRef.current.value = '';
-                      }
-                    };
-                    reader.readAsArrayBuffer(file);
-                  } catch (error) {
-                    console.error('엑셀 파일 처리 오류:', error);
-                    alert('엑셀 파일 처리 중 오류가 발생했습니다.');
-                    setIsImporting(false);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
-                    }
-                  }
-                }}
-                className="hidden"
-                disabled={isImporting}
-              />
-            </label>
-            
-             <button 
-              onClick={handleScanButtonClick}
-              className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm"
-            >
-              <ScanLine size={18} />
-              Simulate Mobile Scan
-            </button>
+                      }}
+                      className="hidden"
+                      disabled={isImporting}
+                    />
+                  </label>
+
+                  {/* QR 스캔 시뮬레이션 */}
+                  <button
+                    onClick={() => {
+                      handleScanButtonClick();
+                      setShowMoreMenu(false);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                  >
+                    <ScanLine size={18} className="text-blue-600" />
+                    QR 스캔 시뮬레이션
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 알림 아이콘 - 항상 표시 */}
             <div className="relative notification-dropdown">
               <Bell 
                 size={20} 
