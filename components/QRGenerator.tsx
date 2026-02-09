@@ -486,54 +486,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         if (!updated.id || updated.id.trim() === '') {
           updated.id = toPnlNo(updated.floor, updated.location);
         }
-        
-        // 중복 체크: 같은 층수에서 TR(위치) 중복 확인
-        const savedQRCodes = qrCodes;
-        const sameFloorQRCodes = savedQRCodes.filter((qr: QRCodeData) => qr.floor === updated.floor);
-        if (isValidTR(updated.location)) {
-          // TR(A/B/C/D): 같은 층+같은 TR이면 중복
-          const duplicateQR = sameFloorQRCodes.find((qr: QRCodeData) => {
-            try {
-              const parsed = JSON.parse(qr.qrData);
-              const loc = (parsed.location || qr.location || '').toString().trim().toUpperCase();
-              return loc === updated.location.toUpperCase();
-            } catch {
-              return (qr.location || '').toString().trim().toUpperCase() === updated.location.toUpperCase();
-            }
-          });
-          if (duplicateQR) {
-            setTimeout(() => alert(`같은 층수(${updated.floor})에 TR ${updated.location}(이)가 이미 등록되어 있습니다. 다른 TR을 선택해 주세요.`), 0);
-            return prev; // 중복 시 저장하지 않음
-          }
-        } else {
-          const locationNum = parseInt(updated.location);
-          if (!isNaN(locationNum)) {
-            const duplicateQR = sameFloorQRCodes.find((qr: QRCodeData) => {
-              try {
-                const qrData = JSON.parse(qr.qrData);
-                const qrLocationNum = parseInt(qrData.location || qr.location);
-                return !isNaN(qrLocationNum) && qrLocationNum === locationNum;
-              } catch {
-                return false;
-              }
-            });
-            if (duplicateQR) {
-              const locationNumbers = sameFloorQRCodes.map((qr: QRCodeData) => {
-                try {
-                  const qrData = JSON.parse(qr.qrData);
-                  const num = parseInt(qrData.location || qr.location);
-                  return isNaN(num) ? 0 : num;
-                } catch {
-                  return 0;
-                }
-              }).filter(n => n > 0);
-              const maxLocationNum = locationNumbers.length > 0 ? Math.max(...locationNumbers) : 0;
-              updated.location = String(maxLocationNum + 1).padStart(3, '0');
-              updated.id = toPnlNo(updated.floor, updated.location);
-            }
-          }
-        }
-        
+
+        // 중복 검사는 등록 버튼(generateQR) 클릭 시에만 수행
+        // 입력 중에는 중복 알림을 표시하지 않음
+
         // 자동으로 QR 생성
         setTimeout(() => {
           autoGenerateQR(updated);

@@ -416,7 +416,21 @@ const App: React.FC = () => {
         setSelectedInspectionId(existingBoard.panelNo);
         setShowScanner(false);
       } else {
-        const newPanelNo = data.panelNo || data.pnlNo || data.id || `DB-${data.floor || 'F1'}-${data.location || 'LOC'}`;
+        // matchedQR에서 추가 정보 추출 (Panel Master에서 등록한 QR 정보 활용)
+        let matchedQRData: any = {};
+        if (matchedQR) {
+          try {
+            matchedQRData = JSON.parse(matchedQR.qrData || '{}');
+          } catch {
+            matchedQRData = {};
+          }
+        }
+
+        const newPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || `DB-${data.floor || matchedQRData.floor || 'F1'}-${data.location || matchedQRData.location || 'LOC'}`;
+
+        // position 정보 결합 (QR 데이터 또는 matchedQR에서)
+        const positionData = data.position || matchedQRData.position;
+
         const newItem: InspectionRecord = {
           panelNo: newPanelNo,
           status: 'In Progress',
@@ -424,10 +438,10 @@ const App: React.FC = () => {
           loads: { welder: false, grinder: false, light: false, pump: false },
           photoUrl: null,
           memo: '',
-          position: data.position ? (typeof data.position === 'object' ? data.position : { x: parseFloat(data.position) || 50, y: 50 }) : undefined,
-          projectName: data.projectName || data.pjtName || data.pjt || '',
-          contractor: data.contractor || data.시공사 || '',
-          managementNumber: data.managementNumber || data.관리번호 || data.panelName || newPanelNo,
+          position: positionData ? (typeof positionData === 'object' ? positionData : { x: parseFloat(positionData) || 50, y: 50 }) : undefined,
+          projectName: data.projectName || data.pjtName || data.pjt || matchedQRData.projectName || (matchedQR as any)?.projectName || '',
+          contractor: data.contractor || data.시공사 || matchedQRData.contractor || (matchedQR as any)?.contractor || '',
+          managementNumber: data.managementNumber || data.관리번호 || data.panelName || matchedQRData.managementNumber || (matchedQR as any)?.managementNumber || newPanelNo,
         };
         setInspections(prev => [newItem, ...prev]);
         setCurrentPage('dashboard');
