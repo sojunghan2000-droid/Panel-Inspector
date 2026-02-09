@@ -373,7 +373,8 @@ const App: React.FC = () => {
     };
   }, [showNotifications, showMoreMenu]);
 
-  const handleQRScanSuccess = useCallback((qrData: string) => {
+  const handleQRScanSuccess = (qrData: string) => {
+    console.log('🔍 QR 스캔 시작:', qrData);
     try {
       // QR 코드 데이터 파싱
       let data: any;
@@ -383,12 +384,15 @@ const App: React.FC = () => {
         // JSON이 아닌 경우 직접 파싱 시도
         data = { raw: qrData };
       }
-      
+
+      console.log('📦 파싱된 데이터:', data);
+
       // 스캔 시간 생성 (YYYY-MM-DD hh:mm:ss 형식)
       const scanTime = formatDateTime();
 
       // QR 코드에서 PNL NO. 찾기 (id 또는 panelNo)
       const qrPanelNo = data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
+      console.log('🏷️ PNL NO:', qrPanelNo);
 
       const matchedQR = qrCodes.find((qr: any) => {
         try {
@@ -398,9 +402,11 @@ const App: React.FC = () => {
           return qr.id === qrPanelNo;
         }
       });
+      console.log('🔗 matchedQR:', matchedQR);
 
       // 기존 보드 찾기 (panelNo 기준)
       const existingBoard = inspections.find(i => i.panelNo === qrPanelNo || i.panelNo.includes(qrPanelNo));
+      console.log('📋 existingBoard:', existingBoard);
 
       if (existingBoard) {
         const updatedBoard: InspectionRecord = {
@@ -412,6 +418,7 @@ const App: React.FC = () => {
           managementNumber: data.managementNumber || data.관리번호 || data.panelName || existingBoard.managementNumber || qrPanelNo,
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
+        console.log('✅ 기존 보드 업데이트, dashboard로 이동');
         setCurrentPage('dashboard');
         setSelectedInspectionId(existingBoard.panelNo);
         setShowScanner(false);
@@ -427,6 +434,7 @@ const App: React.FC = () => {
         }
 
         const newPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || `DB-${data.floor || matchedQRData.floor || 'F1'}-${data.location || matchedQRData.location || 'LOC'}`;
+        console.log('🆕 새 PNL NO:', newPanelNo);
 
         // position 정보 결합 (QR 데이터 또는 matchedQR에서)
         const positionData = data.position || matchedQRData.position;
@@ -443,17 +451,19 @@ const App: React.FC = () => {
           contractor: data.contractor || data.시공사 || matchedQRData.contractor || (matchedQR as any)?.contractor || '',
           managementNumber: data.managementNumber || data.관리번호 || data.panelName || matchedQRData.managementNumber || (matchedQR as any)?.managementNumber || newPanelNo,
         };
+        console.log('📝 새 항목 생성:', newItem);
         setInspections(prev => [newItem, ...prev]);
+        console.log('✅ 새 보드 추가, dashboard로 이동');
         setCurrentPage('dashboard');
         setSelectedInspectionId(newPanelNo);
         setShowScanner(false);
       }
     } catch (error) {
-      console.error('QR 데이터 처리 오류:', error);
+      console.error('❌ QR 데이터 처리 오류:', error);
       alert(`QR 코드 스캔 완료!\n데이터: ${qrData}`);
       setShowScanner(false);
     }
-  }, [inspections, qrCodes]);
+  };
 
   const handleScanButtonClick = useCallback(() => {
     // QR 스캔 버튼 클릭 순간의 시간 생성
