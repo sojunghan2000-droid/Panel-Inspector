@@ -506,7 +506,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.1</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.2</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -676,33 +676,6 @@ const App: React.FC = () => {
                     />
                   </label>
 
-                  {/* QR 스캔 시뮬레이션 */}
-                  <button
-                    onClick={() => {
-                      // qrCodes 배열에서 첫 번째 QR 코드의 데이터를 사용하여 스캔 시뮬레이션
-                      if (qrCodes.length > 0) {
-                        const testQR = qrCodes[0];
-                        handleQRScanSuccess(testQR.qrData);
-                      } else {
-                        // QR 코드가 없으면 기본 테스트 데이터 사용
-                        const testData = JSON.stringify({
-                          id: 'TEST-001',
-                          panelNo: 'TEST-001',
-                          floor: 'F1',
-                          location: 'A',
-                          projectName: '테스트 프로젝트',
-                          contractor: '테스트 시공사',
-                          managementNumber: 'MGT-001'
-                        });
-                        handleQRScanSuccess(testData);
-                      }
-                      setShowMoreMenu(false);
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
-                  >
-                    <ScanLine size={18} className="text-blue-600" />
-                    QR 스캔 시뮬레이션
-                  </button>
                 </div>
               )}
             </div>
