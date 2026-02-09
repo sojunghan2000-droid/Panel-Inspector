@@ -4,11 +4,11 @@ import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
 import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
-import { generateReport } from '../services/reportService';
+import { generateReport, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
-import { savePhoto, dataURLToBlob } from '../services/indexedDBService';
+import { savePhoto, dataURLToBlob, saveReport } from '../services/indexedDBService';
 
 interface DashboardProps {
   inspections: InspectionRecord[];
@@ -22,9 +22,9 @@ interface DashboardProps {
   reports?: ReportHistory[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ 
-  inspections, 
-  onUpdateInspections, 
+const Dashboard: React.FC<DashboardProps> = ({
+  inspections,
+  onUpdateInspections,
   onScan,
   selectedInspectionId,
   onSelectionChange,
@@ -34,6 +34,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   reports = []
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -96,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({
    * - 새로 저장하면 이전 데이터는 덮어쓰기
    * - 이력 보관 없음
    */
-  const handleSave = (updated: InspectionRecord) => {
+  const handleSave = async (updated: InspectionRecord) => {
     try {
       const finalRecord = {
         ...updated,
@@ -108,19 +109,30 @@ const Dashboard: React.FC<DashboardProps> = ({
       // PNL NO 기준으로 중복 제거: 같은 panelNo를 가진 항목은 모두 제거하고 최신 1개만 유지
       const otherInspections = inspections.filter(item => item.panelNo !== selectedId);
       const updatedInspections = [...otherInspections, finalRecord];
-      
+
       // panelNo 기준으로 다시 한 번 중복 제거 (안전장치)
       const uniqueInspections = updatedInspections.filter((inspection, index, self) =>
         index === self.findIndex(i => i.panelNo === inspection.panelNo)
       );
 
       onUpdateInspections(uniqueInspections);
-      
+
       // 저장 후 currentFormData도 업데이트하여 화면이 사라지지 않도록
       setCurrentFormData(finalRecord);
-      
+
+      // Report 자동 저장 (Generate 상태 = false)
+      const simpleHtml = `<html><body><h1>Inspection Report: ${finalRecord.panelNo}</h1><p>Status: ${finalRecord.status}</p><p>Last Inspection: ${finalRecord.lastInspectionDate}</p></body></html>`;
+      const report = createReportFromRecord(finalRecord, simpleHtml);
+      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = false;
+      await saveReport(report);
+
+      // 상위 컴포넌트에도 알림
+      if (onReportGenerated) {
+        onReportGenerated(report);
+      }
+
       setTimeout(() => {
-        alert(`PNL NO "${selectedId}" 데이터가 저장되었습니다.\n(이전 데이터는 덮어쓰기되었습니다.)`);
+        alert(`PNL NO "${selectedId}" 데이터가 저장되었습니다.\n(Report도 함께 저장됨)`);
       }, 100);
     } catch (error) {
       console.error('Error saving inspection:', error);
@@ -1039,29 +1051,46 @@ const Dashboard: React.FC<DashboardProps> = ({
           </label>
         )}
 
-        {/* Stats Card */}
-        <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 shrink-0">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 md:mb-4">Inspection Status</h3>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="w-full sm:w-1/2 min-h-[180px] md:min-h-[200px]">
-              <StatsChart data={stats} />
-            </div>
-            <div className="w-full sm:w-1/2 space-y-2">
-              {stats.map(s => (
-                <div key={s.name} className="flex justify-between items-center text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }}></span>
-                    <span className="text-slate-600 font-medium">{s.name}</span>
-                  </div>
-                  <span className="font-bold text-slate-800">{s.value}</span>
+        {/* Stats Card - Collapsible */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 shrink-0 overflow-hidden">
+          <button
+            onClick={() => setIsInspectionStatusCollapsed(!isInspectionStatusCollapsed)}
+            className="w-full p-4 md:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          >
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Inspection Status</h3>
+            <svg
+              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isInspectionStatusCollapsed ? '' : 'rotate-180'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {!isInspectionStatusCollapsed && (
+            <div className="px-4 md:px-5 pb-4 md:pb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="w-full sm:w-1/2 min-h-[180px] md:min-h-[200px]">
+                  <StatsChart data={stats} />
                 </div>
-              ))}
-              <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between items-center text-sm">
-                <span className="text-slate-500">Total</span>
-                <span className="font-bold text-slate-900">{inspections.length}</span>
+                <div className="w-full sm:w-1/2 space-y-2">
+                  {stats.map(s => (
+                    <div key={s.name} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }}></span>
+                        <span className="text-slate-600 font-medium">{s.name}</span>
+                      </div>
+                      <span className="font-bold text-slate-800">{s.value}</span>
+                    </div>
+                  ))}
+                  <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Total</span>
+                    <span className="font-bold text-slate-900">{inspections.length}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* List Component */}

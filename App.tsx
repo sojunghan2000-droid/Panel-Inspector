@@ -8,27 +8,48 @@ import ReportsList from './components/ReportsList';
 import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob } from './services/indexedDBService';
+import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical } from 'lucide-react';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
 
-/** PNL NO. 형식: 층 1=F1, 2=F2, 3=F3, 4=F4, 5=F5, 6=F6, 7=B1, 8=B2 / TR 1=A, 2=B, 3=C, 4=D. 80% F1 또는 B1, 20% 그 외 층 */
+/** 성수동 K-PJT 현장 가설용 가설 분전반 계통 ('25.12.30 기준, 총 65면)
+ * TR-1 (A) 900KVA → floor='F1', TR-2 (B) 950KVA → floor='B1' */
+const DL = { welder: false, grinder: false, light: false, pump: false }; // 기본 loads
+const P = (pno: string, tr: 'A'|'B', sq: string, parent?: string, notes?: string): InspectionRecord => ({
+  panelNo: pno, status: 'Pending', lastInspectionDate: '-', loads: { ...DL }, photoUrl: null, memo: '',
+  tr, floor: tr === 'A' ? 'F1' : 'B1', nominalCrossSection: sq,
+  ...(parent ? { parentPanelNo: parent } : {}), ...(notes ? { notes } : {}),
+});
 const MOCK_DATA: InspectionRecord[] = [
-  { panelNo: '1', status: 'Complete', lastInspectionDate: '2024-05-20 09:30', loads: { welder: true, grinder: false, light: true, pump: false }, photoUrl: 'https://picsum.photos/400/300?random=1', memo: 'All connections secure.', position: { x: 25, y: 30 } },
-  { panelNo: '1-1', status: 'Complete', lastInspectionDate: '2024-05-20 10:15', loads: { welder: false, grinder: true, light: true, pump: false }, photoUrl: 'https://picsum.photos/400/300?random=2', memo: '', position: { x: 75, y: 25 } },
-  { panelNo: '1-2', status: 'In Progress', lastInspectionDate: '2024-05-21 08:00', loads: { welder: false, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'Check ground fault interrupter.', position: { x: 50, y: 50 } },
-  { panelNo: '7', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 15, y: 70 } },
-  { panelNo: '7-1', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 85, y: 75 } },
-  { panelNo: '1-3', status: 'Complete', lastInspectionDate: '2024-05-22 14:20', loads: { welder: true, grinder: true, light: false, pump: false }, photoUrl: null, memo: 'Regular maintenance completed.', position: { x: 30, y: 60 } },
-  { panelNo: '1-4', status: 'In Progress', lastInspectionDate: '2024-05-23 11:00', loads: { welder: false, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'Inspection in progress.', position: { x: 60, y: 40 } },
-  { panelNo: '3-1', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 40, y: 20 } },
-  { panelNo: '7-2', status: 'Complete', lastInspectionDate: '2024-05-19 16:45', loads: { welder: true, grinder: false, light: true, pump: true }, photoUrl: null, memo: 'All systems operational.', position: { x: 70, y: 60 } },
-  { panelNo: '1-5', status: 'In Progress', lastInspectionDate: '2024-05-24 09:15', loads: { welder: false, grinder: true, light: false, pump: false }, photoUrl: null, memo: 'Pending review.', position: { x: 20, y: 45 } },
-  { panelNo: '8-1', status: 'Pending', lastInspectionDate: '-', loads: { welder: false, grinder: false, light: false, pump: false }, photoUrl: null, memo: '', position: { x: 90, y: 50 } },
-  { panelNo: '1-6', status: 'Complete', lastInspectionDate: '2024-05-18 13:30', loads: { welder: false, grinder: false, light: true, pump: false }, photoUrl: null, memo: 'Lighting system checked.', position: { x: 35, y: 80 } },
-  { panelNo: '7-3', status: 'In Progress', lastInspectionDate: '2024-05-25 10:00', loads: { welder: true, grinder: true, light: true, pump: false }, photoUrl: null, memo: 'Multiple loads connected.', position: { x: 65, y: 15 } },
+  // === TR-1 (A) 900KVA — F1 ===
+  P('1','A','95SQ'), P('1-1','A','95SQ','1'), P('1-2','A','50SQ','1'), P('1-2-1','A','50SQ','1-2'),
+  P('2','A','95SQ'),
+  P('3','A','95SQ'), P('3-1','A','50SQ','3'), P('3-1-1','A','16SQ','3-1'), P('3-1-2','A','35SQ','3-1'),
+  P('3-1충전부','A','95SQ','3-1','충전부'), P('3-1충전부-1','A','50SQ','3-1충전부','충전부'),
+  P('3-2','A','50SQ','3','양수기'),
+  P('4','A','95SQ'), P('4-1','A','35SQ','4'),
+  P('5','A','95SQ'), P('5-1','A','35SQ','5'), P('5-2','A','95SQ','5'),
+  P('5-2-1','A','50SQ','5-2','전력량계'), P('5-2-2','A','50SQ','5-2','전력량계'), P('5-2-2-1','A','50SQ','5-2-2'),
+  P('7','A','150SQ',undefined,'T/C1(L)'), P('7-1','A','95SQ','7'), P('7-1-1','A','16SQ','7-1'),
+  P('7-2','A','95SQ','7'), P('7-2-1','A','16SQ','7-2'), P('7-3','A','95SQ','7'), P('7-4','A','95SQ','7'),
+  P('8','A','300SQ',undefined,'T/C4'), P('9','A','300SQ',undefined,'T/C1'),
+  P('16','A','95SQ'), P('16-1','A','95SQ','16'), P('16-2','A','95SQ','16'),
+  // === TR-2 (B) 950KVA — B1 ===
+  P('6','B','300SQ'), P('6-1','B','150SQ','6'), P('6-1-1','B','95SQ','6-1'), P('6-1-2','B','95SQ','6-1'),
+  P('6-1-2-1','B','150SQ','6-1-2'), P('6-1-3','B','95SQ','6-1'), P('6-1-3-1','B','95SQ','6-1-3','양수기'),
+  P('6-2','B','150SQ','6'), P('6-2-1','B','95SQ','6-2'), P('6-2-2','B','95SQ','6-2'),
+  P('6-2-2-1','B','95SQ','6-2-2','T/C4(L)'), P('6-2-2-2','B','16SQ','6-2-2'),
+  P('6-2-3','B','95SQ','6-2'), P('6-2-3-1','B','95SQ','6-2-3'),
+  P('10','B','300SQ',undefined,'T/C2'), P('11','B','150SQ',undefined,'T/C2(L)'),
+  P('11-1','B','95SQ','11'), P('11-1-1','B','16SQ','11-1'), P('11-1-2','B','95SQ','11-1'),
+  P('11-2','B','95SQ','11'), P('11-3','B','95SQ','11'),
+  P('12','B','185SQ',undefined,'T/C3(L)'), P('12-1','B','95SQ','12'), P('12-1-1','B','16SQ','12-1'),
+  P('12-2','B','95SQ','12'), P('12-3','B','95SQ','12'),
+  P('13','B','150SQ'), P('13-1','B','95SQ','13'),
+  P('14','B','300SQ',undefined,'T/C3'),
+  P('15','B','150SQ'), P('15-1','B','50SQ','15'), P('15-2','B','50SQ','15'),
 ];
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
@@ -120,7 +141,19 @@ const migrateFloorFormat = (data: any): any => {
 const App: React.FC = () => {
   const [inspections, setInspections] = useState<InspectionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [qrCodes, setQrCodes] = useState<QRCodeData[]>([]);
+  const [qrCodes, setQrCodesState] = useState<QRCodeData[]>([]);
+
+  // QR Codes 변경 시 IndexedDB에도 저장
+  const setQrCodes = useCallback(async (newQrCodes: QRCodeData[] | ((prev: QRCodeData[]) => QRCodeData[])) => {
+    setQrCodesState(prev => {
+      const updatedQrCodes = typeof newQrCodes === 'function' ? newQrCodes(prev) : newQrCodes;
+      // 비동기로 IndexedDB에 저장
+      saveAllQRCodes(updatedQrCodes).catch(error => {
+        console.error('QR Codes IndexedDB 저장 오류:', error);
+      });
+      return updatedQrCodes;
+    });
+  }, []);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
@@ -132,21 +165,52 @@ const App: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  // IndexedDB 초기화 및 데이터 로드
+  // PWA 설치 프롬프트 상태
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  // IndexedDB 초기화 및 데이터 로드 (스마트 머지: 로컬 데이터 유지 + MOCK_DATA 새 패널만 추가)
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         await initIndexedDB();
-        const loadedInspections = await getAllInspectionsWithPhotos();
-        
-        if (loadedInspections.length > 0) {
-          setInspections(loadedInspections.map(item => ensurePosition(item)));
-        } else {
-          // IndexedDB에 데이터가 없으면 MOCK_DATA 사용
-          setInspections(MOCK_DATA.map(item => ensurePosition(item)));
+
+        // 1. IndexedDB에서 기존 데이터 로드
+        const savedInspections = await getAllInspectionsWithPhotos();
+        const savedQRCodes = await getAllQRCodes();
+
+        // 2. 스마트 머지: IndexedDB 데이터 우선, MOCK_DATA에서 새 패널만 추가
+        const savedPanelNos = new Set(savedInspections.map(i => i.panelNo));
+
+        // IndexedDB에 없는 MOCK_DATA 패널만 추가
+        const newPanels = MOCK_DATA
+          .filter(item => !savedPanelNos.has(item.panelNo))
+          .map(item => ensurePosition(item));
+
+        // 머지: 기존 데이터 + 새 패널
+        const mergedInspections = [...savedInspections, ...newPanels];
+
+        // 3. state 설정
+        setInspections(mergedInspections);
+        setQrCodesState(savedQRCodes);
+
+        // 4. 새 패널이 있으면 IndexedDB에 저장
+        if (newPanels.length > 0) {
+          await Promise.all(newPanels.map(p => saveInspection(p)));
+          console.log(`[스마트 머지] ${newPanels.length}개 새 패널 추가됨:`, newPanels.map(p => p.panelNo));
         }
+
+        // 5. Reports 로드
+        const savedReports = await getAllReports();
+        if (savedReports && savedReports.length > 0) {
+          setReports(savedReports);
+        }
+
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length}개, 새 패널: ${newPanels.length}개, 총: ${mergedInspections.length}개`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
         // 오류 발생 시 MOCK_DATA 사용
@@ -158,6 +222,66 @@ const App: React.FC = () => {
 
     loadData();
   }, []);
+
+  // PWA 설치 프롬프트 이벤트 리스너
+  useEffect(() => {
+    // 이미 설치된 앱인지 확인
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    // "다시 보지 않기" 확인
+    const dismissed = localStorage.getItem('pwa-install-dismissed');
+    if (dismissed) {
+      const dismissedTime = parseInt(dismissed, 10);
+      // 7일 후에 다시 표시
+      if (Date.now() - dismissedTime < 7 * 24 * 60 * 60 * 1000) {
+        return;
+      }
+    }
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      // 3초 후에 프롬프트 표시
+      setTimeout(() => {
+        setShowInstallPrompt(true);
+      }, 3000);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    // 설치 완료 이벤트
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true);
+      setShowInstallPrompt(false);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  // PWA 설치 핸들러
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const result = await deferredPrompt.userChoice;
+
+    if (result.outcome === 'accepted') {
+      setShowInstallPrompt(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  // "다시 보지 않기" 핸들러
+  const handleDismissInstall = () => {
+    setShowInstallPrompt(false);
+    localStorage.setItem('pwa-install-dismissed', Date.now().toString());
+  };
 
   /**
    * inspections 업데이트 함수: panelNo 기준 중복 제거 + IndexedDB 저장
@@ -228,25 +352,29 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 알림 드롭다운 외부 클릭 시 닫기
+  // 알림 드롭다운 및 더보기 메뉴 외부 클릭 시 닫기
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (showNotifications && !target.closest('.notification-dropdown')) {
         setShowNotifications(false);
       }
+      if (showMoreMenu && !target.closest('.more-menu-dropdown')) {
+        setShowMoreMenu(false);
+      }
     };
 
-    if (showNotifications) {
+    if (showNotifications || showMoreMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showNotifications]);
+  }, [showNotifications, showMoreMenu]);
 
-  const handleQRScanSuccess = useCallback((qrData: string) => {
+  const handleQRScanSuccess = (qrData: string) => {
+    console.log('🔍 QR 스캔 시작:', qrData);
     try {
       // QR 코드 데이터 파싱
       let data: any;
@@ -256,12 +384,15 @@ const App: React.FC = () => {
         // JSON이 아닌 경우 직접 파싱 시도
         data = { raw: qrData };
       }
-      
+
+      console.log('📦 파싱된 데이터:', data);
+
       // 스캔 시간 생성 (YYYY-MM-DD hh:mm:ss 형식)
       const scanTime = formatDateTime();
 
       // QR 코드에서 PNL NO. 찾기 (id 또는 panelNo)
       const qrPanelNo = data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
+      console.log('🏷️ PNL NO:', qrPanelNo);
 
       const matchedQR = qrCodes.find((qr: any) => {
         try {
@@ -271,9 +402,11 @@ const App: React.FC = () => {
           return qr.id === qrPanelNo;
         }
       });
+      console.log('🔗 matchedQR:', matchedQR);
 
       // 기존 보드 찾기 (panelNo 기준)
       const existingBoard = inspections.find(i => i.panelNo === qrPanelNo || i.panelNo.includes(qrPanelNo));
+      console.log('📋 existingBoard:', existingBoard);
 
       if (existingBoard) {
         const updatedBoard: InspectionRecord = {
@@ -285,11 +418,27 @@ const App: React.FC = () => {
           managementNumber: data.managementNumber || data.관리번호 || data.panelName || existingBoard.managementNumber || qrPanelNo,
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
+        console.log('✅ 기존 보드 업데이트, dashboard로 이동');
         setCurrentPage('dashboard');
         setSelectedInspectionId(existingBoard.panelNo);
         setShowScanner(false);
       } else {
-        const newPanelNo = data.panelNo || data.pnlNo || data.id || `DB-${data.floor || 'F1'}-${data.location || 'LOC'}`;
+        // matchedQR에서 추가 정보 추출 (Panel Master에서 등록한 QR 정보 활용)
+        let matchedQRData: any = {};
+        if (matchedQR) {
+          try {
+            matchedQRData = JSON.parse(matchedQR.qrData || '{}');
+          } catch {
+            matchedQRData = {};
+          }
+        }
+
+        const newPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || `DB-${data.floor || matchedQRData.floor || 'F1'}-${data.location || matchedQRData.location || 'LOC'}`;
+        console.log('🆕 새 PNL NO:', newPanelNo);
+
+        // position 정보 결합 (QR 데이터 또는 matchedQR에서)
+        const positionData = data.position || matchedQRData.position;
+
         const newItem: InspectionRecord = {
           panelNo: newPanelNo,
           status: 'In Progress',
@@ -297,22 +446,24 @@ const App: React.FC = () => {
           loads: { welder: false, grinder: false, light: false, pump: false },
           photoUrl: null,
           memo: '',
-          position: data.position ? (typeof data.position === 'object' ? data.position : { x: parseFloat(data.position) || 50, y: 50 }) : undefined,
-          projectName: data.projectName || data.pjtName || data.pjt || '',
-          contractor: data.contractor || data.시공사 || '',
-          managementNumber: data.managementNumber || data.관리번호 || data.panelName || newPanelNo,
+          position: positionData ? (typeof positionData === 'object' ? positionData : { x: parseFloat(positionData) || 50, y: 50 }) : undefined,
+          projectName: data.projectName || data.pjtName || data.pjt || matchedQRData.projectName || (matchedQR as any)?.projectName || '',
+          contractor: data.contractor || data.시공사 || matchedQRData.contractor || (matchedQR as any)?.contractor || '',
+          managementNumber: data.managementNumber || data.관리번호 || data.panelName || matchedQRData.managementNumber || (matchedQR as any)?.managementNumber || newPanelNo,
         };
+        console.log('📝 새 항목 생성:', newItem);
         setInspections(prev => [newItem, ...prev]);
+        console.log('✅ 새 보드 추가, dashboard로 이동');
         setCurrentPage('dashboard');
         setSelectedInspectionId(newPanelNo);
         setShowScanner(false);
       }
     } catch (error) {
-      console.error('QR 데이터 처리 오류:', error);
+      console.error('❌ QR 데이터 처리 오류:', error);
       alert(`QR 코드 스캔 완료!\n데이터: ${qrData}`);
       setShowScanner(false);
     }
-  }, [inspections, qrCodes]);
+  };
 
   const handleScanButtonClick = useCallback(() => {
     // QR 스캔 버튼 클릭 순간의 시간 생성
@@ -355,7 +506,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.1</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -401,7 +552,7 @@ const App: React.FC = () => {
             }`}
           >
             <QrCode size={20} className={currentPage === 'qr-generator' ? '' : 'opacity-70'}/>
-            DB Master
+            Panel Master
           </div>
         </nav>
 
@@ -427,108 +578,136 @@ const App: React.FC = () => {
             </button>
             <h2 className="text-sm md:text-lg font-semibold text-slate-800 truncate">Distribution Board Manager</h2>
           </div>
-          <div className="flex items-center gap-4">
-            {/* 엑셀 내보내기 버튼 */}
-            <button
-              onClick={() => setShowExportPreview(true)}
-              disabled={isExporting}
-              className={`hidden md:flex items-center gap-2 ${
-                isExporting 
-                  ? 'bg-emerald-400 cursor-not-allowed' 
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              } text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm`}
-            >
-              {isExporting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>내보내는 중...</span>
-                </>
-              ) : (
-                <>
-                  <FileSpreadsheet size={18} />
-                  <span>엑셀 내보내기</span>
-                </>
-              )}
-            </button>
-            
-            {/* 엑셀 입력 버튼 */}
-            <label className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm cursor-pointer">
-              <FileUp size={18} />
-              {isImporting ? '로딩 중...' : '엑셀 입력'}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  
-                  setIsImporting(true);
-                  
-                  try {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                      try {
-                        const data = event.target?.result as ArrayBuffer;
-                        if (!data) {
-                          alert('파일을 읽을 수 없습니다.');
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* 더보기 메뉴 버튼 - 항상 표시 */}
+            <div className="relative more-menu-dropdown">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+              >
+                <MoreVertical size={20} />
+              </button>
+
+              {/* 더보기 드롭다운 메뉴 */}
+              {showMoreMenu && (
+                <div className="absolute right-0 top-10 w-52 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+                  {/* 엑셀 내보내기 */}
+                  <button
+                    onClick={() => {
+                      setShowExportPreview(true);
+                      setShowMoreMenu(false);
+                    }}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 disabled:opacity-50"
+                  >
+                    <FileSpreadsheet size={18} className="text-emerald-600" />
+                    {isExporting ? '내보내는 중...' : '엑셀 내보내기'}
+                  </button>
+
+                  {/* 엑셀 입력 */}
+                  <label className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 cursor-pointer">
+                    <FileUp size={18} className="text-blue-600" />
+                    {isImporting ? '로딩 중...' : '엑셀 입력'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setIsImporting(true);
+                        setShowMoreMenu(false);
+
+                        try {
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            try {
+                              const data = event.target?.result as ArrayBuffer;
+                              if (!data) {
+                                alert('파일을 읽을 수 없습니다.');
+                                setIsImporting(false);
+                                return;
+                              }
+
+                              // Dashboard 페이지로 이동
+                              setCurrentPage('dashboard');
+
+                              // Dashboard의 파일 입력을 트리거
+                              setTimeout(() => {
+                                const dashboardExcelInput = document.querySelector('[data-excel-import-button] input[type="file"]') as HTMLInputElement;
+                                if (dashboardExcelInput) {
+                                  // 파일을 Dashboard의 input에 설정
+                                  const dataTransfer = new DataTransfer();
+                                  dataTransfer.items.add(new File([data], file.name));
+                                  dashboardExcelInput.files = dataTransfer.files;
+                                  dashboardExcelInput.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                              }, 300);
+                            } catch (error) {
+                              console.error('엑셀 파일 읽기 오류:', error);
+                              alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+                            } finally {
+                              setIsImporting(false);
+                              if (fileInputRef.current) {
+                                fileInputRef.current.value = '';
+                              }
+                            }
+                          };
+                          reader.onerror = () => {
+                            alert('파일 읽기 중 오류가 발생했습니다.');
+                            setIsImporting(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = '';
+                            }
+                          };
+                          reader.readAsArrayBuffer(file);
+                        } catch (error) {
+                          console.error('엑셀 파일 처리 오류:', error);
+                          alert('엑셀 파일 처리 중 오류가 발생했습니다.');
                           setIsImporting(false);
-                          return;
-                        }
-                        
-                        // Dashboard 페이지로 이동
-                        setCurrentPage('dashboard');
-                        
-                        // Dashboard의 파일 입력을 트리거
-                        setTimeout(() => {
-                          const dashboardExcelInput = document.querySelector('[data-excel-import-button] input[type="file"]') as HTMLInputElement;
-                          if (dashboardExcelInput) {
-                            // 파일을 Dashboard의 input에 설정
-                            const dataTransfer = new DataTransfer();
-                            dataTransfer.items.add(new File([data], file.name));
-                            dashboardExcelInput.files = dataTransfer.files;
-                            dashboardExcelInput.dispatchEvent(new Event('change', { bubbles: true }));
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
                           }
-                        }, 300);
-                      } catch (error) {
-                        console.error('엑셀 파일 읽기 오류:', error);
-                        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
-                      } finally {
-                        setIsImporting(false);
-                        if (fileInputRef.current) {
-                          fileInputRef.current.value = '';
                         }
+                      }}
+                      className="hidden"
+                      disabled={isImporting}
+                    />
+                  </label>
+
+                  {/* QR 스캔 시뮬레이션 */}
+                  <button
+                    onClick={() => {
+                      // qrCodes 배열에서 첫 번째 QR 코드의 데이터를 사용하여 스캔 시뮬레이션
+                      if (qrCodes.length > 0) {
+                        const testQR = qrCodes[0];
+                        handleQRScanSuccess(testQR.qrData);
+                      } else {
+                        // QR 코드가 없으면 기본 테스트 데이터 사용
+                        const testData = JSON.stringify({
+                          id: 'TEST-001',
+                          panelNo: 'TEST-001',
+                          floor: 'F1',
+                          location: 'A',
+                          projectName: '테스트 프로젝트',
+                          contractor: '테스트 시공사',
+                          managementNumber: 'MGT-001'
+                        });
+                        handleQRScanSuccess(testData);
                       }
-                    };
-                    reader.onerror = () => {
-                      alert('파일 읽기 중 오류가 발생했습니다.');
-                      setIsImporting(false);
-                      if (fileInputRef.current) {
-                        fileInputRef.current.value = '';
-                      }
-                    };
-                    reader.readAsArrayBuffer(file);
-                  } catch (error) {
-                    console.error('엑셀 파일 처리 오류:', error);
-                    alert('엑셀 파일 처리 중 오류가 발생했습니다.');
-                    setIsImporting(false);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
-                    }
-                  }
-                }}
-                className="hidden"
-                disabled={isImporting}
-              />
-            </label>
-            
-             <button 
-              onClick={handleScanButtonClick}
-              className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium items-center gap-2 transition-colors shadow-sm"
-            >
-              <ScanLine size={18} />
-              Simulate Mobile Scan
-            </button>
+                      setShowMoreMenu(false);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                  >
+                    <ScanLine size={18} className="text-blue-600" />
+                    QR 스캔 시뮬레이션
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 알림 아이콘 - 항상 표시 */}
             <div className="relative notification-dropdown">
               <Bell 
                 size={20} 
@@ -645,17 +824,25 @@ const App: React.FC = () => {
                     onScan={() => setShowScanner(true)}
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
-                    onReportGenerated={(report) => setReports(prev => [report, ...prev])}
-                    onReportsUpdate={(reports) => setReports(reports)}
+                    onReportGenerated={async (report) => {
+                      setReports(prev => [report, ...prev]);
+                      await saveReport(report); // IndexedDB에도 저장
+                    }}
+                    onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
                     reports={reports}
                   />
                 </ErrorBoundary>
               ) : currentPage === 'reports' ? (
-                <ReportsList 
+                <ReportsList
                   reports={reports}
                   onDeleteReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
                   inspections={inspections}
+                  onEditReport={(boardId) => {
+                    // Inspection 페이지로 이동하면서 해당 패널 선택
+                    setSelectedInspectionId(boardId);
+                    setCurrentPage('dashboard');
+                  }}
                 />
               ) : (
                 <QRGenerator 
@@ -709,6 +896,38 @@ const App: React.FC = () => {
             onCancel={() => setShowExportPreview(false)}
             isExporting={isExporting}
           />
+        )}
+
+        {/* PWA 설치 프롬프트 배너 */}
+        {showInstallPrompt && !isInstalled && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg animate-fade-in-up">
+            <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Smartphone size={24} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">앱으로 설치하기</h3>
+                  <p className="text-blue-100 text-sm">홈 화면에 추가하여 더 빠르게 접근하세요</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDismissInstall}
+                  className="px-4 py-2 text-blue-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-sm"
+                >
+                  나중에
+                </button>
+                <button
+                  onClick={handleInstallApp}
+                  className="px-4 py-2 bg-white text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                >
+                  <Download size={18} />
+                  설치하기
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -1,22 +1,26 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save } from 'lucide-react';
+import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown, Hash, Zap, GitBranch, ChevronLeft } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
 import FloorPlanView from './FloorPlanView';
 
-/** TR(위치) 허용 값: A, B, C, D */
-const TR_OPTIONS = ['A', 'B', 'C', 'D'] as const;
+/** TR(위치) 허용 값: A (TR-1 900KVA), B (TR-2 950KVA) */
+const TR_OPTIONS = ['A', 'B'] as const;
+const TR_DISPLAY_LABELS: Record<string, string> = {
+  'A': 'TR-1 900KVA',
+  'B': 'TR-2 950KVA',
+};
 const isValidTR = (v: string): v is typeof TR_OPTIONS[number] =>
   TR_OPTIONS.includes(v as typeof TR_OPTIONS[number]);
 
-/** PNL NO. 형식: MOCK_DATA와 동일. 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR A,B,C,D → 1,2,3,4 */
+/** PNL NO. 형식: MOCK_DATA와 동일. 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR A,B → 1,2 */
 const FLOOR_TO_NUM: Record<string, string> = { F1: '1', B1: '7' };
 const NUM_TO_FLOOR: Record<string, string> = {
   '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6', '7': 'B1', '8': 'B2',
 };
-const TR_TO_NUM: Record<string, string> = { A: '1', B: '2', C: '3', D: '4' };
-const NUM_TO_TR: Record<string, string> = { '1': 'A', '2': 'B', '3': 'C', '4': 'D' };
+const TR_TO_NUM: Record<string, string> = { A: '1', B: '2' };
+const NUM_TO_TR: Record<string, string> = { '1': 'A', '2': 'B' };
 
 /** 층(F1/B1) + TR(A/B/C/D) → PNL NO.(1-1, 2-1 등) */
 function toPnlNo(floor: string, location: string): string {
@@ -95,7 +99,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   const [selectedFloor, setSelectedFloor] = useState<'F1' | 'B1'>('F1');
   const [qrData, setQrData] = useState<QRData>({
-    id: 'A', // PNL NO. 초기값
+    id: '', // PNL NO. 자유 입력 (예: 1, 1-1, 1-1-1)
     location: 'A',
     floor: 'F1',
     position: '',
@@ -110,9 +114,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [isSelectFocused, setIsSelectFocused] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showInlineCreateForm, setShowInlineCreateForm] = useState(false);
+  const [sortField, setSortField] = useState<'panelNo'|'createdAt'|'tr'|'floor'>('panelNo');
+  const [sortDirection, setSortDirection] = useState<'asc'|'desc'>('asc');
+  const [searchText, setSearchText] = useState('');
   /** true일 때만 FloorPlanView 상세 패널(모달) 표시 - "Dashboard에 위치 매핑" 클릭 시 true */
   const [openDetailPanelForMapping, setOpenDetailPanelForMapping] = useState(false);
   const rightPanelScrollRef = useRef<HTMLDivElement>(null);
+  const panelDetailSectionRef = useRef<HTMLDivElement>(null);
   const savedMainScrollOnInteractionRef = useRef<number>(0);
   const savedRightScrollOnInteractionRef = useRef<number>(0);
 
@@ -130,6 +139,31 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     });
     setTimeout(restore, 80);
   }, [mainScrollRef]);
+
+  /** 패널 상세 정보 섹션으로 스크롤 */
+  const scrollToPanelDetail = useCallback(() => {
+    setTimeout(() => {
+      if (panelDetailSectionRef.current && rightPanelScrollRef.current) {
+        panelDetailSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  }, []);
+
+  /** FloorPlanView 위젯(마커)으로 스크롤 */
+  const scrollToFloorPlanWidget = useCallback((panelNo: string) => {
+    setTimeout(() => {
+      // FloorPlanView 내의 해당 마커로 스크롤
+      const markerElement = document.querySelector(`[data-marker-id="${panelNo}"]`) as HTMLElement;
+      if (markerElement) {
+        markerElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        // 마커 강조 효과
+        markerElement.style.transform = 'scale(1.5)';
+        setTimeout(() => {
+          markerElement.style.transform = '';
+        }, 1000);
+      }
+    }, 100);
+  }, []);
 
   /** 버튼 클릭 후 리렌더/alert 등으로 스크롤이 바뀐 뒤 여러 번 복원 (onMouseDown에서 저장된 값 사용) */
   const restoreScrollAfterAction = useCallback(() => {
@@ -279,16 +313,27 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       const idParts = inspection.panelNo.split('-');
       let location = '';
       let floor = '';
-      
-      if (idParts.length >= 3) {
+
+      // 1. inspection.floor 필드 우선 사용 (MOCK_DATA의 명시적 층 정보)
+      if (inspection.floor) {
+        floor = inspection.floor;
+      } else if (idParts.length >= 3) {
         floor = idParts[1] || '';
-        location = idParts[2] || '';
       } else if (idParts.length >= 2) {
         floor = idParts[1] || '';
       }
 
+      // 2. inspection.tr 필드에서 location 추출 (TR-1 = A, TR-2 = B)
+      if (inspection.tr) {
+        location = inspection.tr;
+      } else if (idParts.length >= 3) {
+        location = idParts[2] || '';
+      } else if (idParts.length >= 2) {
+        location = idParts[1] || '';
+      }
+
       if (!location) location = inspection.panelNo;
-      if (!floor) floor = '1';
+      if (!floor) floor = 'F1';
 
       const position = {
         description: inspection.memo || '',
@@ -441,54 +486,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         if (!updated.id || updated.id.trim() === '') {
           updated.id = toPnlNo(updated.floor, updated.location);
         }
-        
-        // 중복 체크: 같은 층수에서 TR(위치) 중복 확인
-        const savedQRCodes = qrCodes;
-        const sameFloorQRCodes = savedQRCodes.filter((qr: QRCodeData) => qr.floor === updated.floor);
-        if (isValidTR(updated.location)) {
-          // TR(A/B/C/D): 같은 층+같은 TR이면 중복
-          const duplicateQR = sameFloorQRCodes.find((qr: QRCodeData) => {
-            try {
-              const parsed = JSON.parse(qr.qrData);
-              const loc = (parsed.location || qr.location || '').toString().trim().toUpperCase();
-              return loc === updated.location.toUpperCase();
-            } catch {
-              return (qr.location || '').toString().trim().toUpperCase() === updated.location.toUpperCase();
-            }
-          });
-          if (duplicateQR) {
-            setTimeout(() => alert(`같은 층수(${updated.floor})에 TR ${updated.location}(이)가 이미 등록되어 있습니다. 다른 TR을 선택해 주세요.`), 0);
-            return prev; // 중복 시 저장하지 않음
-          }
-        } else {
-          const locationNum = parseInt(updated.location);
-          if (!isNaN(locationNum)) {
-            const duplicateQR = sameFloorQRCodes.find((qr: QRCodeData) => {
-              try {
-                const qrData = JSON.parse(qr.qrData);
-                const qrLocationNum = parseInt(qrData.location || qr.location);
-                return !isNaN(qrLocationNum) && qrLocationNum === locationNum;
-              } catch {
-                return false;
-              }
-            });
-            if (duplicateQR) {
-              const locationNumbers = sameFloorQRCodes.map((qr: QRCodeData) => {
-                try {
-                  const qrData = JSON.parse(qr.qrData);
-                  const num = parseInt(qrData.location || qr.location);
-                  return isNaN(num) ? 0 : num;
-                } catch {
-                  return 0;
-                }
-              }).filter(n => n > 0);
-              const maxLocationNum = locationNumbers.length > 0 ? Math.max(...locationNumbers) : 0;
-              updated.location = String(maxLocationNum + 1).padStart(3, '0');
-              updated.id = toPnlNo(updated.floor, updated.location);
-            }
-          }
-        }
-        
+
+        // 중복 검사는 등록 버튼(generateQR) 클릭 시에만 수행
+        // 입력 중에는 중복 알림을 표시하지 않음
+
         // 자동으로 QR 생성
         setTimeout(() => {
           autoGenerateQR(updated);
@@ -659,6 +660,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     setSelectedQR(qr);
     setIsEditing(true);
     setShowForm(true);
+    setShowInlineCreateForm(true); // 인라인 폼도 열기
     try {
       const data = JSON.parse(qr.qrData);
       const position = data.position || {};
@@ -847,7 +849,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       if (selectedQR?.id === id) {
         setSelectedQR(null);
         setGeneratedQR(null);
-        setQrData({ id: 'A', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '' });
+        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '' });
         setIsEditing(false);
       }
     }
@@ -1215,7 +1217,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   const resetForm = () => {
     setQrData({
-      id: 'A',
+      id: '',
       location: 'A',
       floor: 'F1',
       position: '',
@@ -1277,6 +1279,51 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     });
     return map;
   }, [qrCodes]);
+
+  // 자연 정렬 비교 함수 (1, 1-1, 1-2, 2, 3, ... 숫자 기반)
+  const naturalCompare = useCallback((a: string, b: string): number => {
+    const pa = a.split(/[-]/).map(s => { const n = parseInt(s); return isNaN(n) ? s : n; });
+    const pb = b.split(/[-]/).map(s => { const n = parseInt(s); return isNaN(n) ? s : n; });
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const va = pa[i] ?? -1, vb = pb[i] ?? -1;
+      if (typeof va === 'number' && typeof vb === 'number') { if (va !== vb) return va - vb; }
+      else { const cmp = String(va).localeCompare(String(vb)); if (cmp !== 0) return cmp; }
+    }
+    return 0;
+  }, []);
+
+  // 정렬된 inspections
+  const sortedInspections = useMemo(() => {
+    const deduped = inspections.filter((ins, idx, self) => idx === self.findIndex(i => i.panelNo === ins.panelNo));
+    const sorted = [...deduped].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'panelNo': cmp = naturalCompare(a.panelNo, b.panelNo); break;
+        case 'createdAt': {
+          const qa = qrCodeMap.get(a.panelNo), qb = qrCodeMap.get(b.panelNo);
+          cmp = (qa?.createdAt || '').localeCompare(qb?.createdAt || ''); break;
+        }
+        case 'tr': cmp = (a.tr || '').localeCompare(b.tr || ''); break;
+        case 'floor': cmp = (a.floor || '').localeCompare(b.floor || ''); break;
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [inspections, sortField, sortDirection, qrCodeMap, naturalCompare]);
+
+  // 검색 필터링된 inspections
+  const filteredInspections = useMemo(() => {
+    if (!searchText.trim()) return sortedInspections;
+    const q = searchText.trim().toLowerCase();
+    return sortedInspections.filter(ins =>
+      ins.panelNo.toLowerCase().includes(q) ||
+      (ins.tr || '').toLowerCase().includes(q) ||
+      (ins.floor || '').toLowerCase().includes(q) ||
+      (ins.notes || '').toLowerCase().includes(q) ||
+      (ins.nominalCrossSection || '').toLowerCase().includes(q) ||
+      (TR_DISPLAY_LABELS[ins.tr || ''] || '').toLowerCase().includes(q)
+    );
+  }, [sortedInspections, searchText]);
 
   // 선택된 QR의 ID 추출 최적화
   const selectedQRId = useMemo(() => {
@@ -1365,25 +1412,44 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   }, [isSelectFocused]);
 
   return (
-    <div className="h-full flex bg-slate-50" style={{ overflow: isSelectFocused ? 'visible' : 'hidden' }}>
-      {/* Left Panel: QR List */}
-      <div className="w-1/3 border-r border-slate-200 bg-white overflow-y-auto">
-        <div className="p-4 border-b border-slate-200 bg-slate-50">
-          <h2 className="text-lg font-semibold text-slate-800 mb-1">등록된 분전함</h2>
-          <p className="text-sm text-slate-600">{inspections.length}개</p>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-full min-h-0" style={{ overflow: isSelectFocused ? 'visible' : 'hidden' }}>
+      {/* Left Panel: QR List - 모바일에서는 패널 미선택 시만 표시 */}
+      <div className={`
+        ${selectedQR || showInlineCreateForm ? 'hidden' : 'flex'}
+        lg:flex lg:col-span-4 flex-col h-full min-h-0
+      `}>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 h-full overflow-y-auto">
+        <div className="p-3 border-b border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{filteredInspections.length}/{inspections.length}</span>
+          </div>
+          {/* 정렬 버튼 + 검색 */}
+          <div className="flex items-center gap-1 mb-2 flex-wrap">
+            {(['panelNo','tr','floor','createdAt'] as const).map(f => (
+              <button key={f} onClick={() => { if (sortField === f) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField(f); setSortDirection('asc'); } }}
+                className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${sortField === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}>
+                {f === 'panelNo' ? 'PNL NO.' : f === 'tr' ? 'TR' : f === 'floor' ? '층수' : '생성일'}
+                {sortField === f && <span className="ml-0.5">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)}
+              placeholder="PNL NO., TR, 층수 검색..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+          </div>
         </div>
-        
-        {inspections.length === 0 ? (
+
+        {filteredInspections.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
             <QrCode size={48} className="mb-4 opacity-50" />
-            <p className="text-sm text-center">등록된 분전함이 없습니다</p>
+            <p className="text-sm text-center">{searchText ? '검색 결과가 없습니다' : '등록 분전함이 없습니다'}</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {inspections
-              .filter((inspection, index, self) => 
-                index === self.findIndex(i => i.panelNo === inspection.panelNo)
-              )
+            {filteredInspections
               .map((inspection, index) => {
               const matchingQR = qrCodeMap.get(inspection.panelNo);
               const isSelected = selectedQRId === inspection.panelNo;
@@ -1395,8 +1461,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   data-selected={isSelected ? 'true' : 'false'}
                   onClick={(e) => {
                     (e.currentTarget as HTMLElement).blur();
-                    const rightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
-                    const mainScroll = mainScrollRef?.current?.scrollTop ?? 0;
                     if (matchingQR) {
                       handleSelectQR(matchingQR);
                     } else {
@@ -1413,16 +1477,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     if (onSelectInspection) {
                       onSelectInspection(inspection.panelNo);
                     }
-                    requestAnimationFrame(() => {
-                      requestAnimationFrame(() => {
-                        if (rightPanelScrollRef.current) {
-                          rightPanelScrollRef.current.scrollTop = rightScroll;
-                        }
-                        if (mainScrollRef?.current) {
-                          mainScrollRef.current.scrollTop = mainScroll;
-                        }
-                      });
-                    });
+                    // 패널 클릭 시 FloorPlanView 위젯으로 스크롤
+                    scrollToFloorPlanWidget(inspection.panelNo);
                   }}
                   className={`p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
                     isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
@@ -1431,20 +1487,24 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <MapPin size={14} className="text-blue-600" />
+                        <MapPin size={14} className={inspection.tr === 'A' ? 'text-blue-600' : inspection.tr === 'B' ? 'text-orange-500' : 'text-slate-400'} />
                         <span className="font-semibold text-slate-800">
                           {migrateIdFloor(inspection.panelNo)}
                         </span>
+                        {inspection.nominalCrossSection && (
+                          <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{inspection.nominalCrossSection}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        {inspection.floor && <span>{inspection.floor}</span>}
+                        {inspection.tr && <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${inspection.tr === 'A' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{TR_DISPLAY_LABELS[inspection.tr] || inspection.tr}</span>}
+                        {inspection.notes && <span className="text-slate-400">({inspection.notes})</span>}
                       </div>
                       {matchingQR && (
-                        <>
-                          <p className="text-sm text-slate-600 mb-1">{floorToDisplayLabel(matchingQR.floor)}</p>
-                          <p className="text-xs text-slate-500 line-clamp-1">{matchingQR.location}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
-                            <Calendar size={12} />
-                            <span>{formatDate(matchingQR.createdAt)}</span>
-                          </div>
-                        </>
+                        <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
+                          <Calendar size={12} />
+                          <span>{formatDate(matchingQR.createdAt)}</span>
+                        </div>
                       )}
                     </div>
                     {matchingQR && (
@@ -1453,6 +1513,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             handleEditQR(matchingQR, e);
+                            // 수정 버튼 클릭 시 패널 상세 정보로 스크롤
+                            scrollToPanelDetail();
                           }}
                           className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                           title="Edit QR code"
@@ -1477,14 +1539,45 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             })}
           </div>
         )}
+        </div>
       </div>
 
-      {/* Right Panel: QR Generator & Details */}
+      {/* Right Panel: QR Generator & Details - 모바일에서는 패널 선택 시만 표시 */}
       <div
         ref={rightPanelScrollRef}
-        className="flex-1 overflow-y-auto"
+        className={`
+          ${selectedQR || showInlineCreateForm ? 'flex' : 'hidden'}
+          lg:flex lg:col-span-8 h-full min-h-0 flex-col overflow-hidden
+        `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
+        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 */}
+        {!selectedQR && !showInlineCreateForm ? (
+          <div className="h-full flex items-center justify-center text-slate-500">
+            <div className="text-center">
+              <div className="p-4 bg-slate-100 rounded-full inline-block mb-4">
+                <QrCode size={48} className="text-slate-400" />
+              </div>
+              <p className="text-lg font-medium text-slate-600">패널을 선택해주세요</p>
+              <p className="text-sm mt-2 text-slate-500">
+                좌측 목록에서 패널을 선택하거나<br/>
+                아래 버튼을 클릭하세요
+              </p>
+              <button
+                onClick={() => {
+                  setShowInlineCreateForm(true);
+                  resetForm();
+                  setSelectedQR(null);
+                  setIsEditing(false);
+                }}
+                className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg mx-auto"
+              >
+                <QrCode size={20} />
+                패널 신규 등록
+              </button>
+            </div>
+          </div>
+        ) : (
         <div
           className="max-w-4xl mx-auto p-6 space-y-6"
           style={{ overflow: isSelectFocused ? 'visible' : undefined, position: 'relative' }}
@@ -1495,29 +1588,240 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         >
           {/* Header */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            {/* 모바일: 목록으로 돌아가기 버튼 */}
+            <button
+              onClick={() => {
+                setSelectedQR(null);
+                setShowInlineCreateForm(false);
+                setIsEditing(false);
+                resetForm();
+              }}
+              className="lg:hidden flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4 text-sm font-medium"
+            >
+              <ChevronLeft size={18} />
+              목록으로
+            </button>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-blue-100 rounded-lg">
                   <QrCode size={24} className="text-blue-600" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-800">QR Code Generator</h1>
-                  <p className="text-sm text-slate-600 mt-1">Distribution Board QR Code 생성</p>
+                  <h1 className="text-2xl font-bold text-slate-800">패널 상세 정보</h1>
+                  <p className="text-sm text-slate-600 mt-1">Distribution Board 상세 정보 관리</p>
                 </div>
               </div>
               <button
                 onClick={() => {
-                  setShowCreateModal(true);
-                  setShowForm(true);
-                  resetForm();
+                  setShowInlineCreateForm(!showInlineCreateForm);
+                  if (!showInlineCreateForm) {
+                    resetForm();
+                    setSelectedQR(null);
+                    setIsEditing(false);
+                  }
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                className={`${showInlineCreateForm ? 'bg-slate-600 hover:bg-slate-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg`}
               >
                 <QrCode size={20} />
-                QR 코드 신규 등록
+                {showInlineCreateForm ? (isEditing ? '수정 닫기' : '신규 등록 닫기') : '패널 신규 등록'}
               </button>
             </div>
           </div>
+
+          {/* Inline Create/Edit Form - 패널 신규 등록 또는 수정 */}
+          {showInlineCreateForm && (
+            <div className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-l-4 ${isEditing ? 'border-l-amber-500' : 'border-l-blue-500'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <QrCode size={20} className={isEditing ? 'text-amber-600' : 'text-blue-600'} />
+                  {isEditing ? '패널 정보 수정' : '신규 패널 등록'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowInlineCreateForm(false);
+                    setIsEditing(false);
+                    resetForm();
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                  title="닫기"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                      <FileText size={16} />
+                      PNL NO.
+                    </label>
+                    <input
+                      type="text"
+                      value={qrData.id}
+                      onChange={(e) => handleInputChange('id', e.target.value)}
+                      placeholder="예: 1-1 또는 2-1"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                      <Building2 size={16} />
+                      층수
+                    </label>
+                    <select
+                      value={qrData.floor || selectedFloor}
+                      onChange={(e) => {
+                        handleInputChange('floor', e.target.value);
+                        setSelectedFloor(e.target.value as 'F1' | 'B1');
+                      }}
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all cursor-pointer bg-white"
+                    >
+                      <option value="F1">F1</option>
+                      <option value="B1">B1</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                      <MapPin size={16} />
+                      TR
+                    </label>
+                    <select
+                      value={isValidTR(qrData.location) ? qrData.location : 'A'}
+                      onChange={(e) => handleInputChange('location', e.target.value)}
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white cursor-pointer"
+                    >
+                      {TR_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{TR_DISPLAY_LABELS[opt]}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      관리번호 (판넬명)
+                    </label>
+                    <input
+                      type="text"
+                      value={qrData.position}
+                      onChange={(e) => handleInputChange('position', e.target.value)}
+                      placeholder="판넬명 입력"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 시공사 (고정값) */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      시공사
+                    </label>
+                    <input
+                      type="text"
+                      value="삼성물산"
+                      disabled
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* PJT명 (고정값) */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      PJT명
+                    </label>
+                    <input
+                      type="text"
+                      value="성수동 K-PJT"
+                      disabled
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* 공칭 단면적 - Key-in with SQ unit */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      공칭 단면적
+                    </label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="단면적 입력"
+                        className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      />
+                      <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
+                        SQ
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      X 좌표 (0-100%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={qrData.positionX}
+                      onChange={(e) => handleInputChange('positionX', e.target.value)}
+                      placeholder="예: 25"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Dashboard 위치 매핑용</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      Y 좌표 (0-100%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={qrData.positionY}
+                      onChange={(e) => handleInputChange('positionY', e.target.value)}
+                      placeholder="예: 30"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Dashboard 위치 매핑용</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      generateQR();
+                      setShowInlineCreateForm(false);
+                      setIsEditing(false);
+                    }}
+                    disabled={!qrData.location || !qrData.floor}
+                    className={`flex-1 ${isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2`}
+                  >
+                    {isEditing ? <Save size={18} /> : <QrCode size={18} />}
+                    {isEditing ? '패널 정보 수정' : 'QR 코드 생성 및 등록'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowInlineCreateForm(false);
+                      setIsEditing(false);
+                      resetForm();
+                    }}
+                    className="px-6 py-3 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* Input Form Modal */}
         {showCreateModal && showForm && createPortal(
@@ -1539,7 +1843,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               >
                 <div className="p-6" style={{ overflow: 'visible', position: 'relative', zIndex: 1 }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-slate-800">QR 코드 신규 등록</h2>
+                    <h2 className="text-lg font-semibold text-slate-800">패널 신규 등록</h2>
                     <button
                       onClick={() => {
                         setShowCreateModal(false);
@@ -1637,9 +1941,68 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white cursor-pointer"
                       >
                         {TR_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
+                          <option key={opt} value={opt}>{TR_DISPLAY_LABELS[opt]}</option>
                         ))}
                       </select>
+                    </div>
+
+                    {/* 시공사 (고정값) */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        시공사
+                      </label>
+                      <input
+                        type="text"
+                        value="삼성물산"
+                        disabled
+                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                      />
+                    </div>
+
+                    {/* PJT명 (고정값) */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        PJT명
+                      </label>
+                      <input
+                        type="text"
+                        value="성수동 K-PJT"
+                        disabled
+                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                      />
+                    </div>
+
+                    {/* 관리번호 (판넬명) - Key-in */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        관리번호 (판넬명)
+                      </label>
+                      <input
+                        type="text"
+                        value={qrData.position}
+                        onChange={(e) => handleInputChange('position', e.target.value)}
+                        placeholder="판넬명 입력"
+                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* 공칭 단면적 - Key-in with SQ unit */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        공칭 단면적
+                      </label>
+                      <div className="flex">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="단면적 입력"
+                          className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        />
+                        <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
+                          SQ
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -1705,17 +2068,17 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
         {/* QR 상세/신규 폼: 신규 등록 시와 선택된 QR 수정 시 제목 구분 */}
         {((showForm && !selectedQR) || (selectedQR && selectedQRId)) && (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div ref={panelDetailSectionRef} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               {selectedQR ? (
                 <>
                   <Eye size={20} />
-                  선택된 QR 코드 상세 정보
+                  선택된 패널 상세 정보
                 </>
               ) : (
                 <>
                   <QrCode size={20} />
-                  신규 QR 코드 등록
+                  패널 신규 등록
                 </>
               )}
             </h2>
@@ -1764,9 +2127,70 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white cursor-pointer"
                 >
                   {TR_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                    <option key={opt} value={opt}>{TR_DISPLAY_LABELS[opt]}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* 시공사 (고정값) */}
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  시공사
+                </label>
+                <input
+                  type="text"
+                  value="삼성물산"
+                  disabled
+                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                />
+              </div>
+
+              {/* PJT명 (고정값) */}
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  PJT명
+                </label>
+                <input
+                  type="text"
+                  value="성수동 K-PJT"
+                  disabled
+                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                />
+              </div>
+
+              {/* 관리번호 (판넬명) - Key-in */}
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  관리번호 (판넬명)
+                </label>
+                <input
+                  type="text"
+                  value={qrData.position}
+                  onChange={(e) => handleInputChange('position', e.target.value)}
+                  onFocus={restoreMainScrollOnFocus}
+                  placeholder="판넬명 입력"
+                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              {/* 공칭 단면적 - Key-in with SQ unit */}
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  공칭 단면적
+                </label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="단면적 입력"
+                    onFocus={restoreMainScrollOnFocus}
+                    className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                  <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
+                    SQ
+                  </span>
+                </div>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -1913,45 +2337,80 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       </p>
                     </div>
 
-                    {/* QR Info */}
-                    <div className="flex-1 space-y-4">
+                    {/* QR Info - Panel Master 연동 */}
+                    {(() => {
+                      const linkedInsp = inspections.find(i => i.panelNo === qrData.id);
+                      const trCode = linkedInsp?.tr || qrData.location;
+                      const trLabel = TR_DISPLAY_LABELS[trCode] || trCode || '-';
+                      const floorLabel = linkedInsp?.floor || qrData.floor || '-';
+                      const trColor = trCode === 'A' ? '#3b82f6' : trCode === 'B' ? '#f97316' : '#94a3b8';
+                      return (
+                    <div className="flex-1 space-y-3">
+                      {/* PNL NO. */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Building2 size={16} className="text-blue-600" />
-                          <span className="text-sm font-semibold text-slate-700">층수</span>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Hash size={16} className="text-slate-600" />
+                          <span className="text-sm font-semibold text-slate-700">PNL NO.</span>
                         </div>
-                        <p className="text-slate-800 font-medium">{qrData.floor}</p>
+                        <p className="text-slate-800 font-bold text-lg">{qrData.id || '-'}</p>
                       </div>
 
+                      {/* TR */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
                           <MapPin size={16} className="text-blue-600" />
                           <span className="text-sm font-semibold text-slate-700">TR</span>
                         </div>
-                        <p className="text-slate-800 font-medium">{qrData.location}</p>
+                        <p className="font-medium flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: trColor }} />
+                          <span className="text-slate-800">{trLabel}</span>
+                        </p>
                       </div>
 
-                      {(qrData.positionX || qrData.positionY) && (
+                      {/* 층수 */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Building2 size={16} className="text-blue-600" />
+                          <span className="text-sm font-semibold text-slate-700">층수</span>
+                        </div>
+                        <p className="text-slate-800 font-medium">{floorLabel}</p>
+                      </div>
+
+                      {/* 공칭 단면적 */}
+                      {linkedInsp?.nominalCrossSection && (
                         <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                          <div className="flex items-center gap-2 mb-3">
-                            <MapPin size={16} className="text-emerald-600" />
-                            <span className="text-sm font-semibold text-slate-700">좌표</span>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap size={16} className="text-amber-600" />
+                            <span className="text-sm font-semibold text-slate-700">공칭 단면적</span>
                           </div>
-                          <p className="text-slate-800 font-medium">
-                            X: {qrData.positionX || '-'}%, Y: {qrData.positionY || '-'}%
-                          </p>
+                          <p className="text-slate-800 font-medium">{linkedInsp.nominalCrossSection} mm²</p>
+                        </div>
+                      )}
+
+                      {/* 상위 패널 */}
+                      {linkedInsp?.parentPanelNo && (
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <GitBranch size={16} className="text-purple-600" />
+                            <span className="text-sm font-semibold text-slate-700">상위 패널</span>
+                          </div>
+                          <p className="text-slate-800 font-medium">{linkedInsp.parentPanelNo}</p>
+                        </div>
+                      )}
+
+                      {/* 비고 */}
+                      {linkedInsp?.notes && (
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText size={16} className="text-slate-600" />
+                            <span className="text-sm font-semibold text-slate-700">비고</span>
+                          </div>
+                          <p className="text-slate-700 font-medium text-sm">{linkedInsp.notes}</p>
                         </div>
                       )}
 
                       {/* Action Buttons */}
                       <div className="flex flex-col gap-2 pt-2">
-                        <button
-                          onClick={handleMapToDashboard}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                        >
-                          <MapPin size={18} />
-                          Dashboard에 위치 매핑
-                        </button>
                         <div className="flex gap-2">
                           <button
                             onClick={handlePrint}
@@ -1970,6 +2429,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         </div>
                       </div>
                     </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1977,11 +2438,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </React.Fragment>,
           document.body
         )}
-        </div>
 
         {/* Floor Plan View - 마지막 순서로 배치 */}
         <FloorPlanView
-          inspections={inspections}
+          inspections={filteredInspections}
           onSelectInspection={(inspection) => {
             if (onSelectInspection) {
               onSelectInspection(inspection.panelNo);
@@ -2015,11 +2475,25 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           }}
           qrCodes={qrCodes}
           selectedFloor={selectedFloor}
-          onFloorChange={setSelectedFloor}
+          onFloorChange={(floor) => {
+            // 스크롤 위치 저장
+            const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
+            const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
+            setSelectedFloor(floor);
+            // React 렌더 후 스크롤 복원
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (mainScrollRef?.current) mainScrollRef.current.scrollTop = savedMainScroll;
+                if (rightPanelScrollRef.current) rightPanelScrollRef.current.scrollTop = savedRightScroll;
+              });
+            });
+          }}
           showDetailPanel={openDetailPanelForMapping}
           startInEditMode={openDetailPanelForMapping}
         />
-      </div>
+        </div>
+        )}
+        </div>
     </div>
   );
 };

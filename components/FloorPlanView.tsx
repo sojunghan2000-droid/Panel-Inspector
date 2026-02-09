@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
-import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon } from 'lucide-react';
+import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
@@ -16,11 +17,23 @@ interface FloorPlanViewProps {
   showDetailPanel?: boolean;
   /** true면 상세 패널이 열릴 때 위치 수정 모드로 열림 */
   startInEditMode?: boolean;
+  /** 모드: 'dashboard' = 읽기 전용 + InspectionDetail Modal, 'panel-master' = 기존 편집 모드 */
+  mode?: 'dashboard' | 'panel-master';
+  /** true = 위치 편집 불가 (Dashboard용) */
+  readOnly?: boolean;
+  /** Dashboard 모드에서 위젯 클릭 시 InspectionDetail Modal 표시 */
+  onShowInspectionModal?: (inspection: InspectionRecord) => void;
 }
 
 /** MOCK_DATA와 동일: 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2. F1 탭에 1~6층, B1 탭에 7~8층 표시 */
 const UPPER_FLOORS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
 const BASEMENT_FLOORS = ['B1', 'B2'];
+/** 층별 현황판 표시용 라벨 */
+const FLOOR_DISPLAY_LABELS: Record<string, string> = {
+  'F6': '지상6층', 'F5': '지상5층', 'F4': '지상4층',
+  'F3': '지상3층', 'F2': '지상2층', 'F1': '지상1층',
+  'B1': '지하1층', 'B2': '지하2층',
+};
 const FLOOR_LABEL_MAP: Record<string, string> = {
   '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6',
   '7': 'B1', '8': 'B2',
@@ -44,17 +57,20 @@ interface QRLocation {
   qrId: string;
 }
 
-const FloorPlanView: React.FC<FloorPlanViewProps> = ({ 
-  inspections, 
+const FloorPlanView: React.FC<FloorPlanViewProps> = ({
+  inspections,
   qrCodes: propQrCodes = [],
-  onSelectInspection, 
+  onSelectInspection,
   onUpdateInspections,
   selectedInspectionId,
   onSelectionChange,
   selectedFloor: propSelectedFloor,
   onFloorChange,
   showDetailPanel = true,
-  startInEditMode = false
+  startInEditMode = false,
+  mode = 'panel-master',
+  readOnly = false,
+  onShowInspectionModal
 }) => {
   const [selectedInspection, setSelectedInspection] = useState<InspectionRecord | null>(null);
   const [hoveredInspection, setHoveredInspection] = useState<InspectionRecord | null>(null);
@@ -93,9 +109,68 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
   const prevSelectedInspectionIdRef = useRef<string | null>(null);
+  /** 내부 마커 클릭 추적: true면 scrollToMarker 호출 생략 (스크롤 초기화 방지) */
+  const isInternalSelectionRef = useRef(false);
+
+  // 배경 이미지 관련 state
+  const [floorPlanImageF1, setFloorPlanImageF1] = useState<string | null>(null);
+  const [floorPlanImageB1, setFloorPlanImageB1] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // prop으로 전달된 층수가 있으면 사용, 없으면 내부 상태 사용
   const selectedFloor = propSelectedFloor ?? internalSelectedFloor;
+
+  // IndexedDB에서 배경 이미지 로드
+  useEffect(() => {
+    const loadFloorPlanImages = async () => {
+      try {
+        const f1Image = await getFloorPlanImageAsDataURL('F1');
+        const b1Image = await getFloorPlanImageAsDataURL('B1');
+        if (f1Image) setFloorPlanImageF1(f1Image);
+        if (b1Image) setFloorPlanImageB1(b1Image);
+      } catch (error) {
+        console.error('배경 이미지 로드 오류:', error);
+      }
+    };
+    loadFloorPlanImages();
+  }, []);
+
+  // 배경 이미지 업로드 핸들러
+  const handleFloorPlanImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // 파일을 Data URL로 읽기
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+        if (!dataUrl) return;
+
+        // Data URL을 Blob으로 변환하여 IndexedDB에 저장
+        const blob = dataURLToBlob(dataUrl);
+        await saveFloorPlanImage(selectedFloor, blob);
+
+        // state 업데이트
+        if (selectedFloor === 'F1') {
+          setFloorPlanImageF1(dataUrl);
+        } else {
+          setFloorPlanImageB1(dataUrl);
+        }
+
+        alert(`${selectedFloor} 층 배경 이미지가 저장되었습니다.`);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('배경 이미지 업로드 오류:', error);
+      alert('배경 이미지 업로드 중 오류가 발생했습니다.');
+    }
+
+    // 파일 입력 초기화
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [selectedFloor]);
 
   const handleFloorChange = (floor: 'F1' | 'B1') => {
     if (onFloorChange) {
@@ -114,6 +189,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         prevSelectedInspectionIdRef.current = selectedInspectionId;
 
         if (selectionChanged) {
+          // 내부 마커 클릭이면 스크롤 생략 (스크롤 초기화 방지)
+          const shouldScroll = !isInternalSelectionRef.current;
+
           // PNL NO.에서 층수 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1 → 1=F1, 2=B1)
           const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
           let inspectionFloor: 'F1' | 'B1' = 'F1';
@@ -133,9 +211,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           const tabForFloor = floorToTab(inspectionFloor);
           if (tabForFloor !== selectedFloor) {
             handleFloorChange(tabForFloor);
-            setTimeout(() => scrollToMarker(inspection), 300);
+            if (shouldScroll) {
+              setTimeout(() => scrollToMarker(inspection), 300);
+            } else {
+              setSelectedInspection(inspection);
+              setPanelPosition({ x: 0, y: 0 });
+            }
           } else {
-            scrollToMarker(inspection);
+            if (shouldScroll) {
+              scrollToMarker(inspection);
+            } else {
+              setSelectedInspection(inspection);
+              setPanelPosition({ x: 0, y: 0 });
+            }
           }
         }
       }
@@ -307,6 +395,25 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   };
 
 
+  /** TR 기준 색상 반환: TR-1 (A) = 파란색, TR-2 (B) = 주황색 */
+  const getTRColor = (panelNo: string, qrCodes: QRCodeData[], inspection?: InspectionRecord): string => {
+    // 1. inspection.tr 필드 우선 확인 (명시적 TR 값)
+    if (inspection?.tr === 'A') return '#3b82f6'; // TR-1 파란색
+    if (inspection?.tr === 'B') return '#f97316'; // TR-2 주황색
+
+    // 2. QR 코드에서 location 확인
+    const matchingQR = qrCodes.find(qr => {
+      try { return JSON.parse(qr.qrData).id === panelNo; } catch { return false; }
+    });
+    if (matchingQR) {
+      const loc = matchingQR.location?.toUpperCase();
+      if (loc === 'A' || loc === '1') return '#3b82f6';
+      if (loc === 'B' || loc === '2') return '#f97316';
+    }
+
+    return '#94a3b8'; // 기본 회색
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Complete':
@@ -332,6 +439,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   };
 
   const handleMarkerClick = (inspection: InspectionRecord) => {
+    // Dashboard 모드: InspectionDetail Modal 표시
+    if (mode === 'dashboard' && onShowInspectionModal) {
+      onShowInspectionModal(inspection);
+      return;
+    }
+
+    // Panel Master 모드: 기존 동작
+    // 내부 클릭 플래그 설정: scrollToMarker 호출 방지
+    isInternalSelectionRef.current = true;
     setSelectedInspection(inspection);
     // QRGenerator와 연동: ID를 통해 양방향 동기화
     if (onSelectionChange) {
@@ -340,12 +456,21 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (onSelectInspection) {
       onSelectInspection(inspection);
     }
+    // 100ms 후 플래그 리셋
+    setTimeout(() => {
+      isInternalSelectionRef.current = false;
+    }, 100);
   };
 
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // 마커 클릭은 제외
     const target = e.target as HTMLElement;
     if (target.closest('[data-marker-id]')) {
+      return;
+    }
+
+    // 읽기 전용 모드에서는 클릭으로 새 위치 지정 불가
+    if (readOnly) {
       return;
     }
 
@@ -502,12 +627,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       if (inspection.position) {
         const qrLocation = qrMapByInspectionId.get(inspection.panelNo);
         
-        // 층수 필터링: QR 코드의 층수 정보와 선택된 층이 일치하는 경우만 표시
+        // 층수 필터링: inspection.floor → QR floor → panelNo 추출 순서
         let shouldShow = false;
         let markerFloor: string | null = null;
-        
-        if (qrLocation) {
-          // QR 코드에 층수 정보가 있으면 그것을 사용
+
+        // 1. inspection.floor 명시적 필드 우선
+        if (inspection.floor) {
+          markerFloor = inspection.floor;
+        } else if (qrLocation) {
+          // 2. QR 코드에 층수 정보가 있으면 사용
           markerFloor = qrLocation.floor;
         } else {
           // QR 코드 정보가 없으면 propQrCodes에서 직접 확인
@@ -577,19 +705,36 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     return markers;
   }, [positionedInspections, qrLocations, selectedFloor]);
 
-  // 층에 따른 이미지 경로 결정
-  const floorImagePath = selectedFloor === 'F1' ? '/1st Floor.jpg' : '/Basement.jpg';
+  // 층별 위젯 개수 현황 (전체 층)
+  const floorStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    [...UPPER_FLOORS, ...BASEMENT_FLOORS].forEach(f => stats[f] = 0);
+
+    inspections.forEach(insp => {
+      if (!insp.position) return;
+      const floor = toFloorLabel(insp.floor || 'F1') || 'F1';
+      if (stats.hasOwnProperty(floor)) stats[floor]++;
+    });
+
+    return { stats, total: Object.values(stats).reduce((a, b) => a + b, 0) };
+  }, [inspections]);
+
+  // 층에 따른 이미지 경로 결정 (IndexedDB에 저장된 이미지가 있으면 우선 사용)
+  const floorImagePath = useMemo(() => {
+    if (selectedFloor === 'F1') {
+      return floorPlanImageF1 || '/1st Floor.jpg';
+    } else {
+      return floorPlanImageB1 || '/Basement.jpg';
+    }
+  }, [selectedFloor, floorPlanImageF1, floorPlanImageB1]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
           <p className="text-sm text-slate-600 mt-1">
             {allMarkers.length} board{allMarkers.length !== 1 ? 's' : ''} mapped on floor plan
-            {allMarkers.length === 0 && (
-              <span className="text-red-600 font-bold ml-2">⚠️ 위젯이 표시되지 않습니다. 위치 정보가 있는 검사 항목이 없습니다.</span>
-            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -602,13 +747,52 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             <option value="F1">F1</option>
             <option value="B1">B1</option>
           </select>
+          {/* 배경 이미지 업로드 버튼 */}
+          <label className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer text-sm font-medium transition-colors">
+            <Upload size={16} />
+            <span className="hidden sm:inline">{selectedFloor} 배경</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFloorPlanImageUpload}
+              className="hidden"
+            />
+          </label>
         </div>
       </div>
 
       <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px]">
+        {/* 층별 현황판 - 좌상단 오버레이 (위젯보다 낮은 z-index) */}
+        <div className="absolute top-4 left-4 z-10 flex flex-col bg-white/95 rounded-lg border border-slate-200 px-3 py-2 text-xs shadow-lg backdrop-blur-sm pointer-events-auto">
+          <div className="font-semibold text-slate-700 mb-1 border-b border-slate-100 pb-1">층별 현황</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {['F6', 'F5', 'F4', 'F3', 'F2', 'F1'].map(floor => (
+              <div key={floor} className="flex justify-between gap-2">
+                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
+                <span className={`font-medium ${floorStats.stats[floor] > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                  {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : 'N/A'}
+                </span>
+              </div>
+            ))}
+            {['B1', 'B2'].map(floor => (
+              <div key={floor} className="flex justify-between gap-2">
+                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
+                <span className={`font-medium ${floorStats.stats[floor] > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+                  {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : 'N/A'}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between gap-2 mt-1 pt-1 border-t border-slate-100 font-semibold">
+            <span className="text-slate-700">총:</span>
+            <span className="text-emerald-600">{floorStats.total}면</span>
+          </div>
+        </div>
+
         {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
-        <div 
-          className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none" 
+        <div
+          className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none"
           onClick={handleImageClick}
         >
           {/* Floor Plan Image - 낮은 해상도, 최하위 z-index */}
@@ -640,7 +824,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           {allMarkers.map((marker) => {
             const { x, y } = marker.position;
             const inspection = marker.data;
-            const statusColor = getStatusColor(inspection.status);
+            // TR 기준 색상 사용 (TR-1 = 파란색, TR-2 = 주황색)
+            const trColor = getTRColor(inspection.panelNo, propQrCodes, inspection);
             const isSelected = selectedInspection?.panelNo === marker.id;
             const isHovered = hoveredInspection?.panelNo === marker.id;
 
@@ -667,7 +852,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   style={{
                     bottom: '100%',
                     marginBottom: '4px',
-                    backgroundColor: statusColor,
+                    backgroundColor: trColor,
                   }}
                 >
                   {inspection.panelNo}
@@ -678,7 +863,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   style={{
                     width: isSelected || isHovered ? '14px' : '10px',
                     height: isSelected || isHovered ? '14px' : '10px',
-                    backgroundColor: statusColor,
+                    backgroundColor: trColor,
                     border: '2px solid white',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
                   }}
@@ -688,8 +873,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           })}
         </div>
 
-        {/* Selected Inspection Details Panel (showDetailPanel=false면 목록 선택 시 모달 미표시) */}
-        {showDetailPanel && selectedInspection && (() => {
+        {/* Selected Inspection Details Panel (showDetailPanel=false면 목록 선택 시 모달 미표시, dashboard 모드에서는 표시 안함) */}
+        {showDetailPanel && mode !== 'dashboard' && selectedInspection && (() => {
           // QR 정보 찾기
           const qrLocation = allMarkers.find(m => m.id === selectedInspection.panelNo)?.qrLocation;
           
@@ -729,13 +914,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-1">
-                {!isEditingInspectionPosition ? (
+                {!isEditingInspectionPosition && !readOnly ? (
                   <button
                     onClick={() => {
                       setIsEditingInspectionPosition(true);
-                      setEditingPosition({ 
-                        x: selectedInspection.position?.x || 50, 
-                        y: selectedInspection.position?.y || 50 
+                      setEditingPosition({
+                        x: selectedInspection.position?.x || 50,
+                        y: selectedInspection.position?.y || 50
                       });
                     }}
                     className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
@@ -743,7 +928,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   >
                     <Edit2 size={18} />
                   </button>
-                ) : (
+                ) : isEditingInspectionPosition ? (
                   <button
                     onClick={handleSaveInspectionPosition}
                     className="p-1 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors"
@@ -751,7 +936,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   >
                     <Save size={18} />
                   </button>
-                )}
+                ) : null}
                 <button
                   onClick={() => {
                     setSelectedInspection(null);
@@ -890,21 +1075,21 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
          })()}
 
 
-        {/* Legend */}
-        <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg border border-slate-200 p-3 z-20">
-          <p className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend</p>
+        {/* Legend - TR 기준 (위젯보다 낮은 z-index) */}
+        <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg border border-slate-200 p-3 z-10">
+          <p className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</p>
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#10b981' }}></div>
-              <span className="text-xs text-slate-600">Complete</span>
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
+              <span className="text-xs text-slate-600">TR-1 900KVA</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
-              <span className="text-xs text-slate-600">In Progress</span>
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
+              <span className="text-xs text-slate-600">TR-2 950KVA</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
-              <span className="text-xs text-slate-600">Pending</span>
+              <span className="text-xs text-slate-600">미지정</span>
             </div>
           </div>
         </div>

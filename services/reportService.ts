@@ -653,6 +653,8 @@ export const generateReport = (
   `;
 
   const newReport = createReportFromRecord(record, htmlContent);
+  // Generate 버튼으로 생성된 Report는 isGenerated = true
+  (newReport as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
   if (onReportSaved) {
     onReportSaved(newReport);
   } else {
