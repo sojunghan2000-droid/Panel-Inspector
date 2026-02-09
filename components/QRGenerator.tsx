@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown, Hash, Zap, GitBranch } from 'lucide-react';
+import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown, Hash, Zap, GitBranch, ChevronLeft } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
 import FloorPlanView from './FloorPlanView';
 
@@ -1456,9 +1456,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   }, [isSelectFocused]);
 
   return (
-    <div className="h-full flex bg-slate-50" style={{ overflow: isSelectFocused ? 'visible' : 'hidden' }}>
-      {/* Left Panel: QR List */}
-      <div className="w-1/3 border-r border-slate-200 bg-white overflow-y-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-full min-h-0" style={{ overflow: isSelectFocused ? 'visible' : 'hidden' }}>
+      {/* Left Panel: QR List - 모바일에서는 패널 미선택 시만 표시 */}
+      <div className={`
+        ${selectedQR || showInlineCreateForm ? 'hidden' : 'flex'}
+        lg:flex lg:col-span-4 flex-col h-full min-h-0
+      `}>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 h-full overflow-y-auto">
         <div className="p-3 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
@@ -1579,12 +1583,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             })}
           </div>
         )}
+        </div>
       </div>
 
-      {/* Right Panel: QR Generator & Details */}
+      {/* Right Panel: QR Generator & Details - 모바일에서는 패널 선택 시만 표시 */}
       <div
         ref={rightPanelScrollRef}
-        className="flex-1 overflow-y-auto"
+        className={`
+          ${selectedQR || showInlineCreateForm ? 'flex' : 'hidden'}
+          lg:flex lg:col-span-8 h-full min-h-0 flex-col overflow-hidden
+        `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
         {/* 패널 미선택 & 폼 미표시 시 안내 메시지 */}
@@ -1624,6 +1632,19 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         >
           {/* Header */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            {/* 모바일: 목록으로 돌아가기 버튼 */}
+            <button
+              onClick={() => {
+                setSelectedQR(null);
+                setShowInlineCreateForm(false);
+                setIsEditing(false);
+                resetForm();
+              }}
+              className="lg:hidden flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4 text-sm font-medium"
+            >
+              <ChevronLeft size={18} />
+              목록으로
+            </button>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-blue-100 rounded-lg">
