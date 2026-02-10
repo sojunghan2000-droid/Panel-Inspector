@@ -762,55 +762,48 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px]">
-        {/* 상단 오버레이 컨테이너 - 층별 현황 + Legend 가지런히 배치 */}
-        <div className="absolute top-3 left-3 right-3 z-10 flex justify-between items-start pointer-events-none">
-          {/* 층별 현황판 - 좌측 */}
-          <div className="bg-white/95 rounded-lg border border-slate-200 px-3 py-2 text-xs shadow-lg backdrop-blur-sm pointer-events-auto">
-            <div className="font-semibold text-slate-700 mb-1.5 border-b border-slate-100 pb-1 uppercase tracking-wide">층별 현황</div>
-            <div className="space-y-0.5">
-              {['F6', 'F5', 'F4', 'F3', 'F2', 'F1'].map(floor => (
-                <div key={floor} className="flex justify-between gap-3">
-                  <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
-                  <span className={`font-medium ${floorStats.stats[floor] > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
-                    {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : 'N/A'}
-                  </span>
-                </div>
-              ))}
-              {['B1', 'B2'].map(floor => (
-                <div key={floor} className="flex justify-between gap-3">
-                  <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
-                  <span className={`font-medium ${floorStats.stats[floor] > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
-                    {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : 'N/A'}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-between gap-3 mt-1.5 pt-1 border-t border-slate-100 font-semibold">
-              <span className="text-slate-700">총:</span>
-              <span className="text-emerald-600">{floorStats.total}면</span>
-            </div>
+      {/* 층별 현황 + Legend - 사진 영역 위에 가로 배치 */}
+      <div className="px-4 py-3 border-b border-slate-200 bg-white flex flex-wrap justify-between items-start gap-4">
+        {/* 층별 현황판 */}
+        <div className="flex-1 min-w-[200px]">
+          <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">층별 현황</div>
+          <div className="grid grid-cols-4 gap-x-4 gap-y-1 text-xs">
+            {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
+              <div key={floor} className="flex justify-between gap-1">
+                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
+                <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
+                  {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
+                </span>
+              </div>
+            ))}
           </div>
+          <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100 text-xs font-semibold">
+            <span className="text-slate-700">총:</span>
+            <span className="text-emerald-600">{floorStats.total}면</span>
+          </div>
+        </div>
 
-          {/* Legend - 우측 */}
-          <div className="bg-white/95 rounded-lg border border-slate-200 px-3 py-2 text-xs shadow-lg backdrop-blur-sm pointer-events-auto">
-            <div className="font-semibold text-slate-700 mb-1.5 border-b border-slate-100 pb-1 uppercase tracking-wide">Legend (TR)</div>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
-                <span className="text-slate-600">TR-1 900KVA</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
-                <span className="text-slate-600">TR-2 950KVA</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
-                <span className="text-slate-600">미지정</span>
-              </div>
+        {/* Legend */}
+        <div className="flex-shrink-0">
+          <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</div>
+          <div className="flex flex-wrap gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
+              <span className="text-slate-600">TR-1 900KVA</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
+              <span className="text-slate-600">TR-2 950KVA</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
+              <span className="text-slate-600">미지정</span>
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px]">
 
         {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
         <div
