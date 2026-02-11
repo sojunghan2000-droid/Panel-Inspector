@@ -198,9 +198,9 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden min-h-0">
         {/* Reports List */}
-        <div className="w-1/2 border-r border-slate-200 bg-white overflow-y-auto">
+        <div className={`${selectedReport ? 'hidden lg:flex' : 'flex'} lg:col-span-4 flex-col border-r border-slate-200 bg-white overflow-y-auto h-full min-h-0`}>
           {filteredReports.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
               <FileText size={48} className="mb-4 opacity-50" />
@@ -276,9 +276,16 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
         </div>
 
         {/* Report Preview */}
-        <div className="w-1/2 bg-slate-50 overflow-y-auto">
+        <div className={`${selectedReport ? 'flex' : 'hidden lg:flex'} lg:col-span-8 flex-col bg-slate-50 overflow-y-auto h-full min-h-0`}>
+          {/* 모바일 뒤로가기 */}
+          <button
+            onClick={() => setSelectedReport(null)}
+            className="lg:hidden flex items-center gap-1 px-4 py-2.5 text-sm text-slate-600 hover:text-slate-800 border-b border-slate-200 bg-white"
+          >
+            <span>&#8592;</span> 목록으로
+          </button>
           {selectedReport ? (
-            <div className="h-full">
+            <div className="flex-1 min-h-0">
               {/* HTML 보고서 렌더링 */}
               <iframe
                 srcDoc={selectedReport.htmlContent}
