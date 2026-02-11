@@ -803,7 +803,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px]">
+      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6">
 
         {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
         <div
@@ -827,6 +827,46 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               img.src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop';
             }}
           />
+
+          {/* Scale Grid Overlay (0, 25, 50, 75, 100) */}
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+            {/* 세로 그리드선 (x축) */}
+            {[0, 25, 50, 75, 100].map(val => (
+              <div
+                key={`v-${val}`}
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${val}%`,
+                  borderLeft: '1px dashed rgba(148, 163, 184, 0.4)',
+                }}
+              >
+                <span
+                  className="absolute text-[10px] text-slate-400 font-mono select-none"
+                  style={{ top: '-18px', left: '50%', transform: 'translateX(-50%)' }}
+                >
+                  {val}
+                </span>
+              </div>
+            ))}
+            {/* 가로 그리드선 (y축) */}
+            {[0, 25, 50, 75, 100].map(val => (
+              <div
+                key={`h-${val}`}
+                className="absolute left-0 right-0"
+                style={{
+                  top: `${val}%`,
+                  borderTop: '1px dashed rgba(148, 163, 184, 0.4)',
+                }}
+              >
+                <span
+                  className="absolute text-[10px] text-slate-400 font-mono select-none"
+                  style={{ left: '-24px', top: '50%', transform: 'translateY(-50%)' }}
+                >
+                  {val}
+                </span>
+              </div>
+            ))}
+          </div>
 
           {/* Markers */}
           {allMarkers.length === 0 && (
