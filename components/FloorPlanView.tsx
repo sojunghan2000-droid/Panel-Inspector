@@ -476,52 +476,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
     const container = e.currentTarget;
     const rect = container.getBoundingClientRect();
-    const img = container.querySelector('img');
-    
-    if (!img) return;
 
-    // 이미지의 실제 표시 영역 계산 (object-contain 고려)
-    const imgRect = img.getBoundingClientRect();
-    const imgNaturalWidth = img.naturalWidth;
-    const imgNaturalHeight = img.naturalHeight;
-    
-    if (imgNaturalWidth === 0 || imgNaturalHeight === 0) return;
-
-    // 이미지의 실제 표시 크기 계산
-    const containerAspect = rect.width / rect.height;
-    const imageAspect = imgNaturalWidth / imgNaturalHeight;
-    
-    let displayWidth: number;
-    let displayHeight: number;
-    let offsetX: number;
-    let offsetY: number;
-
-    if (imageAspect > containerAspect) {
-      // 이미지가 컨테이너보다 넓음 (좌우 여백)
-      displayWidth = rect.width;
-      displayHeight = rect.width / imageAspect;
-      offsetX = 0;
-      offsetY = (rect.height - displayHeight) / 2;
-    } else {
-      // 이미지가 컨테이너보다 높음 (상하 여백)
-      displayWidth = rect.height * imageAspect;
-      displayHeight = rect.height;
-      offsetX = (rect.width - displayWidth) / 2;
-      offsetY = 0;
-    }
-
-    // 클릭한 위치를 이미지 기준으로 계산
-    const clickX = e.clientX - rect.left - offsetX;
-    const clickY = e.clientY - rect.top - offsetY;
-    
-    // 이미지 영역 내부인지 확인
-    if (clickX < 0 || clickX > displayWidth || clickY < 0 || clickY > displayHeight) {
-      return; // 이미지 영역 밖 클릭은 무시
-    }
-    
-    // 퍼센트 좌표로 변환
-    const x = (clickX / displayWidth) * 100;
-    const y = (clickY / displayHeight) * 100;
+    // 컨테이너 기준 퍼센트 좌표 계산 (마커 렌더링/그리드 눈금과 동일한 좌표계)
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const x = (clickX / rect.width) * 100;
+    const y = (clickY / rect.height) * 100;
     
     // 좌표를 0-100 범위로 제한
     const clampedX = Math.max(0, Math.min(100, x));
