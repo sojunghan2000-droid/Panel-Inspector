@@ -592,6 +592,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     });
   }, [inspections]);
 
+  // 미지정 위치 패널 필터링
+  const unpositionedInspections = useMemo(() => {
+    return inspections.filter(i => !i.position);
+  }, [inspections]);
+
   // Combine inspections and QR locations for display
   // QR과 ID는 하나의 객체이므로 ID로 매칭하여 통합
   const allMarkers = useMemo(() => {
@@ -927,6 +932,31 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             );
           })}
         </div>
+
+        {/* 미지정 위치 패널 목록 */}
+        {unpositionedInspections.length > 0 && (
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3">
+            <p className="text-xs text-slate-400 font-medium mb-2">
+              미지정 위치 ({unpositionedInspections.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {unpositionedInspections.map(item => (
+                <button
+                  key={item.panelNo}
+                  onClick={() => handleMarkerClick(item)}
+                  className={`flex items-center gap-1.5 px-2 py-1 bg-white border rounded text-xs transition-colors ${
+                    selectedInspection?.panelNo === item.panelNo
+                      ? 'border-blue-400 text-blue-600 bg-blue-50'
+                      : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  {item.panelNo}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Selected Inspection Details Panel (showDetailPanel=false면 목록 선택 시 모달 미표시, dashboard 모드에서는 표시 안함) */}
         {showDetailPanel && mode !== 'dashboard' && selectedInspection && (() => {

@@ -65,13 +65,8 @@ const formatDateTime = (date: Date = new Date()): string => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// 유틸리티 함수: position이 없는 항목에 기본 위치 추가
+// 유틸리티 함수: position 그대로 반환 (랜덤 위치 부여 안 함 - 미지정 패널은 FloorPlanView에서 회색 표시)
 const ensurePosition = (item: InspectionRecord): InspectionRecord => {
-  if (!item.position) {
-    const randomX = Math.floor(Math.random() * 80) + 10;
-    const randomY = Math.floor(Math.random() * 80) + 10;
-    return { ...item, position: { x: randomX, y: randomY } };
-  }
   return item;
 };
 
@@ -501,7 +496,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.12</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.13</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
