@@ -65,21 +65,29 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
         await html5QrCode.start(
           cameraId || { facingMode: 'environment' },
           config,
-          (decodedText) => {
+          async (decodedText) => {
             // QR 코드 스캔 성공
             if (isMounted) {
+              console.log('📱 QR 스캔 성공:', decodedText);
               setScannedData(decodedText);
               setIsScanning(false);
-              onScanSuccessRef.current(decodedText);
-              
-              // 스캔 후 자동으로 정리
+
+              // 스캔 후 먼저 스캐너 정리
               if (scannerRef.current) {
-                scannerRef.current.stop().then(() => {
-                  if (scannerRef.current) {
-                    scannerRef.current.clear().catch(() => {});
-                    scannerRef.current = null;
-                  }
-                }).catch(() => {});
+                try {
+                  await scannerRef.current.stop();
+                  scannerRef.current.clear().catch(() => {});
+                  scannerRef.current = null;
+                } catch (e) {
+                  console.log('스캐너 정리 중 오류:', e);
+                }
+              }
+
+              // 콜백 호출 (try-catch로 에러 방지)
+              try {
+                onScanSuccessRef.current(decodedText);
+              } catch (callbackError) {
+                console.error('콜백 실행 오류:', callbackError);
               }
             }
           },
