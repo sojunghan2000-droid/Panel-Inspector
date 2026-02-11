@@ -192,21 +192,21 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           // 내부 마커 클릭이면 스크롤 생략 (스크롤 초기화 방지)
           const shouldScroll = !isInternalSelectionRef.current;
 
-          // PNL NO.에서 층수 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1 → 1=F1, 2=B1)
-          const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
-          let inspectionFloor: 'F1' | 'B1' = 'F1';
-          const floorMap: { [key: string]: 'F1' | 'B1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'B2' } = {
-            '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6',
-            '7': 'B1', '8': 'B2',
-            'A': 'F1', 'B': 'B1', 'F1': 'F1', 'B1': 'B1',
-            'F2': 'F2', 'F3': 'F3', 'F4': 'F4', 'F5': 'F5', 'F6': 'F6', 'B2': 'B2',
-          };
-          if (idParts.length === 1 && idParts[0]) {
-            inspectionFloor = floorMap[idParts[0].toUpperCase()] || 'F1';
-          } else if (idParts.length >= 2) {
-            const first = idParts[0]?.toUpperCase() || '';
-            const second = idParts[1]?.toUpperCase() || '';
-            inspectionFloor = floorMap[first] || (idParts.length >= 3 ? (floorMap[second] || 'F1') : 'F1');
+          // 층수 결정: inspection.floor 필드 우선, 없으면 panelNo에서 추출
+          let inspectionFloor: string = 'F1';
+          if (inspection.floor) {
+            // inspection에 floor가 명시적으로 저장되어 있으면 그대로 사용
+            inspectionFloor = toFloorLabel(inspection.floor) || inspection.floor;
+          } else {
+            // floor가 없으면 panelNo에서 추출 (fallback)
+            const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
+            const floorMap: { [key: string]: string } = {
+              '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6',
+              '7': 'B1', '8': 'B2',
+            };
+            if (idParts.length >= 1 && idParts[0]) {
+              inspectionFloor = floorMap[idParts[0]] || 'F1';
+            }
           }
           const tabForFloor = floorToTab(inspectionFloor);
           if (tabForFloor !== selectedFloor) {
