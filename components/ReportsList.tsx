@@ -33,10 +33,14 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     return 0;
   };
 
-  // 승인된 Report만 필터링 (isGenerated === true) 및 PNL NO. 순 정렬
+  // 승인된 Report만 필터링 (isGenerated === true), boardId 중복 제거 (최신만), PNL NO. 순 정렬
   const approvedReports = useMemo(() => {
     return reports
       .filter(r => (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true)
+      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+      .filter((report, index, self) =>
+        index === self.findIndex(r => r.boardId === report.boardId)
+      )
       .sort((a, b) => naturalSort(a.boardId, b.boardId));
   }, [reports]);
 
@@ -150,6 +154,10 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     .filter(report =>
       report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+    .filter((report, index, self) =>
+      index === self.findIndex(r => r.boardId === report.boardId)
     );
 
   const formatDate = (dateString: string) => {

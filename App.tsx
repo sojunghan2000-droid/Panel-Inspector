@@ -435,6 +435,8 @@ const App: React.FC = () => {
           contractor: data.contractor || matchedQRData.contractor || existingBoard.contractor || '',
           managementNumber: data.managementNumber || matchedQRData.managementNumber || existingBoard.managementNumber || finalPanelNo,
           floor: data.floor || matchedQRData.floor || existingBoard.floor,
+          tr: data.tr || matchedQRData.tr || matchedQRData.location || existingBoard.tr,
+          nominalCrossSection: data.nominalCrossSection || matchedQRData.nominalCrossSection || existingBoard.nominalCrossSection || '',
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
         console.log('✅ 기존 보드 업데이트, dashboard로 이동');
@@ -496,7 +498,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.15</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.16</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -860,7 +862,29 @@ const App: React.FC = () => {
                 </p>
               </div>
               {/* Footer */}
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    // 신규 패널 등록 후 Inspection으로 이동
+                    const newItem: InspectionRecord = {
+                      panelNo: unregisteredPanelNo,
+                      status: 'Pending' as const,
+                      lastInspectionDate: formatDateTime(),
+                      loads: { welder: false, grinder: false, light: false, pump: false },
+                      photoUrl: null,
+                      memo: '',
+                      floor: 'F1',
+                    };
+                    setInspections(prev => [newItem, ...prev]);
+                    setShowUnregisteredModal(false);
+                    setUnregisteredPanelNo('');
+                    setCurrentPage('dashboard');
+                    setSelectedInspectionId(newItem.panelNo);
+                  }}
+                  className="px-6 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  신규 등록
+                </button>
                 <button
                   onClick={() => {
                     setShowUnregisteredModal(false);
@@ -868,7 +892,7 @@ const App: React.FC = () => {
                   }}
                   className="px-6 py-2.5 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
                 >
-                  확인
+                  닫기
                 </button>
               </div>
             </div>
