@@ -394,28 +394,50 @@ const App: React.FC = () => {
       const qrPanelNo = data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
       console.log('🏷️ PNL NO:', qrPanelNo);
 
+      // qrCodes에서 매칭되는 QR 찾기 (Panel Master에서 등록한 QR)
       const matchedQR = qrCodes.find((qr: any) => {
         try {
           const qrDataObj = JSON.parse(qr.qrData || '{}');
-          return qrDataObj.id === qrPanelNo || qrDataObj.panelNo === qrPanelNo || qr.id === qrPanelNo;
+          // QR 데이터의 id/panelNo와 비교
+          const matches = qrDataObj.id === qrPanelNo ||
+                         qrDataObj.panelNo === qrPanelNo ||
+                         qr.location === data.location;
+          console.log('  - 비교:', qrDataObj.id, qrDataObj.panelNo, '===', qrPanelNo, '결과:', matches);
+          return matches;
         } catch {
-          return qr.id === qrPanelNo;
+          return false;
         }
       });
       console.log('🔗 matchedQR:', matchedQR);
+
+      // matchedQR에서 데이터 추출
+      let matchedQRData: any = {};
+      if (matchedQR) {
+        try {
+          matchedQRData = JSON.parse(matchedQR.qrData || '{}');
+          console.log('📋 matchedQRData:', matchedQRData);
+        } catch {
+          matchedQRData = {};
+        }
+      }
 
       // 기존 보드 찾기 (panelNo 기준)
       const existingBoard = inspections.find(i => i.panelNo === qrPanelNo || i.panelNo.includes(qrPanelNo));
       console.log('📋 existingBoard:', existingBoard);
 
+      // 최종 PNL NO 결정
+      const finalPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || matchedQRData.panelNo || qrPanelNo;
+      console.log('🎯 최종 PNL NO:', finalPanelNo);
+
       if (existingBoard) {
+        // 기존 보드가 있으면 업데이트
         const updatedBoard: InspectionRecord = {
           ...existingBoard,
           lastInspectionDate: scanTime,
-          panelNo: data.panelNo || data.pnlNo || existingBoard.panelNo || (matchedQR ? `PNL NO. ${qrPanelNo}` : existingBoard.panelNo),
-          projectName: data.projectName || data.pjtName || data.pjt || existingBoard.projectName || '',
-          contractor: data.contractor || data.시공사 || existingBoard.contractor || '',
-          managementNumber: data.managementNumber || data.관리번호 || data.panelName || existingBoard.managementNumber || qrPanelNo,
+          projectName: data.projectName || matchedQRData.projectName || existingBoard.projectName || '',
+          contractor: data.contractor || matchedQRData.contractor || existingBoard.contractor || '',
+          managementNumber: data.managementNumber || matchedQRData.managementNumber || existingBoard.managementNumber || finalPanelNo,
+          floor: data.floor || matchedQRData.floor || existingBoard.floor,
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
         console.log('✅ 기존 보드 업데이트, dashboard로 이동');
@@ -423,39 +445,33 @@ const App: React.FC = () => {
         setSelectedInspectionId(existingBoard.panelNo);
         setShowScanner(false);
       } else {
-        // matchedQR에서 추가 정보 추출 (Panel Master에서 등록한 QR 정보 활용)
-        let matchedQRData: any = {};
-        if (matchedQR) {
-          try {
-            matchedQRData = JSON.parse(matchedQR.qrData || '{}');
-          } catch {
-            matchedQRData = {};
-          }
-        }
-
-        const newPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || `DB-${data.floor || matchedQRData.floor || 'F1'}-${data.location || matchedQRData.location || 'LOC'}`;
-        console.log('🆕 새 PNL NO:', newPanelNo);
-
+        // 새 InspectionRecord 생성
         // position 정보 결합 (QR 데이터 또는 matchedQR에서)
         const positionData = data.position || matchedQRData.position;
 
         const newItem: InspectionRecord = {
-          panelNo: newPanelNo,
+          panelNo: finalPanelNo,
           status: 'In Progress',
           lastInspectionDate: scanTime,
           loads: { welder: false, grinder: false, light: false, pump: false },
           photoUrl: null,
           memo: '',
+          floor: data.floor || matchedQRData.floor || 'F1',
           position: positionData ? (typeof positionData === 'object' ? positionData : { x: parseFloat(positionData) || 50, y: 50 }) : undefined,
-          projectName: data.projectName || data.pjtName || data.pjt || matchedQRData.projectName || (matchedQR as any)?.projectName || '',
-          contractor: data.contractor || data.시공사 || matchedQRData.contractor || (matchedQR as any)?.contractor || '',
-          managementNumber: data.managementNumber || data.관리번호 || data.panelName || matchedQRData.managementNumber || (matchedQR as any)?.managementNumber || newPanelNo,
+          projectName: data.projectName || matchedQRData.projectName || '',
+          contractor: data.contractor || matchedQRData.contractor || '',
+          managementNumber: data.managementNumber || matchedQRData.managementNumber || finalPanelNo,
         };
         console.log('📝 새 항목 생성:', newItem);
+
+        // inspections에 추가
         setInspections(prev => [newItem, ...prev]);
+
         console.log('✅ 새 보드 추가, dashboard로 이동');
+
+        // Inspection 페이지로 이동하고 해당 패널 선택
         setCurrentPage('dashboard');
-        setSelectedInspectionId(newPanelNo);
+        setSelectedInspectionId(finalPanelNo);
         setShowScanner(false);
       }
     } catch (error) {
@@ -506,7 +522,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.2</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.5</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
