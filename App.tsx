@@ -8,7 +8,7 @@ import ReportsList from './components/ReportsList';
 import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical } from 'lucide-react';
+import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle } from 'lucide-react';
 import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
@@ -166,6 +166,8 @@ const App: React.FC = () => {
   const [showExportPreview, setShowExportPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
+  const [unregisteredPanelNo, setUnregisteredPanelNo] = useState<string>('');
 
   // PWA 설치 프롬프트 상태
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -445,33 +447,10 @@ const App: React.FC = () => {
         setSelectedInspectionId(existingBoard.panelNo);
         setShowScanner(false);
       } else {
-        // 새 InspectionRecord 생성
-        // position 정보 결합 (QR 데이터 또는 matchedQR에서)
-        const positionData = data.position || matchedQRData.position;
-
-        const newItem: InspectionRecord = {
-          panelNo: finalPanelNo,
-          status: 'In Progress',
-          lastInspectionDate: scanTime,
-          loads: { welder: false, grinder: false, light: false, pump: false },
-          photoUrl: null,
-          memo: '',
-          floor: data.floor || matchedQRData.floor || 'F1',
-          position: positionData ? (typeof positionData === 'object' ? positionData : { x: parseFloat(positionData) || 50, y: 50 }) : undefined,
-          projectName: data.projectName || matchedQRData.projectName || '',
-          contractor: data.contractor || matchedQRData.contractor || '',
-          managementNumber: data.managementNumber || matchedQRData.managementNumber || finalPanelNo,
-        };
-        console.log('📝 새 항목 생성:', newItem);
-
-        // inspections에 추가
-        setInspections(prev => [newItem, ...prev]);
-
-        console.log('✅ 새 보드 추가, dashboard로 이동');
-
-        // Inspection 페이지로 이동하고 해당 패널 선택
-        setCurrentPage('dashboard');
-        setSelectedInspectionId(finalPanelNo);
+        // 미등록 패널 - Modal 표시
+        console.log('⚠️ 미등록 패널:', finalPanelNo);
+        setUnregisteredPanelNo(finalPanelNo);
+        setShowUnregisteredModal(true);
         setShowScanner(false);
       }
     } catch (error) {
@@ -522,7 +501,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.8</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.9</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -863,6 +842,42 @@ const App: React.FC = () => {
             onScanSuccess={handleQRScanSuccess}
             onClose={() => setShowScanner(false)}
           />
+        )}
+
+        {/* 미등록 패널 Modal */}
+        {showUnregisteredModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md mx-4 overflow-hidden animate-fade-in">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-6 py-4 bg-amber-50 border-b border-amber-200">
+                <div className="p-2 bg-amber-100 rounded-full">
+                  <AlertTriangle size={24} className="text-amber-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800">미등록 패널</h3>
+              </div>
+              {/* Body */}
+              <div className="px-6 py-5">
+                <p className="text-gray-700 text-sm leading-relaxed">
+                  스캔된 패널 <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">{unregisteredPanelNo}</span> 은(는) 등록되지 않은 패널입니다.
+                </p>
+                <p className="text-gray-500 text-xs mt-3">
+                  Panel Master에서 해당 패널을 먼저 등록해주세요.
+                </p>
+              </div>
+              {/* Footer */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowUnregisteredModal(false);
+                    setUnregisteredPanelNo('');
+                  }}
+                  className="px-6 py-2.5 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 엑셀 내보내기 검토 모달 */}
