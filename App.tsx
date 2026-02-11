@@ -522,7 +522,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.6</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.7</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -849,10 +849,10 @@ const App: React.FC = () => {
           )}
         </main>
 
-        {/* Floating Action Button (Mobile Scan) */}
-        <button 
+        {/* Floating Action Button (Scan) - PC/모바일 모두 표시 */}
+        <button
           onClick={() => setShowScanner(true)}
-          className="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-105 transition-transform"
+          className="absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-105 transition-transform hover:bg-blue-700"
         >
           <ScanLine size={24} />
         </button>
