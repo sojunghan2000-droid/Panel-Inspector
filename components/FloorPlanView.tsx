@@ -192,21 +192,21 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           // 내부 마커 클릭이면 스크롤 생략 (스크롤 초기화 방지)
           const shouldScroll = !isInternalSelectionRef.current;
 
-          // PNL NO.에서 층수 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1 → 1=F1, 2=B1)
-          const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
-          let inspectionFloor: 'F1' | 'B1' = 'F1';
-          const floorMap: { [key: string]: 'F1' | 'B1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'B2' } = {
-            '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6',
-            '7': 'B1', '8': 'B2',
-            'A': 'F1', 'B': 'B1', 'F1': 'F1', 'B1': 'B1',
-            'F2': 'F2', 'F3': 'F3', 'F4': 'F4', 'F5': 'F5', 'F6': 'F6', 'B2': 'B2',
-          };
-          if (idParts.length === 1 && idParts[0]) {
-            inspectionFloor = floorMap[idParts[0].toUpperCase()] || 'F1';
-          } else if (idParts.length >= 2) {
-            const first = idParts[0]?.toUpperCase() || '';
-            const second = idParts[1]?.toUpperCase() || '';
-            inspectionFloor = floorMap[first] || (idParts.length >= 3 ? (floorMap[second] || 'F1') : 'F1');
+          // 층수 결정: inspection.floor 필드 우선, 없으면 panelNo에서 추출
+          let inspectionFloor: string = 'F1';
+          if (inspection.floor) {
+            // inspection에 floor가 명시적으로 저장되어 있으면 그대로 사용
+            inspectionFloor = toFloorLabel(inspection.floor) || inspection.floor;
+          } else {
+            // floor가 없으면 panelNo에서 추출 (fallback)
+            const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
+            const floorMap: { [key: string]: string } = {
+              '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6',
+              '7': 'B1', '8': 'B2',
+            };
+            if (idParts.length >= 1 && idParts[0]) {
+              inspectionFloor = floorMap[idParts[0]] || 'F1';
+            }
           }
           const tabForFloor = floorToTab(inspectionFloor);
           if (tabForFloor !== selectedFloor) {
@@ -476,52 +476,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
     const container = e.currentTarget;
     const rect = container.getBoundingClientRect();
-    const img = container.querySelector('img');
-    
-    if (!img) return;
 
-    // 이미지의 실제 표시 영역 계산 (object-contain 고려)
-    const imgRect = img.getBoundingClientRect();
-    const imgNaturalWidth = img.naturalWidth;
-    const imgNaturalHeight = img.naturalHeight;
-    
-    if (imgNaturalWidth === 0 || imgNaturalHeight === 0) return;
-
-    // 이미지의 실제 표시 크기 계산
-    const containerAspect = rect.width / rect.height;
-    const imageAspect = imgNaturalWidth / imgNaturalHeight;
-    
-    let displayWidth: number;
-    let displayHeight: number;
-    let offsetX: number;
-    let offsetY: number;
-
-    if (imageAspect > containerAspect) {
-      // 이미지가 컨테이너보다 넓음 (좌우 여백)
-      displayWidth = rect.width;
-      displayHeight = rect.width / imageAspect;
-      offsetX = 0;
-      offsetY = (rect.height - displayHeight) / 2;
-    } else {
-      // 이미지가 컨테이너보다 높음 (상하 여백)
-      displayWidth = rect.height * imageAspect;
-      displayHeight = rect.height;
-      offsetX = (rect.width - displayWidth) / 2;
-      offsetY = 0;
-    }
-
-    // 클릭한 위치를 이미지 기준으로 계산
-    const clickX = e.clientX - rect.left - offsetX;
-    const clickY = e.clientY - rect.top - offsetY;
-    
-    // 이미지 영역 내부인지 확인
-    if (clickX < 0 || clickX > displayWidth || clickY < 0 || clickY > displayHeight) {
-      return; // 이미지 영역 밖 클릭은 무시
-    }
-    
-    // 퍼센트 좌표로 변환
-    const x = (clickX / displayWidth) * 100;
-    const y = (clickY / displayHeight) * 100;
+    // 컨테이너 기준 퍼센트 좌표 계산 (마커 렌더링/그리드 눈금과 동일한 좌표계)
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const x = (clickX / rect.width) * 100;
+    const y = (clickY / rect.height) * 100;
     
     // 좌표를 0-100 범위로 제한
     const clampedX = Math.max(0, Math.min(100, x));
@@ -590,6 +550,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       seen.add(inspection.panelNo);
       return true;
     });
+  }, [inspections]);
+
+  // 미지정 위치 패널 필터링
+  const unpositionedInspections = useMemo(() => {
+    return inspections.filter(i => !i.position);
   }, [inspections]);
 
   // Combine inspections and QR locations for display
@@ -803,7 +768,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px]">
+      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6">
 
         {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
         <div
@@ -827,6 +792,46 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               img.src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop';
             }}
           />
+
+          {/* Scale Grid Overlay (0, 25, 50, 75, 100) */}
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+            {/* 세로 그리드선 (x축) */}
+            {[0, 25, 50, 75, 100].map(val => (
+              <div
+                key={`v-${val}`}
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${val}%`,
+                  borderLeft: '1px dashed rgba(148, 163, 184, 0.4)',
+                }}
+              >
+                <span
+                  className="absolute text-[10px] text-slate-400 font-mono select-none"
+                  style={{ top: '-18px', left: '50%', transform: 'translateX(-50%)' }}
+                >
+                  {val}
+                </span>
+              </div>
+            ))}
+            {/* 가로 그리드선 (y축) */}
+            {[0, 25, 50, 75, 100].map(val => (
+              <div
+                key={`h-${val}`}
+                className="absolute left-0 right-0"
+                style={{
+                  top: `${val}%`,
+                  borderTop: '1px dashed rgba(148, 163, 184, 0.4)',
+                }}
+              >
+                <span
+                  className="absolute text-[10px] text-slate-400 font-mono select-none"
+                  style={{ left: '-24px', top: '50%', transform: 'translateY(-50%)' }}
+                >
+                  {val}
+                </span>
+              </div>
+            ))}
+          </div>
 
           {/* Markers */}
           {allMarkers.length === 0 && (
@@ -887,6 +892,31 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             );
           })}
         </div>
+
+        {/* 미지정 위치 패널 목록 */}
+        {unpositionedInspections.length > 0 && (
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3">
+            <p className="text-xs text-slate-400 font-medium mb-2">
+              미지정 위치 ({unpositionedInspections.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {unpositionedInspections.map(item => (
+                <button
+                  key={item.panelNo}
+                  onClick={() => handleMarkerClick(item)}
+                  className={`flex items-center gap-1.5 px-2 py-1 bg-white border rounded text-xs transition-colors ${
+                    selectedInspection?.panelNo === item.panelNo
+                      ? 'border-blue-400 text-blue-600 bg-blue-50'
+                      : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  {item.panelNo}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Selected Inspection Details Panel (showDetailPanel=false면 목록 선택 시 모달 미표시, dashboard 모드에서는 표시 안함) */}
         {showDetailPanel && mode !== 'dashboard' && selectedInspection && (() => {

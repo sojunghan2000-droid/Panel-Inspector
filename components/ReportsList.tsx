@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ReportHistory, InspectionRecord } from '../types';
 import { viewReport, exportReportToExcel } from '../services/reportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer } from 'lucide-react';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
@@ -33,10 +33,14 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     return 0;
   };
 
-  // 승인된 Report만 필터링 (isGenerated === true) 및 PNL NO. 순 정렬
+  // 승인된 Report만 필터링 (isGenerated === true), boardId 중복 제거 (최신만), PNL NO. 순 정렬
   const approvedReports = useMemo(() => {
     return reports
       .filter(r => (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true)
+      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+      .filter((report, index, self) =>
+        index === self.findIndex(r => r.boardId === report.boardId)
+      )
       .sort((a, b) => naturalSort(a.boardId, b.boardId));
   }, [reports]);
 
@@ -150,6 +154,10 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     .filter(report =>
       report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+    .filter((report, index, self) =>
+      index === self.findIndex(r => r.boardId === report.boardId)
     );
 
   const formatDate = (dateString: string) => {
@@ -277,12 +285,13 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
 
         {/* Report Preview */}
         <div className={`${selectedReport ? 'flex' : 'hidden lg:flex'} lg:col-span-8 flex-col bg-slate-50 overflow-y-auto h-full min-h-0`}>
-          {/* 모바일 뒤로가기 */}
+          {/* 목록으로 버튼 - 모바일에서만 표시 */}
           <button
             onClick={() => setSelectedReport(null)}
-            className="lg:hidden flex items-center gap-1 px-4 py-2.5 text-sm text-slate-600 hover:text-slate-800 border-b border-slate-200 bg-white"
+            className="lg:hidden flex items-center gap-2 text-slate-600 hover:text-slate-800 px-4 pt-3 text-sm font-medium"
           >
-            <span>&#8592;</span> 목록으로
+            <ChevronLeft size={18} />
+            목록으로
           </button>
           {selectedReport ? (
             <div className="flex-1 min-h-0">
