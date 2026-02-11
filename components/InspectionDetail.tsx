@@ -704,29 +704,32 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">PJT명</label>
-              <input 
-                type="text" 
-                value={formData.projectName || ''} 
+              <input
+                type="text"
+                value={formData.projectName || ''}
                 onChange={(e) => handleBasicInfoChange('projectName', e.target.value)}
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="-"
               />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">시공사</label>
-              <input 
-                type="text" 
-                value={formData.contractor || ''} 
+              <input
+                type="text"
+                value={formData.contractor || ''}
                 onChange={(e) => handleBasicInfoChange('contractor', e.target.value)}
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="-"
               />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">관리번호 (판넬명)</label>
-              <input 
-                type="text" 
-                value={formData.managementNumber || ''} 
+              <input
+                type="text"
+                value={formData.managementNumber || ''}
                 onChange={(e) => handleBasicInfoChange('managementNumber', e.target.value)}
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                placeholder="-"
               />
             </div>
           </div>
@@ -735,21 +738,33 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">TR</label>
-              <input
-                type="text"
-                value={formData.tr ? (formData.tr === 'A' ? 'TR-1 900KVA' : formData.tr === 'B' ? 'TR-2 950KVA' : formData.tr) : ''}
-                disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
-              />
+              <select
+                value={formData.tr || ''}
+                onChange={(e) => handleBasicInfoChange('tr', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">-</option>
+                <option value="A">TR-1 900KVA</option>
+                <option value="B">TR-2 950KVA</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">층수</label>
-              <input
-                type="text"
+              <select
                 value={formData.floor || ''}
-                disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
-              />
+                onChange={(e) => handleBasicInfoChange('floor', e.target.value)}
+                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">-</option>
+                <option value="F1">F1 (지상1층)</option>
+                <option value="F2">F2 (지상2층)</option>
+                <option value="F3">F3 (지상3층)</option>
+                <option value="F4">F4 (지상4층)</option>
+                <option value="F5">F5 (지상5층)</option>
+                <option value="F6">F6 (지상6층)</option>
+                <option value="B1">B1 (지하1층)</option>
+                <option value="B2">B2 (지하2층)</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">공칭 단면적</label>
@@ -757,7 +772,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 type="text"
                 value={formData.nominalCrossSection || ''}
                 onChange={(e) => handleBasicInfoChange('nominalCrossSection', e.target.value)}
-                placeholder="예: 95SQ"
+                placeholder="-"
                 className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
             </div>
