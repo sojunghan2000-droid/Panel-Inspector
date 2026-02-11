@@ -9,10 +9,16 @@ interface QRScannerProps {
 
 const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const onScanSuccessRef = useRef(onScanSuccess);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scannedData, setScannedData] = useState<string | null>(null);
   const scannerId = 'qr-scanner';
+
+  // onScanSuccess가 변경되면 ref 업데이트
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess;
+  }, [onScanSuccess]);
 
   useEffect(() => {
     let isMounted = true;
