@@ -76,19 +76,25 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
               if (scannerRef.current) {
                 try {
                   await scannerRef.current.stop();
-                  scannerRef.current.clear().catch(() => {});
-                  scannerRef.current = null;
                 } catch (e) {
-                  console.log('스캐너 정리 중 오류:', e);
+                  console.log('스캐너 stop 중 오류:', e);
                 }
+                try {
+                  scannerRef.current.clear();
+                } catch (e) {
+                  console.log('스캐너 clear 중 오류:', e);
+                }
+                scannerRef.current = null;
               }
 
-              // 콜백 호출 (try-catch로 에러 방지)
-              try {
-                onScanSuccessRef.current(decodedText);
-              } catch (callbackError) {
-                console.error('콜백 실행 오류:', callbackError);
-              }
+              // 콜백을 setTimeout으로 지연 호출하여 스캐너 정리 완료 후 상태 변경
+              setTimeout(() => {
+                try {
+                  onScanSuccessRef.current(decodedText);
+                } catch (callbackError) {
+                  console.error('콜백 실행 오류:', callbackError);
+                }
+              }, 100);
             }
           },
           (errorMessage) => {
@@ -129,10 +135,14 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
     return () => {
       isMounted = false;
       clearTimeout(timer);
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
+      const scanner = scannerRef.current;
+      if (scanner) {
         scannerRef.current = null;
+        scanner.stop().then(() => {
+          try { scanner.clear(); } catch (e) { /* ignore */ }
+        }).catch(() => {
+          try { scanner.clear(); } catch (e) { /* ignore */ }
+        });
       }
     };
   }, []); // onScanSuccess를 dependency에서 제거하여 불필요한 재실행 방지
