@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { InspectionRecord, StatData } from '../types';
+import { InspectionRecord, StatData, ReportHistory } from '../types';
 import StatsChart from './StatsChart';
 import FloorPlanView from './FloorPlanView';
 import InspectionDetail from './InspectionDetail';
@@ -11,13 +11,15 @@ interface DashboardOverviewProps {
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
+  reports?: ReportHistory[];
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   inspections,
   onUpdateInspections,
   selectedInspectionId,
-  onSelectionChange
+  onSelectionChange,
+  reports = []
 }) => {
   // InspectionDetail Modal 상태
   const [showInspectionModal, setShowInspectionModal] = useState(false);
@@ -26,6 +28,63 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const handleShowInspectionModal = (inspection: InspectionRecord) => {
     setModalInspection(inspection);
     setShowInspectionModal(true);
+  };
+
+  // Report HTML 생성 (기존 Report가 있으면 사용, 없으면 빈 양식 생성)
+  const getReportHtml = (inspection: InspectionRecord): string => {
+    // 기존 Report 찾기
+    const existingReport = reports
+      .filter(r => r.boardId === inspection.panelNo)
+      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())[0];
+
+    if (existingReport?.htmlContent) {
+      return existingReport.htmlContent;
+    }
+
+    // 빈 Report 양식 생성
+    const connectedLoads = [];
+    if (inspection.loads.welder) connectedLoads.push('Welder');
+    if (inspection.loads.grinder) connectedLoads.push('Grinder');
+    if (inspection.loads.light) connectedLoads.push('Light');
+    if (inspection.loads.pump) connectedLoads.push('Pump');
+    const loadCause = connectedLoads.length > 0 ? connectedLoads.join(', ') : '-';
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>공사용 가설 분전반 점검 보고서</title>
+  <style>
+    body { font-family: 'Malgun Gothic', Arial, sans-serif; padding: 20px; background-color: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #1e40af; border-bottom: 3px solid #1e40af; padding-bottom: 10px; margin-bottom: 20px; }
+    .draft-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 15px; }
+    .info { margin: 15px 0; padding: 10px; background-color: #f9fafb; border-left: 4px solid #3b82f6; border-radius: 4px; }
+    .label { font-weight: bold; color: #374151; display: inline-block; min-width: 150px; }
+    .value { color: #1f2937; }
+    .empty { color: #9ca3af; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>공사용 가설 분전반 점검 보고서</h1>
+    <div class="draft-badge">미생성 (Draft)</div>
+    ${inspection.projectName ? `<div class="info"><span class="label">PJT명:</span><span class="value">${inspection.projectName}</span></div>` : `<div class="info"><span class="label">PJT명:</span><span class="empty">-</span></div>`}
+    ${inspection.contractor ? `<div class="info"><span class="label">시공사:</span><span class="value">${inspection.contractor}</span></div>` : `<div class="info"><span class="label">시공사:</span><span class="empty">-</span></div>`}
+    ${inspection.managementNumber ? `<div class="info"><span class="label">관리번호:</span><span class="value">${inspection.managementNumber}</span></div>` : `<div class="info"><span class="label">관리번호:</span><span class="empty">-</span></div>`}
+    <div class="info"><span class="label">PNL NO.:</span><span class="value">${inspection.panelNo}</span></div>
+    <div class="info"><span class="label">TR:</span><span class="${inspection.tr ? 'value' : 'empty'}">${inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-'}</span></div>
+    <div class="info"><span class="label">층수:</span><span class="${inspection.floor ? 'value' : 'empty'}">${inspection.floor || '-'}</span></div>
+    <div class="info"><span class="label">공칭 단면적:</span><span class="${inspection.nominalCrossSection ? 'value' : 'empty'}">${inspection.nominalCrossSection || '-'}</span></div>
+    <div class="info"><span class="label">상태:</span><span class="value">${inspection.status}</span></div>
+    <div class="info"><span class="label">마지막 점검일:</span><span class="value">${inspection.lastInspectionDate !== '-' ? inspection.lastInspectionDate : '-'}</span></div>
+    <div class="info"><span class="label">부하 원인:</span><span class="value">${loadCause}</span></div>
+    <div class="info"><span class="label">점검 조치 사항:</span><span class="${inspection.memo ? 'value' : 'empty'}">${inspection.memo || '-'}</span></div>
+    ${inspection.inspectors && inspection.inspectors.length > 0 ? `<div class="info"><span class="label">점검자:</span><span class="value">${inspection.inspectors.join(', ')}</span></div>` : `<div class="info"><span class="label">점검자:</span><span class="empty">-</span></div>`}
+  </div>
+</body>
+</html>`.trim();
   };
 
   const stats: StatData[] = useMemo(() => {
@@ -245,12 +304,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </h2>
               <p className="text-sm text-slate-500 mt-1">읽기 전용 모드</p>
             </div>
-            {/* InspectionDetail - 읽기 전용 */}
+            {/* Report 양식 표시 */}
             <div className="p-6">
-              <InspectionDetail
-                inspection={modalInspection}
-                onSave={() => {}}
-                onCancel={() => setShowInspectionModal(false)}
+              <iframe
+                srcDoc={getReportHtml(modalInspection)}
+                className="w-full border border-slate-200 rounded-lg"
+                style={{ minHeight: '500px' }}
+                title={`Report - ${modalInspection.panelNo}`}
+                sandbox="allow-same-origin"
               />
             </div>
           </div>

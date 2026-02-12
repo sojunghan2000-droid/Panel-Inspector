@@ -779,9 +779,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           <img
             src={floorImagePath}
             alt={`${selectedFloor === 'F1' ? 'F1' : 'B1'} Floor Plan`}
-            className="w-full h-auto object-contain pointer-events-none min-h-[40vh] md:min-h-[600px]"
-            style={{ 
-              objectFit: 'contain',
+            className="w-full h-full object-fill pointer-events-none min-h-[40vh] md:min-h-[600px]"
+            style={{
+              objectFit: 'fill',
               imageRendering: 'pixelated', // 해상도 낮춤
               opacity: 0.7, // 약간 투명하게
               zIndex: 0, // 최하위
@@ -860,7 +860,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   left: `${x}%`,
                   top: `${y}%`,
                   padding: '6px',
-                  zIndex: 100,
+                  zIndex: 10,
                 }}
                 onClick={() => handleMarkerClick(inspection)}
                 onMouseEnter={() => setHoveredInspection(inspection)}
@@ -927,7 +927,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           <>
             {/* Backdrop */}
             <div 
-              className="fixed inset-0 bg-black bg-opacity-30 z-40"
+              className="fixed inset-0 bg-black bg-opacity-30 z-20"
               onClick={() => {
                 setSelectedInspection(null);
                 if (onSelectionChange) {
@@ -943,7 +943,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                 left: panelPosition.x === 0 ? '50%' : `${panelPosition.x}px`,
                 top: panelPosition.y === 0 ? '50%' : `${panelPosition.y}px`,
                 transform: panelPosition.x === 0 && panelPosition.y === 0 ? 'translate(-50%, -50%)' : 'none',
-                zIndex: 100,
+                zIndex: 30,
               }}
               onMouseDown={handleMouseDown}
             >

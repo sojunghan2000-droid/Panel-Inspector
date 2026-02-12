@@ -498,7 +498,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.17</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.18</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -775,11 +775,12 @@ const App: React.FC = () => {
           ) : (
             <>
               {currentPage === 'dashboard-overview' ? (
-                <DashboardOverview 
-                  inspections={inspections} 
+                <DashboardOverview
+                  inspections={inspections}
                   onUpdateInspections={updateInspections}
                   selectedInspectionId={selectedInspectionId}
                   onSelectionChange={setSelectedInspectionId}
+                  reports={reports}
                 />
               ) : currentPage === 'dashboard' ? (
                 <ErrorBoundary>
