@@ -15,7 +15,7 @@ const isValidTR = (v: string): v is typeof TR_OPTIONS[number] =>
   TR_OPTIONS.includes(v as typeof TR_OPTIONS[number]);
 
 /** PNL NO. 형식: MOCK_DATA와 동일. 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR A,B → 1,2 */
-const FLOOR_TO_NUM: Record<string, string> = { F1: '1', B1: '7' };
+const FLOOR_TO_NUM: Record<string, string> = { F1: '1', F2: '2', F3: '3', F4: '4', F5: '5', F6: '6', B1: '7', B2: '8' };
 const NUM_TO_FLOOR: Record<string, string> = {
   '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6', '7': 'B1', '8': 'B2',
 };
@@ -57,18 +57,10 @@ interface QRData {
   position: string;
   positionX: string;
   positionY: string;
+  contractor: string;
+  projectName: string;
+  nominalCrossSection: string;
 }
-
-// requestIdleCallback 폴백 (성능 개선을 위한 비동기 처리)
-const requestIdleCallback = (window.requestIdleCallback || ((cb: IdleRequestCallback) => {
-  const start = Date.now();
-  return setTimeout(() => {
-    cb({
-      didTimeout: false,
-      timeRemaining: () => Math.max(0, 50 - (Date.now() - start))
-    });
-  }, 1);
-})) as typeof window.requestIdleCallback;
 
 interface QRGeneratorProps {
   inspections?: InspectionRecord[];
@@ -97,14 +89,17 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     onQrCodesChange(next);
   }, [onQrCodesChange, propQrCodes]);
 
-  const [selectedFloor, setSelectedFloor] = useState<'F1' | 'B1'>('F1');
+  const [selectedFloor, setSelectedFloor] = useState<string>('F1');
   const [qrData, setQrData] = useState<QRData>({
     id: '', // PNL NO. 자유 입력 (예: 1, 1-1, 1-1-1)
     location: 'A',
     floor: 'F1',
     position: '',
     positionX: '',
-    positionY: ''
+    positionY: '',
+    contractor: '삼성물산',
+    projectName: '성수동 K-PJT',
+    nominalCrossSection: ''
   });
   const [generatedQR, setGeneratedQR] = useState<string | null>(null);
   const [savedQRId, setSavedQRId] = useState<string | null>(null);
@@ -236,7 +231,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               loads: { welder: false, grinder: false, light: false, pump: false },
               photoUrl: null,
               memo: `QR 코드로 생성됨\n위치: ${qr.location}\n층수: ${qr.floor}\n위치 정보: ${qr.position}`,
-              position: positionObj
+              position: positionObj,
+              contractor: qrData.contractor || '',
+              projectName: qrData.projectName || '',
+              nominalCrossSection: qrData.nominalCrossSection || ''
             };
 
             newInspections.push(newInspection);
@@ -431,14 +429,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   };
 
   const handleInputChange = (field: keyof QRData, value: string) => {
-    // #region agent log
-    if (field === 'floor') {
-      // 비동기 처리로 성능 개선
-      requestIdleCallback(() => {
-        fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:281',message:'handleInputChange called for floor',data:{field,oldValue:qrData.floor,newValue:value},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      }, { timeout: 1000 });
-    }
-    // #endregion
     setQrData(prev => {
       const updated = {
         ...prev,
@@ -454,7 +444,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
             if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as 'F1' | 'B1');
+              setSelectedFloor(floorFromId as string);
             }
           }
         } else if (idParts.length >= 2) {
@@ -463,7 +453,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
             if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as 'F1' | 'B1');
+              setSelectedFloor(floorFromId as string);
             }
           }
           if (locationFromId && isValidTR(locationFromId.toUpperCase()) && (!updated.location || updated.location !== locationFromId.toUpperCase())) {
@@ -474,7 +464,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       
       // 층수 필드 변경 시 selectedFloor도 동기화
       if (field === 'floor' && (value === 'F1' || value === 'B1')) {
-        setSelectedFloor(value as 'F1' | 'B1');
+        setSelectedFloor(value as string);
       }
       
       // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외 → 층수 선택이 F1으로 되돌아가는 것 방지)
@@ -572,7 +562,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         floor: qr.floor,
         position: typeof position === 'string' ? position : (position.description || qr.position || ''),
         positionX: position.x ? String(position.x) : '',
-        positionY: position.y ? String(position.y) : ''
+        positionY: position.y ? String(position.y) : '',
+        contractor: data.contractor || '삼성물산',
+        projectName: data.projectName || '성수동 K-PJT',
+        nominalCrossSection: data.nominalCrossSection || ''
       });
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
@@ -584,7 +577,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         floor: qr.floor,
         position: qr.position,
         positionX: '',
-        positionY: ''
+        positionY: '',
+        contractor: '삼성물산',
+        projectName: '성수동 K-PJT',
+        nominalCrossSection: ''
       });
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
@@ -670,7 +666,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         floor: qr.floor,
         position: typeof position === 'string' ? position : (position.description || qr.position || ''),
         positionX: position.x ? String(position.x) : '',
-        positionY: position.y ? String(position.y) : ''
+        positionY: position.y ? String(position.y) : '',
+        contractor: data.contractor || '삼성물산',
+        projectName: data.projectName || '성수동 K-PJT',
+        nominalCrossSection: data.nominalCrossSection || ''
       });
       setGeneratedQR(qr.qrData);
     } catch (e) {
@@ -680,7 +679,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         floor: qr.floor,
         position: qr.position,
         positionX: '',
-        positionY: ''
+        positionY: '',
+        contractor: '삼성물산',
+        projectName: '성수동 K-PJT',
+        nominalCrossSection: ''
       });
       setGeneratedQR(qr.qrData);
     }
@@ -791,10 +793,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       location: finalLocation,
       floor: qrData.floor,
       position: position,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      contractor: qrData.contractor,
+      projectName: qrData.projectName,
+      nominalCrossSection: qrData.nominalCrossSection
     });
 
-    const updatedQRCodes = qrCodes.map(qr => 
+    const updatedQRCodes = qrCodes.map(qr =>
       qr.id === selectedQR.id 
         ? {
             ...qr,
@@ -822,7 +827,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           floor: updatedQR.floor,
           position: typeof position === 'string' ? position : (position.description || updatedQR.position || ''),
           positionX: position.x != null ? String(position.x) : '',
-          positionY: position.y != null ? String(position.y) : ''
+          positionY: position.y != null ? String(position.y) : '',
+          contractor: data.contractor || '삼성물산',
+          projectName: data.projectName || '성수동 K-PJT',
+          nominalCrossSection: data.nominalCrossSection || ''
         });
       } catch {
         setQrData(prev => ({
@@ -849,7 +857,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       if (selectedQR?.id === id) {
         setSelectedQR(null);
         setGeneratedQR(null);
-        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '' });
+        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '' });
         setIsEditing(false);
       }
     }
@@ -1222,7 +1230,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       floor: 'F1',
       position: '',
       positionX: '',
-      positionY: ''
+      positionY: '',
+      contractor: '삼성물산',
+      projectName: '성수동 K-PJT',
+      nominalCrossSection: ''
     });
     setGeneratedQR(null);
     setSelectedQR(null);
@@ -1338,22 +1349,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     return '';
   }, [selectedQR]);
 
-  // #region agent log
-  React.useEffect(() => {
-    if (showForm) {
-      // 비동기 처리로 성능 개선
-      requestIdleCallback(() => {
-        const selects = document.querySelectorAll('select');
-        selects.forEach((select, idx) => {
-          const computed = window.getComputedStyle(select);
-          const parent = select.parentElement as HTMLElement;
-          fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:973',message:'select element mounted in form',data:{index:idx,id:select.id,className:select.className,value:(select as HTMLSelectElement).value,pointerEvents:computed.pointerEvents,zIndex:computed.zIndex,position:computed.position,display:computed.display,visibility:computed.visibility,isDisabled:(select as HTMLSelectElement).disabled,parentOverflow:window.getComputedStyle(parent).overflow,parentZIndex:window.getComputedStyle(parent).zIndex,parentPosition:window.getComputedStyle(parent).position,showForm},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        });
-      }, { timeout: 1000 });
-    }
-  }, [showForm, qrData.floor, selectedFloor]);
-  // #endregion
-
   // Select 포커스 시 모든 부모 컨테이너의 overflow를 visible로 변경
   React.useEffect(() => {
     if (isSelectFocused) {
@@ -1369,25 +1364,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           const overflowX = computed.overflowX;
           const overflowY = computed.overflowY;
           
-          // #region agent log
-          // 비동기 처리로 성능 개선
-          requestIdleCallback(() => {
-            fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:993',message:'checking parent overflow',data:{parentTag:parent.tagName,parentClass:parent.className,overflow,overflowX,overflowY,willChange:overflow !== 'visible' && overflow !== 'unset'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          }, { timeout: 1000 });
-          // #endregion
-          
           if (overflow !== 'visible' && overflow !== 'unset') {
             originalOverflows.push({ element: parent, overflow, overflowX, overflowY });
             (parent as HTMLElement).style.overflow = 'visible';
             (parent as HTMLElement).style.overflowX = 'visible';
             (parent as HTMLElement).style.overflowY = 'visible';
-            
-            // #region agent log
-            // 비동기 처리로 성능 개선
-            requestIdleCallback(() => {
-              fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1005',message:'changed parent overflow to visible',data:{parentTag:parent.tagName,parentClass:parent.className,originalOverflow:overflow,originalOverflowX:overflowX,originalOverflowY:overflowY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            }, { timeout: 1000 });
-            // #endregion
           }
           parent = parent.parentElement;
         }
@@ -1398,13 +1379,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             element.style.overflow = overflow;
             element.style.overflowX = overflowX;
             element.style.overflowY = overflowY;
-            
-            // #region agent log
-            // 비동기 처리로 성능 개선
-            requestIdleCallback(() => {
-              fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1015',message:'restored parent overflow',data:{parentTag:element.tagName,parentClass:element.className,restoredOverflow:overflow,restoredOverflowX:overflowX,restoredOverflowY:overflowY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            }, { timeout: 1000 });
-            // #endregion
           });
         };
       }
@@ -1471,7 +1445,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         floor: 'F1',
                         position: '',
                         positionX: inspection.position?.x?.toString() || '',
-                        positionY: inspection.position?.y?.toString() || ''
+                        positionY: inspection.position?.y?.toString() || '',
+                        contractor: '삼성물산',
+                        projectName: '성수동 K-PJT',
+                        nominalCrossSection: ''
                       });
                     }
                     if (onSelectInspection) {
@@ -1674,12 +1651,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       value={qrData.floor || selectedFloor}
                       onChange={(e) => {
                         handleInputChange('floor', e.target.value);
-                        setSelectedFloor(e.target.value as 'F1' | 'B1');
+                        setSelectedFloor(e.target.value as string);
                       }}
                       className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all cursor-pointer bg-white"
                     >
-                      <option value="F1">F1</option>
-                      <option value="B1">B1</option>
+                      <option value="F1">F1 (지상1층)</option>
+                      <option value="F2">F2 (지상2층)</option>
+                      <option value="F3">F3 (지상3층)</option>
+                      <option value="F4">F4 (지상4층)</option>
+                      <option value="F5">F5 (지상5층)</option>
+                      <option value="F6">F6 (지상6층)</option>
+                      <option value="B1">B1 (지하1층)</option>
+                      <option value="B2">B2 (지하2층)</option>
                     </select>
                   </div>
 
@@ -1714,29 +1697,31 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* 시공사 (고정값) */}
+                  {/* 시공사 */}
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       시공사
                     </label>
                     <input
                       type="text"
-                      value="삼성물산"
-                      disabled
-                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                      value={qrData.contractor}
+                      onChange={(e) => handleInputChange('contractor', e.target.value)}
+                      placeholder="시공사 입력"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     />
                   </div>
 
-                  {/* PJT명 (고정값) */}
+                  {/* PJT명 */}
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       PJT명
                     </label>
                     <input
                       type="text"
-                      value="성수동 K-PJT"
-                      disabled
-                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                      value={qrData.projectName}
+                      onChange={(e) => handleInputChange('projectName', e.target.value)}
+                      placeholder="PJT명 입력"
+                      className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     />
                   </div>
 
@@ -1750,6 +1735,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         type="number"
                         min="0"
                         step="0.1"
+                        value={qrData.nominalCrossSection}
+                        onChange={(e) => handleInputChange('nominalCrossSection', e.target.value)}
                         placeholder="단면적 입력"
                         className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                       />
@@ -1879,54 +1866,24 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       </label>
                       <select
                         value={qrData.floor || selectedFloor}
-                        onFocus={() => {
-                          setIsSelectFocused(true);
-                          // #region agent log
-                          // 비동기 처리로 성능 개선
-                          requestIdleCallback(() => {
-                            fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1257',message:'floor select onFocus event fired',data:{isSelectFocused:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                          }, { timeout: 1000 });
-                          // #endregion
-                        }}
+                        onFocus={() => setIsSelectFocused(true)}
                         onBlur={() => {
-                          // 약간의 지연을 두어 드롭다운 선택이 완료되도록 함
                           setTimeout(() => setIsSelectFocused(false), 200);
-                          // #region agent log
-                          // 비동기 처리로 성능 개선
-                          requestIdleCallback(() => {
-                            fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1263',message:'floor select onBlur event fired',data:{isSelectFocused:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                          }, { timeout: 1000 });
-                          // #endregion
                         }}
                         onChange={(e) => {
-                          // #region agent log
-                          // 비동기 처리로 성능 개선 - getComputedStyle 호출도 지연
-                          requestIdleCallback(() => {
-                            const target = e.target as HTMLSelectElement;
-                            const computed = window.getComputedStyle(target);
-                            fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1241',message:'floor select onChange event fired',data:{oldValue:qrData.floor || selectedFloor,newValue:e.target.value,selectComputedStyle:computed.pointerEvents,selectZIndex:computed.zIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                          }, { timeout: 1000 });
-                          // #endregion
                           handleInputChange('floor', e.target.value);
-                          setSelectedFloor(e.target.value as 'F1' | 'B1');
-                        }}
-                        onClick={(e) => {
-                          // #region agent log
-                          // 비동기 처리로 성능 개선 - getComputedStyle 호출도 지연
-                          requestIdleCallback(() => {
-                            const target = e.target as HTMLSelectElement;
-                            const computed = window.getComputedStyle(target);
-                            const parent = target.parentElement as HTMLElement;
-                            const parentComputed = parent ? window.getComputedStyle(parent) : null;
-                            fetch('http://127.0.0.1:7243/ingest/d3499377-2a3e-49de-91f7-b42902b9b2ce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'QRGenerator.tsx:1246',message:'floor select onClick event fired',data:{pointerEvents:computed.pointerEvents,zIndex:computed.zIndex,position:computed.position,display:computed.display,visibility:computed.visibility,isDisabled:target.disabled,parentZIndex:parentComputed?.zIndex || 'auto'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                          }, { timeout: 1000 });
-                          // #endregion
+                          setSelectedFloor(e.target.value as string);
                         }}
                         className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all cursor-pointer bg-white"
-                        style={{ pointerEvents: 'auto', zIndex: 'auto', position: 'relative', WebkitAppearance: 'menulist', appearance: 'menulist' } as React.CSSProperties}
                       >
-                        <option value="F1">F1</option>
-                        <option value="B1">B1</option>
+                        <option value="F1">F1 (지상1층)</option>
+                        <option value="F2">F2 (지상2층)</option>
+                        <option value="F3">F3 (지상3층)</option>
+                        <option value="F4">F4 (지상4층)</option>
+                        <option value="F5">F5 (지상5층)</option>
+                        <option value="F6">F6 (지상6층)</option>
+                        <option value="B1">B1 (지하1층)</option>
+                        <option value="B2">B2 (지하2층)</option>
                       </select>
                     </div>
 
@@ -1946,29 +1903,31 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       </select>
                     </div>
 
-                    {/* 시공사 (고정값) */}
+                    {/* 시공사 */}
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">
                         시공사
                       </label>
                       <input
                         type="text"
-                        value="삼성물산"
-                        disabled
-                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                        value={qrData.contractor}
+                        onChange={(e) => handleInputChange('contractor', e.target.value)}
+                        placeholder="시공사 입력"
+                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                       />
                     </div>
 
-                    {/* PJT명 (고정값) */}
+                    {/* PJT명 */}
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">
                         PJT명
                       </label>
                       <input
                         type="text"
-                        value="성수동 K-PJT"
-                        disabled
-                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                        value={qrData.projectName}
+                        onChange={(e) => handleInputChange('projectName', e.target.value)}
+                        placeholder="PJT명 입력"
+                        className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                       />
                     </div>
 
@@ -1996,6 +1955,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                           type="number"
                           min="0"
                           step="0.1"
+                          value={qrData.nominalCrossSection}
+                          onChange={(e) => handleInputChange('nominalCrossSection', e.target.value)}
                           placeholder="단면적 입력"
                           className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                         />
@@ -2110,8 +2071,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   onFocus={restoreMainScrollOnFocus}
                   className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
                 >
-                  <option value="F1">F1</option>
-                  <option value="B1">B1</option>
+                  <option value="F1">F1 (지상1층)</option>
+                  <option value="F2">F2 (지상2층)</option>
+                  <option value="F3">F3 (지상3층)</option>
+                  <option value="F4">F4 (지상4층)</option>
+                  <option value="F5">F5 (지상5층)</option>
+                  <option value="F6">F6 (지상6층)</option>
+                  <option value="B1">B1 (지하1층)</option>
+                  <option value="B2">B2 (지하2층)</option>
                 </select>
               </div>
 
@@ -2132,29 +2099,33 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 </select>
               </div>
 
-              {/* 시공사 (고정값) */}
+              {/* 시공사 */}
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   시공사
                 </label>
                 <input
                   type="text"
-                  value="삼성물산"
-                  disabled
-                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                  value={qrData.contractor}
+                  onChange={(e) => handleInputChange('contractor', e.target.value)}
+                  onFocus={restoreMainScrollOnFocus}
+                  placeholder="시공사 입력"
+                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
               </div>
 
-              {/* PJT명 (고정값) */}
+              {/* PJT명 */}
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   PJT명
                 </label>
                 <input
                   type="text"
-                  value="성수동 K-PJT"
-                  disabled
-                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-500 bg-slate-100 cursor-not-allowed"
+                  value={qrData.projectName}
+                  onChange={(e) => handleInputChange('projectName', e.target.value)}
+                  onFocus={restoreMainScrollOnFocus}
+                  placeholder="PJT명 입력"
+                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
               </div>
 
@@ -2183,6 +2154,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     type="number"
                     min="0"
                     step="0.1"
+                    value={qrData.nominalCrossSection}
+                    onChange={(e) => handleInputChange('nominalCrossSection', e.target.value)}
                     placeholder="단면적 입력"
                     onFocus={restoreMainScrollOnFocus}
                     className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -2464,7 +2437,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     floor: 'F1',
                     position: '',
                     positionX: inspection.position?.x?.toString() || '',
-                    positionY: inspection.position?.y?.toString() || ''
+                    positionY: inspection.position?.y?.toString() || '',
+                    contractor: '삼성물산',
+                    projectName: '성수동 K-PJT',
+                    nominalCrossSection: ''
                   });
                 }
               }

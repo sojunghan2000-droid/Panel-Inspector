@@ -11,8 +11,8 @@ interface FloorPlanViewProps {
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
-  selectedFloor?: 'F1' | 'B1';
-  onFloorChange?: (floor: 'F1' | 'B1') => void;
+  selectedFloor?: string;
+  onFloorChange?: (floor: string) => void;
   /** false면 마커 클릭/선택 시 상세 패널(모달)을 띄우지 않음 */
   showDetailPanel?: boolean;
   /** true면 상세 패널이 열릴 때 위치 수정 모드로 열림 */
@@ -46,8 +46,7 @@ const toFloorLabel = (floor: string | null): string | null => {
   const key = String(floor).trim().toUpperCase();
   return FLOOR_LABEL_MAP[key] ?? floor;
 };
-const floorToTab = (floor: string): 'F1' | 'B1' =>
-  BASEMENT_FLOORS.includes(toFloorLabel(floor) ?? '') ? 'B1' : 'F1';
+const ALL_FLOORS = [...UPPER_FLOORS, ...BASEMENT_FLOORS];
 
 interface QRLocation {
   id: string;
@@ -105,34 +104,35 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const [panelPosition, setPanelPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [internalSelectedFloor, setInternalSelectedFloor] = useState<'F1' | 'B1'>('F1');
+  const [internalSelectedFloor, setInternalSelectedFloor] = useState<string>('F1');
   const panelRef = useRef<HTMLDivElement>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
   const prevSelectedInspectionIdRef = useRef<string | null>(null);
   /** 내부 마커 클릭 추적: true면 scrollToMarker 호출 생략 (스크롤 초기화 방지) */
   const isInternalSelectionRef = useRef(false);
 
-  // 배경 이미지 관련 state
-  const [floorPlanImageF1, setFloorPlanImageF1] = useState<string | null>(null);
-  const [floorPlanImageB1, setFloorPlanImageB1] = useState<string | null>(null);
+  // 배경 이미지 관련 state (8개 층 전체)
+  const [floorPlanImages, setFloorPlanImages] = useState<Record<string, string | null>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // prop으로 전달된 층수가 있으면 사용, 없으면 내부 상태 사용
   const selectedFloor = propSelectedFloor ?? internalSelectedFloor;
 
-  // IndexedDB에서 배경 이미지 로드
+  // IndexedDB에서 배경 이미지 로드 (8개 층 전체)
   useEffect(() => {
-    const loadFloorPlanImages = async () => {
+    const loadAllFloorPlanImages = async () => {
       try {
-        const f1Image = await getFloorPlanImageAsDataURL('F1');
-        const b1Image = await getFloorPlanImageAsDataURL('B1');
-        if (f1Image) setFloorPlanImageF1(f1Image);
-        if (b1Image) setFloorPlanImageB1(b1Image);
+        const images: Record<string, string | null> = {};
+        for (const floor of ALL_FLOORS) {
+          const img = await getFloorPlanImageAsDataURL(floor);
+          images[floor] = img;
+        }
+        setFloorPlanImages(images);
       } catch (error) {
         console.error('배경 이미지 로드 오류:', error);
       }
     };
-    loadFloorPlanImages();
+    loadAllFloorPlanImages();
   }, []);
 
   // 배경 이미지 업로드 핸들러
@@ -152,11 +152,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         await saveFloorPlanImage(selectedFloor, blob);
 
         // state 업데이트
-        if (selectedFloor === 'F1') {
-          setFloorPlanImageF1(dataUrl);
-        } else {
-          setFloorPlanImageB1(dataUrl);
-        }
+        setFloorPlanImages(prev => ({ ...prev, [selectedFloor]: dataUrl }));
 
         alert(`${selectedFloor} 층 배경 이미지가 저장되었습니다.`);
       };
@@ -172,7 +168,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   }, [selectedFloor]);
 
-  const handleFloorChange = (floor: 'F1' | 'B1') => {
+  const handleFloorChange = (floor: string) => {
     if (onFloorChange) {
       onFloorChange(floor);
     } else {
@@ -208,9 +204,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               inspectionFloor = floorMap[idParts[0]] || 'F1';
             }
           }
-          const tabForFloor = floorToTab(inspectionFloor);
-          if (tabForFloor !== selectedFloor) {
-            handleFloorChange(tabForFloor);
+          const targetFloor = toFloorLabel(inspectionFloor) || inspectionFloor;
+          if (targetFloor !== selectedFloor) {
+            handleFloorChange(targetFloor);
             if (shouldScroll) {
               setTimeout(() => scrollToMarker(inspection), 300);
             } else {
@@ -640,13 +636,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           }
         }
         
-        // 층수 일치: F1 탭 = F1~F6, B1 탭 = B1~B2. QR/검사 데이터의 층이 숫자('1','7')여도 레이블로 정규화 후 비교
+        // 층수 정확 일치: 선택된 층과 동일한 마커만 표시
         const normalizedFloor = toFloorLabel(markerFloor);
         if (!normalizedFloor) {
           shouldShow = true;
-        } else if (selectedFloor === 'F1' && UPPER_FLOORS.includes(normalizedFloor)) {
-          shouldShow = true;
-        } else if (selectedFloor === 'B1' && BASEMENT_FLOORS.includes(normalizedFloor)) {
+        } else if (normalizedFloor === selectedFloor) {
           shouldShow = true;
         }
         
@@ -684,14 +678,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     return { stats, total: Object.values(stats).reduce((a, b) => a + b, 0) };
   }, [inspections]);
 
-  // 층에 따른 이미지 경로 결정 (IndexedDB에 저장된 이미지가 있으면 우선 사용)
+  // 층에 따른 이미지 경로 결정 (IndexedDB에 저장된 이미지가 있으면 사용, 없으면 null)
   const floorImagePath = useMemo(() => {
-    if (selectedFloor === 'F1') {
-      return floorPlanImageF1 || '/1st Floor.jpg';
-    } else {
-      return floorPlanImageB1 || '/Basement.jpg';
-    }
-  }, [selectedFloor, floorPlanImageF1, floorPlanImageB1]);
+    return floorPlanImages[selectedFloor] || null;
+  }, [selectedFloor, floorPlanImages]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -706,11 +696,17 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           <label className="text-sm font-medium text-slate-700">층 선택:</label>
           <select
             value={selectedFloor}
-            onChange={(e) => handleFloorChange(e.target.value as 'F1' | 'B1')}
+            onChange={(e) => handleFloorChange(e.target.value)}
             className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none cursor-pointer"
           >
-            <option value="F1">F1</option>
-            <option value="B1">B1</option>
+            <option value="F1">F1 (지상1층)</option>
+            <option value="F2">F2 (지상2층)</option>
+            <option value="F3">F3 (지상3층)</option>
+            <option value="F4">F4 (지상4층)</option>
+            <option value="F5">F5 (지상5층)</option>
+            <option value="F6">F6 (지상6층)</option>
+            <option value="B1">B1 (지하1층)</option>
+            <option value="B2">B2 (지하2층)</option>
           </select>
           {/* 배경 이미지 업로드 버튼 */}
           <label className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer text-sm font-medium transition-colors">
@@ -770,7 +766,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
       <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6">
 
-        {/* Floor Plan Image - 숨김 처리, 위젯만 표시 */}
+        {/* Floor Plan Image or Empty Message */}
+        {!floorImagePath ? (
+          <div className="relative w-full h-full min-h-[40vh] md:min-h-[600px] flex items-center justify-center bg-slate-100 cursor-crosshair touch-none"
+            onClick={handleImageClick}
+          >
+            <div className="text-center p-8">
+              <ImageIcon size={48} className="mx-auto mb-4 text-slate-300" />
+              <p className="text-lg font-medium text-slate-500">Plan DWG을 반영해주세요</p>
+              <p className="text-sm text-slate-400 mt-2">{selectedFloor} ({FLOOR_DISPLAY_LABELS[selectedFloor] || selectedFloor}) 층의 배경 이미지가 없습니다</p>
+              <p className="text-xs text-slate-400 mt-1">상단 배경 업로드 버튼을 눌러 이미지를 추가하세요</p>
+            </div>
+          </div>
+        ) : (
         <div
           className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none"
           onClick={handleImageClick}
@@ -778,18 +786,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           {/* Floor Plan Image - 낮은 해상도, 최하위 z-index */}
           <img
             src={floorImagePath}
-            alt={`${selectedFloor === 'F1' ? 'F1' : 'B1'} Floor Plan`}
+            alt={`${selectedFloor} Floor Plan`}
             className="w-full h-full object-fill pointer-events-none min-h-[40vh] md:min-h-[600px]"
             style={{
               objectFit: 'fill',
-              imageRendering: 'pixelated', // 해상도 낮춤
-              opacity: 0.7, // 약간 투명하게
-              zIndex: 0, // 최하위
-            }}
-            onError={(e) => {
-              // Fallback if image fails to load
-              const img = e.currentTarget as HTMLImageElement;
-              img.src = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop';
+              imageRendering: 'pixelated',
+              opacity: 0.7,
+              zIndex: 0,
             }}
           />
 
@@ -892,6 +895,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             );
           })}
         </div>
+        )}
 
         {/* 미지정 위치 패널 목록 */}
         {unpositionedInspections.length > 0 && (
