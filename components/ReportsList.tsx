@@ -150,7 +150,6 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   };
 
   const filteredReports = reports
-    .filter(report => report.status !== 'In Progress') // In Progress 상태 리포트 제외
     .filter(report =>
       report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.reportId.toLowerCase().includes(searchTerm.toLowerCase())

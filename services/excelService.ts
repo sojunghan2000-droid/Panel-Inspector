@@ -242,39 +242,39 @@ export const exportToExcel = async (
     });
   });
 
-  // 2. QR List Sheet (위치 정보 및 QR)
-  const qrListSheet = workbook.addWorksheet('QR List');
-  qrListSheet.columns = [
+  // 2. PNL List Sheet (패널 목록 및 위치 정보)
+  const pnlListSheet = workbook.addWorksheet('PNL List');
+  pnlListSheet.columns = [
     { header: 'PNL NO.', key: 'id', width: 15 },
-    { header: 'QR ID', key: 'qrId', width: 15 },
+    { header: 'TR', key: 'tr', width: 15 },
+    { header: '층수', key: 'floor', width: 10 },
+    { header: '관리번호 (판넬명)', key: 'managementNumber', width: 20 },
+    { header: '공칭 단면적', key: 'nominalCrossSection', width: 15 },
     { header: 'X 좌표 (%)', key: 'positionX', width: 12 },
     { header: 'Y 좌표 (%)', key: 'positionY', width: 12 },
-    { header: 'QR 위치', key: 'qrLocation', width: 15 },
-    { header: 'QR 층수', key: 'qrFloor', width: 10 },
-    { header: 'QR 위치 정보', key: 'qrPosition', width: 20 },
   ];
 
-  qrListSheet.getRow(1).font = { bold: true };
-  qrListSheet.getRow(1).fill = {
+  pnlListSheet.getRow(1).font = { bold: true };
+  pnlListSheet.getRow(1).fill = {
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FFE8F5E9' }
   };
 
-  excelData.forEach(row => {
-    qrListSheet.addRow({
-      id: row.id,
-      qrId: row.qrId || row.id,
-      positionX: row.positionX,
-      positionY: row.positionY,
-      qrLocation: row.qrLocation || '-',
-      qrFloor: row.qrFloor || '-',
-      qrPosition: row.qrPosition || '-',
+  inspections.forEach(inspection => {
+    const trValue = inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-';
+    pnlListSheet.addRow({
+      id: inspection.panelNo,
+      tr: trValue,
+      floor: inspection.floor || '-',
+      managementNumber: inspection.managementNumber || inspection.panelNo,
+      nominalCrossSection: inspection.nominalCrossSection || '-',
+      positionX: inspection.position ? `${inspection.position.x}%` : '-',
+      positionY: inspection.position ? `${inspection.position.y}%` : '-',
     });
   });
 
-  // 3. Reports Sheet (완료된 검사만 포함)
-  const completeInspections = inspections.filter(i => i.status === 'Complete');
+  // 3. Reports Sheet (모든 검사 포함 - Complete뿐 아니라 모든 상태)
   const reportsSheet = workbook.addWorksheet('Reports');
   reportsSheet.columns = [
     { header: 'PNL NO.', key: 'id', width: 15 },
@@ -298,7 +298,7 @@ export const exportToExcel = async (
     fgColor: { argb: 'FFE8F5E9' }
   };
 
-  completeInspections.forEach(inspection => {
+  inspections.forEach(inspection => {
     const report = reportMap.get(inspection.panelNo);
     const connectedLoads = [];
     if (inspection.loads.welder) connectedLoads.push('Welder');
