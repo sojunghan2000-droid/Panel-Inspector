@@ -1,12 +1,14 @@
 // Service Worker for Panel Inspector PWA
-const CACHE_NAME = 'panel-inspector-v1';
+const CACHE_NAME = 'panel-inspector-v2';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/index.css',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/favicon-16.png',
+  '/favicon-32.png',
+  '/apple-touch-icon.png'
 ];
 
 // 설치 이벤트: 캐시 생성 및 리소스 캐싱
@@ -43,15 +45,19 @@ self.addEventListener('activate', (event) => {
 
 // fetch 이벤트: 네트워크 우선, 캐시 폴백 전략
 self.addEventListener('fetch', (event) => {
-  // 엑셀 파일이나 외부 리소스는 네트워크만 사용
-  if (event.request.url.includes('.xlsx') || 
-      event.request.url.includes('.xls') ||
-      event.request.url.startsWith('http://') ||
-      event.request.url.startsWith('https://')) {
-    event.respondWith(fetch(event.request));
+  const url = new URL(event.request.url);
+
+  // 엑셀 파일은 캐시하지 않음
+  if (url.pathname.endsWith('.xlsx') || url.pathname.endsWith('.xls')) {
     return;
   }
 
+  // 외부 origin 요청은 캐시하지 않음
+  if (url.origin !== location.origin) {
+    return;
+  }
+
+  // 같은 origin: 네트워크 우선, 캐시 폴백
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -65,8 +71,8 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // 네트워크 실패 시 캐시에서 반환
-        return caches.match(event.request);
+        // 네트워크 실패 시 캐시에서 반환, 없으면 index.html 폴백 (SPA)
+        return caches.match(event.request).then((r) => r || caches.match('/index.html'));
       })
   );
 });
