@@ -1,5 +1,5 @@
 // Service Worker for Panel Inspector PWA
-const CACHE_NAME = 'panel-inspector-v2';
+const CACHE_NAME = 'panel-inspector-v3';
 const urlsToCache = [
   '/',
   '/index.html',
