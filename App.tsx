@@ -549,18 +549,22 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-3">
-          {/* PWA 설치 버튼 */}
-          {!isInstalled && deferredPrompt && (
+          {/* PWA 설치 버튼 - 항상 표시 */}
+          {!isInstalled ? (
             <button
-              onClick={handleInstallApp}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors"
+              onClick={deferredPrompt ? handleInstallApp : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                deferredPrompt
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                  : 'bg-slate-700 text-slate-300 cursor-default'
+              }`}
+              title={deferredPrompt ? '클릭하여 앱을 설치합니다' : 'Chrome 주소창의 설치 아이콘(⊕)을 클릭하거나, 메뉴 → 앱 설치를 이용하세요'}
             >
               <Download size={18} />
               앱 설치
             </button>
-          )}
-          {isInstalled && (
-            <div className="flex items-center gap-2 px-3 py-2 text-emerald-400 text-sm">
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2.5 text-emerald-400 text-sm bg-slate-800/50 rounded-lg">
               <CheckCircle2 size={16} />
               <span>앱 설치됨</span>
             </div>
