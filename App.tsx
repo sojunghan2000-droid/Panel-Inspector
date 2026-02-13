@@ -549,15 +549,17 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-3">
-          {/* 설치 파일 다운로드 버튼 */}
-          <a
-            href="https://github.com/sojunghan2000-droid/Panel-Inspector/releases/download/v1.0.0/Panel.Inspector.Setup.1.0.0.exe"
-            download
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer no-underline"
-          >
-            <Download size={18} />
-            앱 설치 다운로드
-          </a>
+          {/* 설치 파일 다운로드 버튼 - 웹에서만 표시 (Electron에서는 숨김) */}
+          {!(window as any).electronAPI && (
+            <a
+              href="https://github.com/sojunghan2000-droid/Panel-Inspector/releases/download/v1.0.0/Panel.Inspector.Setup.1.0.0.exe"
+              download
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer no-underline"
+            >
+              <Download size={18} />
+              앱 설치 다운로드
+            </a>
+          )}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500"></div>
             <div>
