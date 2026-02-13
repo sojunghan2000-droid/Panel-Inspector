@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFile, writeFile } from 'fs/promises';
@@ -11,20 +11,37 @@ let mainWindow;
 
 function createWindow() {
   // preload.js 경로 설정 (패키징된 앱과 개발 모드 모두 지원)
-  const preloadPath = app.isPackaged 
+  const preloadPath = app.isPackaged
     ? join(app.getAppPath(), 'electron', 'preload.js')
     : join(__dirname, 'preload.js');
-  
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    icon: app.isPackaged
+      ? join(app.getAppPath(), 'dist', 'icon-512.png')
+      : join(__dirname, '../public/icon-512.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: preloadPath,
-      sandbox: false, // preload 스크립트 실행을 위해 필요
+      sandbox: false,
+      // 외부 CDN 리소스 로드 허용 (Tailwind, esm.sh, Google Fonts)
+      webSecurity: false,
     },
-    show: false, // 준비될 때까지 숨김
+    show: false,
+  });
+
+  // CSP 설정: 외부 CDN 허용
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https: http:;"
+        ]
+      }
+    });
   });
 
   // 창이 준비되면 표시
@@ -37,40 +54,23 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    // 프로덕션 모드에서는 빌드된 파일 사용
-    // app.getAppPath()는 패키징된 앱에서 올바른 경로를 반환합니다
     const appPath = app.getAppPath();
     const indexPath = join(appPath, 'dist', 'index.html');
-    
-    // 디버깅을 위해 콘솔에 경로 출력
+
     console.log('App path:', appPath);
     console.log('Loading index.html from:', indexPath);
-    console.log('__dirname:', __dirname);
-    
-    // 파일 존재 여부 확인
+
     if (existsSync(indexPath)) {
-      console.log('index.html exists at:', indexPath);
+      mainWindow.loadFile(indexPath);
     } else {
-      console.error('index.html NOT found at:', indexPath);
-      // 대체 경로 시도
       const altPath = join(__dirname, '../dist/index.html');
-      console.log('Trying alternative path:', altPath);
       if (existsSync(altPath)) {
-        console.log('Found at alternative path');
         mainWindow.loadFile(altPath);
-        return;
+      } else {
+        console.error('index.html NOT found');
+        mainWindow.webContents.openDevTools();
       }
     }
-    
-    mainWindow.loadFile(indexPath).catch((error) => {
-      console.error('Failed to load index.html:', error);
-      // 폴백: 상대 경로 시도
-      mainWindow.loadFile(join(__dirname, '../dist/index.html')).catch((err) => {
-        console.error('Fallback path also failed:', err);
-        // 개발자 도구 열기 (디버깅용)
-        mainWindow.webContents.openDevTools();
-      });
-    });
   }
 
   mainWindow.on('closed', () => {

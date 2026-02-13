@@ -2,8 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Service Worker 등록 및 업데이트 알림 (PWA)
-if ('serviceWorker' in navigator) {
+// Service Worker 등록 및 업데이트 알림 (PWA) - Electron에서는 건너뜀
+const isElectron = !!(window as any).electronAPI;
+if ('serviceWorker' in navigator && !isElectron) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
