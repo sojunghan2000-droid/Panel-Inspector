@@ -64,6 +64,7 @@ export interface InspectionRecord {
   tr?: string; // TR: 'A' (TR-1 900KVA) 또는 'B' (TR-2 950KVA)
   floor?: string; // 명시적 층수: 'F1'~'F6', 'B1', 'B2'
   nominalCrossSection?: string; // 공칭 단면적 (예: '95SQ', '300SQ')
+  breakerCapacity?: string; // 차단기 용량 [A] (Panel Master 연계)
   parentPanelNo?: string; // 상위 패널 번호
   notes?: string; // 비고 (T/C1(L), 양수기, 전력량계 등)
   grounding?: '양호' | '불량' | '미점검'; // 접지 (외관 점검)
