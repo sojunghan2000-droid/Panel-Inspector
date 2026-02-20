@@ -238,7 +238,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               contractor: qrData.contractor || '',
               projectName: qrData.projectName || '',
               nominalCrossSection: qrData.nominalCrossSection || '',
-              breakerCapacity: qrData.breakerCapacity || ''
+              breakerCapacity: qrData.breakerCapacity || '',
+              managementNumber: qrData.managementNumber || ''
             };
 
             newInspections.push(newInspection);
@@ -249,15 +250,17 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           const qrProjectName = qrData.projectName || '';
           const qrNominalCrossSection = qrData.nominalCrossSection || '';
           const qrBreakerCapacity = qrData.breakerCapacity || '';
+          const qrManagementNumber = qrData.managementNumber || '';
           const qrFloor = qrData.floor || '';
           const qrTr = qrData.location || '';
 
-          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity) {
+          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity || qrManagementNumber) {
             const needsUpdate =
               (qrContractor && existingInspection.contractor !== qrContractor) ||
               (qrProjectName && existingInspection.projectName !== qrProjectName) ||
               (qrNominalCrossSection && existingInspection.nominalCrossSection !== qrNominalCrossSection) ||
               (qrBreakerCapacity && existingInspection.breakerCapacity !== qrBreakerCapacity) ||
+              (qrManagementNumber && existingInspection.managementNumber !== qrManagementNumber) ||
               (qrFloor && existingInspection.floor !== qrFloor) ||
               (qrTr && existingInspection.tr !== qrTr);
 
@@ -268,6 +271,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 projectName: qrProjectName || existingInspection.projectName,
                 nominalCrossSection: qrNominalCrossSection || existingInspection.nominalCrossSection,
                 breakerCapacity: qrBreakerCapacity || existingInspection.breakerCapacity,
+                managementNumber: qrManagementNumber || existingInspection.managementNumber,
                 floor: qrFloor || existingInspection.floor,
                 tr: qrTr || existingInspection.tr,
               });
@@ -553,7 +557,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       contractor: data.contractor,
       projectName: data.projectName,
       nominalCrossSection: data.nominalCrossSection,
-      breakerCapacity: data.breakerCapacity
+      breakerCapacity: data.breakerCapacity,
+      managementNumber: data.position
     });
 
     // 기존 QR 코드 확인
@@ -764,7 +769,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       contractor: qrData.contractor,
       projectName: qrData.projectName,
       nominalCrossSection: qrData.nominalCrossSection,
-      breakerCapacity: qrData.breakerCapacity
+      breakerCapacity: qrData.breakerCapacity,
+      managementNumber: qrData.position
     });
 
     const updatedQRCodes = qrCodes.map(qr =>

@@ -816,21 +816,15 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             </div>
           </div>
 
-          {/* 차단기 용량 (Panel Master 연계 + 직접 입력 가능) */}
+          {/* 차단기 용량 (Panel Master 연계 - 읽기 전용) */}
           <div className="mb-4">
             <label className="block text-sm font-semibold text-slate-700 mb-2">차단기 용량 (A)</label>
-            <div className="flex">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={formData.breakerCapacity || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, breakerCapacity: e.target.value }))}
-                placeholder="차단기 용량 입력"
-                className="w-full rounded-l-lg border-slate-300 border px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
-              <span className="bg-slate-200 border border-l-0 border-slate-300 px-3 py-2 text-sm text-slate-600 rounded-r-lg font-medium">A</span>
-            </div>
+            <input
+              type="text"
+              value={formData.breakerCapacity ? `${formData.breakerCapacity} A` : '-'}
+              disabled
+              className="w-full rounded border-slate-300 border px-3 py-2 text-sm bg-slate-100 text-slate-500 cursor-not-allowed"
+            />
           </div>
 
           {/* 전류 (A) - 후크메가 */}
