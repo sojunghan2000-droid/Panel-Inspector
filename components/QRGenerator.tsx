@@ -476,26 +476,22 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         [field]: value
       };
       
-      // PNL NO. 입력 시 자동으로 층수(F1/B1)와 TR(A/B/C/D) 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1)
+      // PNL NO. 입력 시 자동으로 층수와 TR 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1)
       if (field === 'id' && value) {
         const idParts = value.trim().split('-').map((p: string) => p.trim());
         if (idParts.length === 1 && idParts[0]) {
           // 1 또는 2 → 층만
-          const floorFromId = NUM_TO_FLOOR[idParts[0]] || (idParts[0] === '1' ? 'F1' : idParts[0] === '7' ? 'B1' : '');
+          const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as string);
-            }
+            setSelectedFloor(floorFromId);
           }
         } else if (idParts.length >= 2) {
-          const floorFromId = NUM_TO_FLOOR[idParts[0]] || (idParts[0] === '1' ? 'F1' : idParts[0] === '7' ? 'B1' : '');
+          const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           const locationFromId = NUM_TO_TR[idParts[1]] || idParts[1];
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as string);
-            }
+            setSelectedFloor(floorFromId);
           }
           if (locationFromId && isValidTR(locationFromId.toUpperCase()) && (!updated.location || updated.location !== locationFromId.toUpperCase())) {
             updated.location = locationFromId.toUpperCase();
@@ -503,13 +499,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         }
       }
       
+      // 유효한 층수 목록
+      const validFloors = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'B1', 'B2'];
+
       // 층수 필드 변경 시 selectedFloor도 동기화
-      if (field === 'floor' && (value === 'F1' || value === 'B1')) {
-        setSelectedFloor(value as string);
+      if (field === 'floor' && validFloors.includes(value)) {
+        setSelectedFloor(value);
       }
-      
-      // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외 → 층수 선택이 F1으로 되돌아가는 것 방지)
-      const hasFloor = updated.floor && (updated.floor === 'F1' || updated.floor === 'B1');
+
+      // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외)
+      const hasFloor = updated.floor && validFloors.includes(updated.floor);
       const hasLocation = updated.location && updated.location.trim() !== '';
       
       if (hasFloor && hasLocation && !selectedQR) {
