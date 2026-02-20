@@ -139,18 +139,22 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     }
   };
 
-  // 메인 차단기 용량별 수량 집계
+  // 차단기 용량별 수량 집계 + 정보 부재 수
   const breakerCapacitySummary = useMemo(() => {
     const capacityMap: Record<string, number> = {};
+    let missingCount = 0;
     inspections.forEach(ins => {
       const cap = ins.breakerCapacity?.trim();
       if (cap) {
         capacityMap[cap] = (capacityMap[cap] || 0) + 1;
+      } else {
+        missingCount++;
       }
     });
-    return Object.entries(capacityMap)
+    const items = Object.entries(capacityMap)
       .map(([capacity, count]) => ({ capacity, count }))
       .sort((a, b) => parseFloat(a.capacity) - parseFloat(b.capacity));
+    return { items, missingCount };
   }, [inspections]);
 
   return (
@@ -264,31 +268,31 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
 
-        {/* 메인 차단기 용량 현황 - Recent Inspections 아래 배치 */}
+        {/* 차단기 용량별 현황 - Recent Inspections 아래 배치 */}
         <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">메인 차단기 용량 현황</h3>
-          {breakerCapacitySummary.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {breakerCapacitySummary.map(item => (
-                <div key={item.capacity} className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2 text-sm font-medium">
-                  <span className="font-bold">{item.capacity}A</span>
-                  <span className="text-blue-500">=</span>
-                  <span>{item.count}대</span>
-                </div>
-              ))}
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">차단기 용량별 현황</h3>
+          <div className="flex flex-wrap gap-2">
+            {breakerCapacitySummary.items.map(item => (
+              <div key={item.capacity} className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2 text-sm font-medium">
+                <span className="font-bold">{item.capacity}A</span>
+                <span className="text-blue-500">=</span>
+                <span>{item.count}대</span>
+              </div>
+            ))}
+            {breakerCapacitySummary.missingCount > 0 && (
+              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-sm font-medium">
+                <span className="font-bold">정보 부재</span>
+                <span className="text-amber-500">=</span>
+                <span>{breakerCapacitySummary.missingCount}대</span>
+              </div>
+            )}
+            {breakerCapacitySummary.items.length > 0 && (
               <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm font-semibold">
                 <span>총</span>
-                <span className="text-emerald-600">{breakerCapacitySummary.reduce((sum, i) => sum + i.count, 0)}대</span>
+                <span className="text-emerald-600">{breakerCapacitySummary.items.reduce((sum, i) => sum + i.count, 0)}대</span>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-              <svg className="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>차단기 용량 데이터가 없습니다. Panel Master에서 입력해주세요.</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
