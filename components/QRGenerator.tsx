@@ -645,7 +645,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       onUpdateInspections(updatedInspections);
       
       // 새로 생성된 Inspection 선택
-      onSelectInspection(newId);
+      onSelectInspection(newPanelNo);
     }
   };
 
@@ -713,13 +713,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       y: qrData.positionY ? parseFloat(qrData.positionY) : undefined
     };
 
-    const finalId = qrData.id;
-        location: finalLocation,
-        id: finalId
-      }));
-    } else {
-      finalId = qrData.id?.trim() || (isValidTR(finalLocation) ? toPnlNo(qrData.floor, finalLocation) : `${FLOOR_TO_NUM[qrData.floor] || qrData.floor}-${finalLocation}`);
-    }
+    const finalId = qrData.id?.trim() || (isValidTR(finalLocation) ? toPnlNo(qrData.floor, finalLocation) : `${FLOOR_TO_NUM[qrData.floor] || qrData.floor}-${finalLocation}`);
+
     const updatedQRData = JSON.stringify({
       id: finalId,
       location: finalLocation,
