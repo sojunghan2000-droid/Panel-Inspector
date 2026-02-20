@@ -14,44 +14,6 @@ import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
 
-/** 성수동 K-PJT 현장 가설용 가설 분전반 계통 ('25.12.30 기준, 총 65면)
- * TR-1 (A) 900KVA → floor='F1', TR-2 (B) 950KVA → floor='B1' */
-const DL = { welder: false, grinder: false, light: false, pump: false }; // 기본 loads
-const P = (pno: string, tr: 'A'|'B', sq: string, parent?: string, notes?: string): InspectionRecord => ({
-  panelNo: pno, status: 'Pending', lastInspectionDate: '-', loads: { ...DL }, photoUrl: null, memo: '',
-  tr, floor: tr === 'A' ? 'F1' : 'B1', nominalCrossSection: sq,
-  ...(parent ? { parentPanelNo: parent } : {}), ...(notes ? { notes } : {}),
-});
-const MOCK_DATA: InspectionRecord[] = [
-  // === TR-1 (A) 900KVA — F1 ===
-  P('1','A','95SQ'), P('1-1','A','95SQ','1'), P('1-2','A','50SQ','1'), P('1-2-1','A','50SQ','1-2'),
-  P('2','A','95SQ'),
-  P('3','A','95SQ'), P('3-1','A','50SQ','3'), P('3-1-1','A','16SQ','3-1'), P('3-1-2','A','35SQ','3-1'),
-  P('3-1충전부','A','95SQ','3-1','충전부'), P('3-1충전부-1','A','50SQ','3-1충전부','충전부'),
-  P('3-2','A','50SQ','3','양수기'),
-  P('4','A','95SQ'), P('4-1','A','35SQ','4'),
-  P('5','A','95SQ'), P('5-1','A','35SQ','5'), P('5-2','A','95SQ','5'),
-  P('5-2-1','A','50SQ','5-2','전력량계'), P('5-2-2','A','50SQ','5-2','전력량계'), P('5-2-2-1','A','50SQ','5-2-2'),
-  P('7','A','150SQ',undefined,'T/C1(L)'), P('7-1','A','95SQ','7'), P('7-1-1','A','16SQ','7-1'),
-  P('7-2','A','95SQ','7'), P('7-2-1','A','16SQ','7-2'), P('7-3','A','95SQ','7'), P('7-4','A','95SQ','7'),
-  P('8','A','300SQ',undefined,'T/C4'), P('9','A','300SQ',undefined,'T/C1'),
-  P('16','A','95SQ'), P('16-1','A','95SQ','16'), P('16-2','A','95SQ','16'),
-  // === TR-2 (B) 950KVA — B1 ===
-  P('6','B','300SQ'), P('6-1','B','150SQ','6'), P('6-1-1','B','95SQ','6-1'), P('6-1-2','B','95SQ','6-1'),
-  P('6-1-2-1','B','150SQ','6-1-2'), P('6-1-3','B','95SQ','6-1'), P('6-1-3-1','B','95SQ','6-1-3','양수기'),
-  P('6-2','B','150SQ','6'), P('6-2-1','B','95SQ','6-2'), P('6-2-2','B','95SQ','6-2'),
-  P('6-2-2-1','B','95SQ','6-2-2','T/C4(L)'), P('6-2-2-2','B','16SQ','6-2-2'),
-  P('6-2-3','B','95SQ','6-2'), P('6-2-3-1','B','95SQ','6-2-3'),
-  P('10','B','300SQ',undefined,'T/C2'), P('11','B','150SQ',undefined,'T/C2(L)'),
-  P('11-1','B','95SQ','11'), P('11-1-1','B','16SQ','11-1'), P('11-1-2','B','95SQ','11-1'),
-  P('11-2','B','95SQ','11'), P('11-3','B','95SQ','11'),
-  P('12','B','185SQ',undefined,'T/C3(L)'), P('12-1','B','95SQ','12'), P('12-1-1','B','16SQ','12-1'),
-  P('12-2','B','95SQ','12'), P('12-3','B','95SQ','12'),
-  P('13','B','150SQ'), P('13-1','B','95SQ','13'),
-  P('14','B','300SQ',undefined,'T/C3'),
-  P('15','B','150SQ'), P('15-1','B','50SQ','15'), P('15-2','B','50SQ','15'),
-];
-
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
 // 유틸리티 함수: 날짜 포맷팅 (YYYY-MM-DD hh:mm:ss)
@@ -63,11 +25,6 @@ const formatDateTime = (date: Date = new Date()): string => {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-};
-
-// 유틸리티 함수: position 그대로 반환 (랜덤 위치 부여 안 함 - 미지정 패널은 FloorPlanView에서 회색 표시)
-const ensurePosition = (item: InspectionRecord): InspectionRecord => {
-  return item;
 };
 
 // ID에서 "1st"를 "F1"으로 변경하는 함수
@@ -169,7 +126,7 @@ const App: React.FC = () => {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
 
-  // IndexedDB 초기화 및 데이터 로드 (스마트 머지: 로컬 데이터 유지 + MOCK_DATA 새 패널만 추가)
+  // IndexedDB 초기화 및 데이터 로드 (IndexedDB 전용)
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -180,38 +137,22 @@ const App: React.FC = () => {
         const savedInspections = await getAllInspectionsWithPhotos();
         const savedQRCodes = await getAllQRCodes();
 
-        // 2. 스마트 머지: IndexedDB 데이터 우선, MOCK_DATA에서 새 패널만 추가
-        const savedPanelNos = new Set(savedInspections.map(i => i.panelNo));
-
-        // IndexedDB에 없는 MOCK_DATA 패널만 추가
-        const newPanels = MOCK_DATA
-          .filter(item => !savedPanelNos.has(item.panelNo))
-          .map(item => ensurePosition(item));
-
-        // 머지: 기존 데이터 + 새 패널
-        const mergedInspections = [...savedInspections, ...newPanels];
-
-        // 3. state 설정
-        setInspections(mergedInspections);
+        // 2. state 설정 (IndexedDB 데이터만 사용)
+        setInspections(savedInspections);
         setQrCodesState(savedQRCodes);
 
-        // 4. 새 패널이 있으면 IndexedDB에 저장
-        if (newPanels.length > 0) {
-          await Promise.all(newPanels.map(p => saveInspection(p)));
-          console.log(`[스마트 머지] ${newPanels.length}개 새 패널 추가됨:`, newPanels.map(p => p.panelNo));
-        }
-
-        // 5. Reports 로드
+        // 3. Reports 로드
         const savedReports = await getAllReports();
         if (savedReports && savedReports.length > 0) {
           setReports(savedReports);
         }
 
-        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length}개, 새 패널: ${newPanels.length}개, 총: ${mergedInspections.length}개`);
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length}개 패널, ${savedQRCodes.length}개 QR 코드, ${savedReports.length}개 보고서`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
-        // 오류 발생 시 MOCK_DATA 사용
-        setInspections(MOCK_DATA.map(item => ensurePosition(item)));
+        // 오류 발생 시 빈 배열로 시작 (Panel Master에서 등록 필요)
+        setInspections([]);
+        alert('데이터 로드 중 오류가 발생했습니다.\n새로 시작하려면 Panel Master에서 패널을 등록해주세요.');
       } finally {
         setIsLoading(false);
       }
@@ -499,7 +440,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.21</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.22</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">

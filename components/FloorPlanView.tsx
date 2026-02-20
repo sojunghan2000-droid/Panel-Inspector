@@ -678,20 +678,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     return { stats, total: Object.values(stats).reduce((a, b) => a + b, 0) };
   }, [inspections]);
 
-  // 메인 차단기 용량별 수량 집계
-  const breakerCapacitySummary = useMemo(() => {
-    const capacityMap: Record<string, number> = {};
-    inspections.forEach(ins => {
-      const cap = ins.breakerCapacity?.trim();
-      if (cap) {
-        capacityMap[cap] = (capacityMap[cap] || 0) + 1;
-      }
-    });
-    return Object.entries(capacityMap)
-      .map(([capacity, count]) => ({ capacity, count }))
-      .sort((a, b) => parseFloat(a.capacity) - parseFloat(b.capacity));
-  }, [inspections]);
-
   // 층에 따른 이미지 경로 결정 (IndexedDB에 저장된 이미지가 있으면 사용, 없으면 null)
   const floorImagePath = useMemo(() => {
     return floorPlanImages[selectedFloor] || null;
@@ -699,25 +685,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      {/* 메인 차단기 용량별 수량 현황 */}
-      {breakerCapacitySummary.length > 0 && (
-        <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-          <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">메인 차단기 용량 현황</div>
-          <div className="flex flex-wrap gap-2">
-            {breakerCapacitySummary.map(item => (
-              <div key={item.capacity} className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-1.5 text-sm font-medium">
-                <span className="font-bold">{item.capacity}A</span>
-                <span className="text-blue-500">=</span>
-                <span>{item.count}대</span>
-              </div>
-            ))}
-            <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-lg px-3 py-1.5 text-sm font-semibold">
-              <span>총</span>
-              <span className="text-emerald-600">{breakerCapacitySummary.reduce((sum, i) => sum + i.count, 0)}대</span>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
