@@ -821,7 +821,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             <label className="block text-sm font-semibold text-slate-700 mb-2">차단기 용량 (A)</label>
             <input
               type="text"
-              value={record?.breakerCapacity ? `${record.breakerCapacity} A` : '-'}
+              value={formData.breakerCapacity ? `${formData.breakerCapacity} A` : '-'}
               disabled
               className="w-full rounded border-slate-300 border px-3 py-2 text-sm bg-slate-100 text-slate-500 cursor-not-allowed"
             />

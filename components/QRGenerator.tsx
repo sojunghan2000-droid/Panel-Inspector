@@ -180,16 +180,17 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
     const savedQRCodes = qrCodes;
     const newInspections: InspectionRecord[] = [];
+    const updatedExisting: Partial<InspectionRecord>[] = [];
 
     savedQRCodes.forEach((qr: QRCodeData) => {
       try {
         const qrData = JSON.parse(qr.qrData);
         const position = qrData.position || {};
-        
+
         // 이미 존재하는 InspectionRecord인지 확인
         const locationCode = qr.location.replace(/\s+/g, '-').toUpperCase();
         const floorCode = qr.floor.replace(/\s+/g, '').toUpperCase();
-        
+
         // PNL NO.로 먼저 확인 (정확한 매칭)
         const existingInspectionById = inspections.find(inspection => {
           try {
@@ -218,13 +219,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
         if (!existingInspection) {
           // 새 InspectionRecord 생성
-          const positionObj = position.x !== undefined && position.y !== undefined 
+          const positionObj = position.x !== undefined && position.y !== undefined
             ? { x: position.x, y: position.y }
             : undefined;
 
           const newPanelNo = qrData.id?.trim() || qrData.panelNo || (isValidTR(qr.location) ? toPnlNo(qr.floor, qr.location) : `${FLOOR_TO_NUM[qr.floor] || qr.floor}-${qr.location}`);
           const alreadyInNewInspections = newInspections.some(ins => ins.panelNo === newPanelNo);
-          
+
           if (!alreadyInNewInspections) {
             const newInspection: InspectionRecord = {
               panelNo: newPanelNo,
@@ -237,10 +238,44 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               contractor: qrData.contractor || '',
               projectName: qrData.projectName || '',
               nominalCrossSection: qrData.nominalCrossSection || '',
-              breakerCapacity: qrData.breakerCapacity || ''
+              breakerCapacity: qrData.breakerCapacity || '',
+              managementNumber: qrData.managementNumber || ''
             };
 
             newInspections.push(newInspection);
+          }
+        } else {
+          // 기존 InspectionRecord의 Panel Master 필드 업데이트
+          const qrContractor = qrData.contractor || '';
+          const qrProjectName = qrData.projectName || '';
+          const qrNominalCrossSection = qrData.nominalCrossSection || '';
+          const qrBreakerCapacity = qrData.breakerCapacity || '';
+          const qrManagementNumber = qrData.managementNumber || '';
+          const qrFloor = qrData.floor || '';
+          const qrTr = qrData.location || '';
+
+          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity || qrManagementNumber) {
+            const needsUpdate =
+              (qrContractor && existingInspection.contractor !== qrContractor) ||
+              (qrProjectName && existingInspection.projectName !== qrProjectName) ||
+              (qrNominalCrossSection && existingInspection.nominalCrossSection !== qrNominalCrossSection) ||
+              (qrBreakerCapacity && existingInspection.breakerCapacity !== qrBreakerCapacity) ||
+              (qrManagementNumber && existingInspection.managementNumber !== qrManagementNumber) ||
+              (qrFloor && existingInspection.floor !== qrFloor) ||
+              (qrTr && existingInspection.tr !== qrTr);
+
+            if (needsUpdate) {
+              updatedExisting.push({
+                panelNo: existingInspection.panelNo,
+                contractor: qrContractor || existingInspection.contractor,
+                projectName: qrProjectName || existingInspection.projectName,
+                nominalCrossSection: qrNominalCrossSection || existingInspection.nominalCrossSection,
+                breakerCapacity: qrBreakerCapacity || existingInspection.breakerCapacity,
+                managementNumber: qrManagementNumber || existingInspection.managementNumber,
+                floor: qrFloor || existingInspection.floor,
+                tr: qrTr || existingInspection.tr,
+              });
+            }
           }
         }
       } catch (e) {
@@ -248,30 +283,31 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       }
     });
 
+    // 기존 inspections에 updatedExisting 머지
+    let mergedInspections = inspections.filter((inspection, index, self) =>
+      index === self.findIndex(i => i.panelNo === inspection.panelNo)
+    );
+    if (updatedExisting.length > 0) {
+      updatedExisting.forEach(update => {
+        mergedInspections = mergedInspections.map(ins =>
+          ins.panelNo === update.panelNo ? { ...ins, ...update } : ins
+        );
+      });
+    }
+
     if (newInspections.length > 0) {
-      const existingPanelNos = new Set(inspections.map(ins => ins.panelNo));
+      const existingPanelNos = new Set(mergedInspections.map(ins => ins.panelNo));
       const uniqueNewInspections = newInspections.filter(ins => !existingPanelNos.has(ins.panelNo));
-      
-      if (uniqueNewInspections.length > 0) {
-        const uniqueExistingInspections = inspections.filter((inspection, index, self) =>
-          index === self.findIndex(i => i.panelNo === inspection.panelNo)
-        );
-        const updatedInspections = [...uniqueNewInspections, ...uniqueExistingInspections];
+
+      if (uniqueNewInspections.length > 0 || updatedExisting.length > 0) {
+        const updatedInspections = [...uniqueNewInspections, ...mergedInspections];
         onUpdateInspections(updatedInspections);
-      } else {
-        const uniqueExistingInspections = inspections.filter((inspection, index, self) =>
-          index === self.findIndex(i => i.panelNo === inspection.panelNo)
-        );
-        if (uniqueExistingInspections.length !== inspections.length) {
-          onUpdateInspections(uniqueExistingInspections);
-        }
       }
+    } else if (updatedExisting.length > 0) {
+      onUpdateInspections(mergedInspections);
     } else {
-      const uniqueExistingInspections = inspections.filter((inspection, index, self) =>
-        index === self.findIndex(i => i.panelNo === inspection.panelNo)
-      );
-      if (uniqueExistingInspections.length !== inspections.length) {
-        onUpdateInspections(uniqueExistingInspections);
+      if (mergedInspections.length !== inspections.length) {
+        onUpdateInspections(mergedInspections);
       }
     }
   }, [inspections, onUpdateInspections]);
@@ -440,26 +476,22 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         [field]: value
       };
       
-      // PNL NO. 입력 시 자동으로 층수(F1/B1)와 TR(A/B/C/D) 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1)
+      // PNL NO. 입력 시 자동으로 층수와 TR 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1)
       if (field === 'id' && value) {
         const idParts = value.trim().split('-').map((p: string) => p.trim());
         if (idParts.length === 1 && idParts[0]) {
           // 1 또는 2 → 층만
-          const floorFromId = NUM_TO_FLOOR[idParts[0]] || (idParts[0] === '1' ? 'F1' : idParts[0] === '7' ? 'B1' : '');
+          const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as string);
-            }
+            setSelectedFloor(floorFromId);
           }
         } else if (idParts.length >= 2) {
-          const floorFromId = NUM_TO_FLOOR[idParts[0]] || (idParts[0] === '1' ? 'F1' : idParts[0] === '7' ? 'B1' : '');
+          const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           const locationFromId = NUM_TO_TR[idParts[1]] || idParts[1];
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            if (floorFromId === 'F1' || floorFromId === 'B1') {
-              setSelectedFloor(floorFromId as string);
-            }
+            setSelectedFloor(floorFromId);
           }
           if (locationFromId && isValidTR(locationFromId.toUpperCase()) && (!updated.location || updated.location !== locationFromId.toUpperCase())) {
             updated.location = locationFromId.toUpperCase();
@@ -467,13 +499,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         }
       }
       
+      // 유효한 층수 목록
+      const validFloors = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'B1', 'B2'];
+
       // 층수 필드 변경 시 selectedFloor도 동기화
-      if (field === 'floor' && (value === 'F1' || value === 'B1')) {
-        setSelectedFloor(value as string);
+      if (field === 'floor' && validFloors.includes(value)) {
+        setSelectedFloor(value);
       }
-      
-      // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외 → 층수 선택이 F1으로 되돌아가는 것 방지)
-      const hasFloor = updated.floor && (updated.floor === 'F1' || updated.floor === 'B1');
+
+      // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외)
+      const hasFloor = updated.floor && validFloors.includes(updated.floor);
       const hasLocation = updated.location && updated.location.trim() !== '';
       
       if (hasFloor && hasLocation && !selectedQR) {
@@ -511,13 +546,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // PNL NO. 생성: 1-1, 2-1 형식 (F1/B1 + A/B/C/D)
     const finalId = data.id?.trim() || (isValidTR(data.location) ? toPnlNo(data.floor, data.location) : `${FLOOR_TO_NUM[data.floor] || data.floor}-${data.location}`);
 
-    // QR 코드에 포함될 데이터를 JSON 형식으로 생성
+    // QR 코드에 포함될 데이터를 JSON 형식으로 생성 (Panel Master 데이터 포함)
     const qrDataString = JSON.stringify({
       id: finalId,
       location: data.location,
       floor: data.floor,
       position: position,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      contractor: data.contractor,
+      projectName: data.projectName,
+      nominalCrossSection: data.nominalCrossSection,
+      breakerCapacity: data.breakerCapacity,
+      managementNumber: data.position
     });
 
     // 기존 QR 코드 확인
@@ -728,7 +768,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       contractor: qrData.contractor,
       projectName: qrData.projectName,
       nominalCrossSection: qrData.nominalCrossSection,
-      breakerCapacity: qrData.breakerCapacity
+      breakerCapacity: qrData.breakerCapacity,
+      managementNumber: qrData.position
     });
 
     const updatedQRCodes = qrCodes.map(qr =>
