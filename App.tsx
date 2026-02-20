@@ -437,6 +437,7 @@ const App: React.FC = () => {
           floor: data.floor || matchedQRData.floor || existingBoard.floor,
           tr: data.tr || matchedQRData.tr || matchedQRData.location || existingBoard.tr,
           nominalCrossSection: data.nominalCrossSection || matchedQRData.nominalCrossSection || existingBoard.nominalCrossSection || '',
+          breakerCapacity: data.breakerCapacity || matchedQRData.breakerCapacity || existingBoard.breakerCapacity || '',
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
         console.log('✅ 기존 보드 업데이트, dashboard로 이동');
