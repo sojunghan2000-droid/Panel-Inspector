@@ -61,6 +61,7 @@ interface QRData {
   contractor: string;
   projectName: string;
   nominalCrossSection: string;
+  breakerCapacity: string;
 }
 
 interface QRGeneratorProps {
@@ -100,7 +101,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     positionY: '',
     contractor: '삼성물산',
     projectName: '성수동 K-PJT',
-    nominalCrossSection: ''
+    nominalCrossSection: '', breakerCapacity: ''
   });
   const [generatedQR, setGeneratedQR] = useState<string | null>(null);
   const [savedQRId, setSavedQRId] = useState<string | null>(null);
@@ -235,7 +236,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               position: positionObj,
               contractor: qrData.contractor || '',
               projectName: qrData.projectName || '',
-              nominalCrossSection: qrData.nominalCrossSection || ''
+              nominalCrossSection: qrData.nominalCrossSection || '',
+              breakerCapacity: qrData.breakerCapacity || ''
             };
 
             newInspections.push(newInspection);
@@ -566,7 +568,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         positionY: position.y ? String(position.y) : '',
         contractor: data.contractor || '삼성물산',
         projectName: data.projectName || '성수동 K-PJT',
-        nominalCrossSection: data.nominalCrossSection || ''
+        nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
       });
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
@@ -581,7 +583,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         positionY: '',
         contractor: '삼성물산',
         projectName: '성수동 K-PJT',
-        nominalCrossSection: ''
+        nominalCrossSection: '', breakerCapacity: ''
       });
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
@@ -669,7 +671,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         positionY: position.y ? String(position.y) : '',
         contractor: data.contractor || '삼성물산',
         projectName: data.projectName || '성수동 K-PJT',
-        nominalCrossSection: data.nominalCrossSection || ''
+        nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
       });
       setGeneratedQR(qr.qrData);
     } catch (e) {
@@ -682,7 +684,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         positionY: '',
         contractor: '삼성물산',
         projectName: '성수동 K-PJT',
-        nominalCrossSection: ''
+        nominalCrossSection: '', breakerCapacity: ''
       });
       setGeneratedQR(qr.qrData);
     }
@@ -723,7 +725,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       timestamp: new Date().toISOString(),
       contractor: qrData.contractor,
       projectName: qrData.projectName,
-      nominalCrossSection: qrData.nominalCrossSection
+      nominalCrossSection: qrData.nominalCrossSection,
+      breakerCapacity: qrData.breakerCapacity
     });
 
     const updatedQRCodes = qrCodes.map(qr =>
@@ -757,7 +760,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           positionY: position.y != null ? String(position.y) : '',
           contractor: data.contractor || '삼성물산',
           projectName: data.projectName || '성수동 K-PJT',
-          nominalCrossSection: data.nominalCrossSection || ''
+          nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
         });
       } catch {
         setQrData(prev => ({
@@ -784,7 +787,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       if (selectedQR?.id === id) {
         setSelectedQR(null);
         setGeneratedQR(null);
-        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '' });
+        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' });
         setIsEditing(false);
       }
     }
@@ -935,7 +938,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       location: finalLocation,
       floor: finalFloor,
       position: position,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      contractor: qrData.contractor,
+      projectName: qrData.projectName,
+      nominalCrossSection: qrData.nominalCrossSection,
+      breakerCapacity: qrData.breakerCapacity
     });
 
     setGeneratedQR(data);
@@ -1145,7 +1152,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       positionY: '',
       contractor: '삼성물산',
       projectName: '성수동 K-PJT',
-      nominalCrossSection: ''
+      nominalCrossSection: '', breakerCapacity: ''
     });
     setGeneratedQR(null);
     setSelectedQR(null);
@@ -1368,7 +1375,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                         positionY: inspection.position?.y?.toString() || '',
                         contractor: '삼성물산',
                         projectName: '성수동 K-PJT',
-                        nominalCrossSection: ''
+                        nominalCrossSection: '', breakerCapacity: ''
                       });
                     }
                     if (onSelectInspection) {
@@ -1681,6 +1688,28 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 </div>
               </div>
 
+              {/* 차단기 용량 - Key-in with A unit */}
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  차단기 용량
+                </label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={qrData.breakerCapacity}
+                    onChange={(e) => handleInputChange('breakerCapacity', e.target.value)}
+                    placeholder="차단기 용량 입력"
+                    onFocus={restoreMainScrollOnFocus}
+                    className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                  <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
+                    A
+                  </span>
+                </div>
+              </div>
+
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                 <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
                   <MapPin size={16} className="text-emerald-600" />
@@ -1955,7 +1984,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     positionY: inspection.position?.y?.toString() || '',
                     contractor: '삼성물산',
                     projectName: '성수동 K-PJT',
-                    nominalCrossSection: ''
+                    nominalCrossSection: '', breakerCapacity: ''
                   });
                 }
               }
