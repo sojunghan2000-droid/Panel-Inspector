@@ -887,6 +887,7 @@ const App: React.FC = () => {
                       photoUrl: null,
                       memo: '',
                       floor: 'F1',
+                      breakerCapacity: '',
                     };
                     setInspections(prev => [newItem, ...prev]);
                     setShowUnregisteredModal(false);

@@ -352,7 +352,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         panelNo: inspection.panelNo,
         projectName: inspection.projectName,
         contractor: inspection.contractor,
-        managementNumber: inspection.managementNumber
+        managementNumber: inspection.managementNumber,
+        nominalCrossSection: inspection.nominalCrossSection,
+        breakerCapacity: inspection.breakerCapacity
       });
 
       const newQRCode: QRCodeData = {
