@@ -549,25 +549,16 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-3">
-          {/* PWA 설치 버튼 - 항상 표시 */}
-          {!isInstalled ? (
-            <button
-              onClick={deferredPrompt ? handleInstallApp : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                deferredPrompt
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-                  : 'bg-slate-700 text-slate-300 cursor-default'
-              }`}
-              title={deferredPrompt ? '클릭하여 앱을 설치합니다' : 'Chrome 주소창의 설치 아이콘(⊕)을 클릭하거나, 메뉴 → 앱 설치를 이용하세요'}
+          {/* 설치 파일 다운로드 버튼 - 웹에서만 표시 (Electron에서는 숨김) */}
+          {!(window as any).electronAPI && (
+            <a
+              href="https://github.com/sojunghan2000-droid/Panel-Inspector/releases/download/v1.0.0/Panel.Inspector.Setup.1.0.0.exe"
+              download
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer no-underline"
             >
               <Download size={18} />
-              앱 설치
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2.5 text-emerald-400 text-sm bg-slate-800/50 rounded-lg">
-              <CheckCircle2 size={16} />
-              <span>앱 설치됨</span>
-            </div>
+              앱 설치 다운로드
+            </a>
           )}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500"></div>
