@@ -159,7 +159,7 @@ const App: React.FC = () => {
           if (!basementExists) {
             const [basementRes, firstFloorRes] = await Promise.all([
               fetch('/Basement.jpg'),
-              fetch('/1st Floor.jpg'),
+              fetch('/1st%20Floor.jpg'),
             ]);
 
             if (basementRes.ok && firstFloorRes.ok) {
