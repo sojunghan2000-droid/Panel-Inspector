@@ -1753,43 +1753,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                  <MapPin size={16} className="text-emerald-600" />
-                  좌표 (Dashboard 위치 매핑)
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">X (0-100%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={qrData.positionX}
-                      onChange={(e) => handleInputChange('positionX', e.target.value)}
-                      onFocus={restoreMainScrollOnFocus}
-                      placeholder="25"
-                      className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Y (0-100%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={qrData.positionY}
-                      onChange={(e) => handleInputChange('positionY', e.target.value)}
-                      onFocus={restoreMainScrollOnFocus}
-                      placeholder="30"
-                      className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {selectedQR && (
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex items-center gap-2 mb-3">
