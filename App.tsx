@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, saveFloorPlanImage, getFloorPlanImage } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
@@ -153,7 +153,45 @@ const App: React.FC = () => {
           setQrCodesState(savedQRCodes);
         }
 
-        // 3. Reports 로드
+        // 3. Floor Plan 기본 배경 이미지 시드 (이미지 없을 때만)
+        try {
+          const basementExists = await getFloorPlanImage('B1');
+          if (!basementExists) {
+            const [basementRes, firstFloorRes] = await Promise.all([
+              fetch('/Basement.jpg'),
+              fetch('/1st Floor.jpg'),
+            ]);
+
+            if (basementRes.ok && firstFloorRes.ok) {
+              const [basementBlob, firstFloorBlob] = await Promise.all([
+                basementRes.blob(),
+                firstFloorRes.blob(),
+              ]);
+
+              // Basement → B1, B2
+              await Promise.all([
+                saveFloorPlanImage('B1', basementBlob),
+                saveFloorPlanImage('B2', basementBlob),
+              ]);
+
+              // 1st Floor → F1~F6
+              await Promise.all([
+                saveFloorPlanImage('F1', firstFloorBlob),
+                saveFloorPlanImage('F2', firstFloorBlob),
+                saveFloorPlanImage('F3', firstFloorBlob),
+                saveFloorPlanImage('F4', firstFloorBlob),
+                saveFloorPlanImage('F5', firstFloorBlob),
+                saveFloorPlanImage('F6', firstFloorBlob),
+              ]);
+
+              console.log('[초기화] Floor Plan 기본 배경 이미지 8개 층 시드 완료');
+            }
+          }
+        } catch (err) {
+          console.warn('[초기화] Floor Plan 이미지 시드 실패 (무시):', err);
+        }
+
+        // 4. Reports 로드
         const savedReports = await getAllReports();
         if (savedReports && savedReports.length > 0) {
           setReports(savedReports);
@@ -452,7 +490,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.25</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.26</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
