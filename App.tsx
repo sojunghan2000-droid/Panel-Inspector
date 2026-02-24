@@ -153,10 +153,21 @@ const App: React.FC = () => {
           setQrCodesState(savedQRCodes);
         }
 
-        // 3. Floor Plan 기본 배경 이미지 시드 (이미지 없을 때만)
+        // 3. Floor Plan 기본 배경 이미지 시드 (8개 층 중 하나라도 없을 때만)
         try {
-          const basementExists = await getFloorPlanImage('B1');
-          if (!basementExists) {
+          const floorImages = await Promise.all([
+            getFloorPlanImage('F1'),
+            getFloorPlanImage('F2'),
+            getFloorPlanImage('F3'),
+            getFloorPlanImage('F4'),
+            getFloorPlanImage('F5'),
+            getFloorPlanImage('F6'),
+            getFloorPlanImage('B1'),
+            getFloorPlanImage('B2'),
+          ]);
+          const allFloorsExist = floorImages.every(img => img !== null);
+
+          if (!allFloorsExist) {
             const [basementRes, firstFloorRes] = await Promise.all([
               fetch('/Basement.jpg'),
               fetch('/1st%20Floor.jpg'),
