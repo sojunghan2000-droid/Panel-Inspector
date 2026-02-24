@@ -153,13 +153,24 @@ const App: React.FC = () => {
           setQrCodesState(savedQRCodes);
         }
 
-        // 3. Floor Plan 기본 배경 이미지 시드 (이미지 없을 때만)
+        // 3. Floor Plan 기본 배경 이미지 시드 (8개 층 중 하나라도 없을 때만)
         try {
-          const basementExists = await getFloorPlanImage('B1');
-          if (!basementExists) {
+          const floorImages = await Promise.all([
+            getFloorPlanImage('F1'),
+            getFloorPlanImage('F2'),
+            getFloorPlanImage('F3'),
+            getFloorPlanImage('F4'),
+            getFloorPlanImage('F5'),
+            getFloorPlanImage('F6'),
+            getFloorPlanImage('B1'),
+            getFloorPlanImage('B2'),
+          ]);
+          const allFloorsExist = floorImages.every(img => img !== null);
+
+          if (!allFloorsExist) {
             const [basementRes, firstFloorRes] = await Promise.all([
               fetch('/Basement.jpg'),
-              fetch('/1st Floor.jpg'),
+              fetch('/1st%20Floor.jpg'),
             ]);
 
             if (basementRes.ok && firstFloorRes.ok) {
@@ -574,6 +585,15 @@ const App: React.FC = () => {
             <h2 className="text-sm md:text-lg font-semibold text-slate-800 truncate">Distribution Board Manager</h2>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
+            {/* QR Scan 버튼 - 헤더 */}
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <ScanLine size={16} />
+              <span>QR Scan</span>
+            </button>
+
             {/* 더보기 메뉴 버튼 - 항상 표시 */}
             <div className="relative more-menu-dropdown">
               <button
@@ -828,14 +848,6 @@ const App: React.FC = () => {
             </>
           )}
         </main>
-
-        {/* Floating Action Button (Scan) - PC/모바일 모두 표시 */}
-        <button
-          onClick={() => setShowScanner(true)}
-          className="absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-105 transition-transform hover:bg-blue-700"
-        >
-          <ScanLine size={24} />
-        </button>
 
         {/* QR Scanner Modal */}
         {showScanner && (
