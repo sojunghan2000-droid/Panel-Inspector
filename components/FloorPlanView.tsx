@@ -501,20 +501,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     const clampedX = Math.max(0, Math.min(100, x));
     const clampedY = Math.max(0, Math.min(100, y));
 
-    // 선택된 inspection이 있으면 위치 업데이트
+    // 선택된 inspection이 있으면 위치 업데이트 → 자동 저장 → 선택 해제
     if (selectedInspection && onUpdateInspections) {
-      const updatedInspections = inspections.map(inspection => 
+      const updatedInspections = inspections.map(inspection =>
         inspection.panelNo === selectedInspection.panelNo
           ? { ...inspection, position: { x: clampedX, y: clampedY } }
           : inspection
       );
 
       onUpdateInspections(updatedInspections);
-      
-      // 화면에 반영
-      setSelectedInspection(prev => 
-        prev ? { ...prev, position: { x: clampedX, y: clampedY } } : null
-      );
+
+      // 자동 저장 후 선택 해제 (한 번 이동하면 종료, 다시 이동하려면 위젯 재클릭 필요)
+      setSelectedInspection(null);
+      setIsEditingInspectionPosition(false);
     } else {
       // 선택된 inspection이 없으면 가장 가까운 inspection 선택하거나 새로 생성
       // 여기서는 가장 가까운 inspection을 찾아서 선택
@@ -940,8 +939,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           </div>
         )}
 
-        {/* Selected Inspection Details Panel (showDetailPanel=false면 목록 선택 시 모달 미표시, dashboard 모드에서는 표시 안함) */}
-        {showDetailPanel && mode !== 'dashboard' && selectedInspection && (() => {
+        {/* Selected Inspection Details Panel — startInEditMode(Dashboard에 위치 매핑 경로)일 때만 표시 */}
+        {showDetailPanel && startInEditMode && mode !== 'dashboard' && selectedInspection && (() => {
           // QR 정보 찾기
           const qrLocation = allMarkers.find(m => m.id === selectedInspection.panelNo)?.qrLocation;
           
@@ -1161,6 +1160,24 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
            );
          })()}
 
+        {/* 위젯 선택 시 하단 안내 바 (일반 마커 클릭 = 위치 이동 모드) */}
+        {selectedInspection && !startInEditMode && mode !== 'dashboard' && !readOnly && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-3 text-sm font-medium animate-fade-in">
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin size={14} />
+              <strong>{selectedInspection.panelNo}</strong> 선택됨 — 도면을 클릭하면 위치가 이동됩니다
+            </span>
+            <button
+              onClick={() => {
+                setSelectedInspection(null);
+                setIsEditingInspectionPosition(false);
+              }}
+              className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors"
+            >
+              취소
+            </button>
+          </div>
+        )}
 
       </div>
     </div>
