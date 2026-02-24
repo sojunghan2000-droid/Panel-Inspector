@@ -13,6 +13,7 @@ import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, 
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
+import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -137,9 +138,20 @@ const App: React.FC = () => {
         const savedInspections = await getAllInspectionsWithPhotos();
         const savedQRCodes = await getAllQRCodes();
 
-        // 2. state 설정 (IndexedDB 데이터만 사용)
-        setInspections(savedInspections);
-        setQrCodesState(savedQRCodes);
+        // 2. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
+        if (savedInspections.length === 0 && savedQRCodes.length === 0) {
+          console.log('[초기화] 최초 접속 - 초기 데이터 65면 시드');
+          const initialQRCodes = generateInitialQRCodes(INITIAL_INSPECTIONS);
+
+          await Promise.all(INITIAL_INSPECTIONS.map(ins => saveInspection(ins)));
+          await saveAllQRCodes(initialQRCodes);
+
+          setInspections(INITIAL_INSPECTIONS);
+          setQrCodesState(initialQRCodes);
+        } else {
+          setInspections(savedInspections);
+          setQrCodesState(savedQRCodes);
+        }
 
         // 3. Reports 로드
         const savedReports = await getAllReports();
@@ -147,7 +159,7 @@ const App: React.FC = () => {
           setReports(savedReports);
         }
 
-        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length}개 패널, ${savedQRCodes.length}개 QR 코드, ${savedReports.length}개 보고서`);
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length || INITIAL_INSPECTIONS.length}개 패널, ${savedQRCodes.length || 65}개 QR 코드, ${savedReports.length}개 보고서`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
         // 오류 발생 시 빈 배열로 시작 (Panel Master에서 등록 필요)
@@ -440,7 +452,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.24</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.25</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
