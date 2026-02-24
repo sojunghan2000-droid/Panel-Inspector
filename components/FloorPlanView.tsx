@@ -395,13 +395,17 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       );
 
       setIsEditingInspectionPosition(false);
+      setSelectedInspection(null);
+
+      // 부모(QRGenerator)의 openDetailPanelForMapping 리셋 → 다음 마커 클릭 시 간편 이동 모드
+      if (onSelectionChange) {
+        onSelectionChange(null);
+      }
 
       // 층이 변경되었으면 해당 층으로 이동
       if (floorChanged && editingFloor) {
         handleFloorChange(editingFloor);
       }
-
-      alert('위치가 저장되었습니다.');
     } catch (error) {
       console.error('Failed to save inspection position:', error);
       alert('위치 저장에 실패했습니다.');
@@ -1027,6 +1031,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   onClick={() => {
                     setSelectedInspection(null);
                     setIsEditingInspectionPosition(false);
+                    // 부모(QRGenerator)의 openDetailPanelForMapping 리셋
+                    if (onSelectionChange) {
+                      onSelectionChange(null);
+                    }
                   }}
                   className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
                 >
