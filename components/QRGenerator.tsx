@@ -813,6 +813,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         }));
       }
     }
+    // 저장된 층으로 FloorPlanView 이동
+    setSelectedFloor(qrData.floor);
+
     alert('QR 코드가 수정되었습니다.');
     // 수정된 QR 코드를 기반으로 InspectionRecord 업데이트
     if (onUpdateInspections) {
@@ -857,6 +860,12 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       return;
     }
     
+    // 해당 패널의 층으로 FloorPlanView 이동
+    const targetFloor = qrDataToUse.floor || qrData.floor;
+    if (targetFloor) {
+      setSelectedFloor(targetFloor);
+    }
+
     // 상세 패널(모달) 표시 후 해당 마커 선택 → 위치 수정 가능
     if (qrDataToUse.id && onSelectInspection) {
       setOpenDetailPanelForMapping(true);
@@ -1000,7 +1009,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     const newQR = saveQRCode(data);
     setSavedQRId(newQR.id);
     setSelectedQR(newQR);
-    
+
+    // 저장된 층으로 FloorPlanView 이동
+    setSelectedFloor(finalFloor);
+
     // 성공 메시지
     setShowForm(false);
     setTimeout(() => {

@@ -101,6 +101,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const savedQRCodesForMarkers = propQrCodes;
   const [isEditingInspectionPosition, setIsEditingInspectionPosition] = useState(false);
   const [editingPosition, setEditingPosition] = useState({ x: 0, y: 0 });
+  const [editingFloor, setEditingFloor] = useState<string>('');
   const [panelPosition, setPanelPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -237,6 +238,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         x: selectedInspection.position?.x ?? 50,
         y: selectedInspection.position?.y ?? 50
       });
+      setEditingFloor(selectedInspection.floor || selectedFloor);
     }
   }, [startInEditMode, selectedInspection?.panelNo]);
 
@@ -368,21 +370,37 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (!selectedInspection || !onUpdateInspections) return;
 
     try {
-      // InspectionRecord 위치 정보 업데이트
-      const updatedInspections = inspections.map(inspection => 
+      const floorChanged = editingFloor && editingFloor !== (selectedInspection.floor || selectedFloor);
+
+      // InspectionRecord 위치 + 층 정보 업데이트
+      const updatedInspections = inspections.map(inspection =>
         inspection.panelNo === selectedInspection.panelNo
-          ? { ...inspection, position: { x: editingPosition.x, y: editingPosition.y } }
+          ? {
+              ...inspection,
+              position: { x: editingPosition.x, y: editingPosition.y },
+              ...(editingFloor ? { floor: editingFloor } : {})
+            }
           : inspection
       );
 
       onUpdateInspections(updatedInspections);
 
       // 화면에 반영
-      setSelectedInspection(prev => 
-        prev ? { ...prev, position: { x: editingPosition.x, y: editingPosition.y } } : null
+      setSelectedInspection(prev =>
+        prev ? {
+          ...prev,
+          position: { x: editingPosition.x, y: editingPosition.y },
+          ...(editingFloor ? { floor: editingFloor } : {})
+        } : null
       );
 
       setIsEditingInspectionPosition(false);
+
+      // 층이 변경되었으면 해당 층으로 이동
+      if (floorChanged && editingFloor) {
+        handleFloorChange(editingFloor);
+      }
+
       alert('위치가 저장되었습니다.');
     } catch (error) {
       console.error('Failed to save inspection position:', error);
@@ -955,11 +973,30 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               <div>
                 <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedInspection.panelNo}</h4>
                 <p className="text-sm text-slate-600">Distribution Board</p>
-                {qrLocation && (
+                {qrLocation && !isEditingInspectionPosition && (
                   <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
                     <QrCode size={12} />
                     QR: {qrLocation.location} ({qrLocation.floor})
                   </p>
+                )}
+                {isEditingInspectionPosition && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <QrCode size={12} className="text-purple-600 shrink-0" />
+                    <select
+                      value={editingFloor}
+                      onChange={(e) => setEditingFloor(e.target.value)}
+                      className="text-xs px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    >
+                      <option value="F6">F6 (지상6층)</option>
+                      <option value="F5">F5 (지상5층)</option>
+                      <option value="F4">F4 (지상4층)</option>
+                      <option value="F3">F3 (지상3층)</option>
+                      <option value="F2">F2 (지상2층)</option>
+                      <option value="F1">F1 (지상1층)</option>
+                      <option value="B1">B1 (지하1층)</option>
+                      <option value="B2">B2 (지하2층)</option>
+                    </select>
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-1">
@@ -971,6 +1008,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                         x: selectedInspection.position?.x || 50,
                         y: selectedInspection.position?.y || 50
                       });
+                      setEditingFloor(selectedInspection.floor || selectedFloor);
                     }}
                     className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                     title="위치 수정"
