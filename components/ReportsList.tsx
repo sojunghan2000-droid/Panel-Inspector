@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ReportHistory, InspectionRecord } from '../types';
-import { viewReport, exportReportToExcel } from '../services/reportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft } from 'lucide-react';
+import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
+import { parseReportsExcel } from '../services/reportImportService';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
@@ -9,11 +10,16 @@ interface ReportsListProps {
   inspections: InspectionRecord[];
   /** Report 수정 버튼 클릭 시 호출 - Inspection 페이지로 이동 */
   onEditReport?: (boardId: string) => void;
+  /** 엑셀 Import 후 Reports 반영 콜백 */
+  onReportsImported?: (reports: ReportHistory[]) => void;
 }
 
-const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport }) => {
+const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport, onReportsImported }) => {
   const [selectedReport, setSelectedReport] = useState<ReportHistory | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // Natural sort for PNL NO.
   const naturalSort = (a: string, b: string) => {
@@ -97,6 +103,76 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
       setTimeout(() => {
         printWindow.print();
       }, 500);
+    }
+  };
+
+  // 일괄 다운로드 핸들러
+  const handleBatchDownload = async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkDownloading(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const id of selectedIds) {
+      try {
+        const report = approvedReports.find(r => r.id === id);
+        if (!report) { failCount++; continue; }
+        const record = inspections.find(i => i.panelNo === report.boardId);
+        if (record) {
+          await generateExcelReport(record);
+          successCount++;
+          await new Promise(resolve => setTimeout(resolve, 300)); // 브라우저 차단 방지
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error('Excel 다운로드 오류:', error);
+        failCount++;
+      }
+    }
+
+    setIsBulkDownloading(false);
+    setSelectedIds(new Set());
+    alert(`다운로드 완료: 성공 ${successCount}개${failCount > 0 ? `, 실패 ${failCount}개` : ''}`);
+  };
+
+  // 전체 선택 토글
+  const handleSelectAll = () => {
+    if (selectedIds.size === approvedReports.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(approvedReports.map(r => r.id)));
+    }
+  };
+
+  // 엑셀 가져오기 핸들러
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const { reports: imported, errors } = parseReportsExcel(arrayBuffer);
+
+      if (imported.length === 0) {
+        alert('가져올 수 있는 보고서가 없습니다.' +
+          (errors.length > 0 ? `\n오류: ${errors.map(e => `Row ${e.row}: ${e.error}`).join('\n')}` : ''));
+        return;
+      }
+
+      if (onReportsImported) {
+        onReportsImported(imported);
+      }
+
+      alert(`보고서 가져오기 완료: ${imported.length}개 보고서` +
+        (errors.length > 0 ? `\n(${errors.length}개 행 오류 - 건너뜀)` : ''));
+    } catch (error) {
+      console.error('엑셀 가져오기 오류:', error);
+      alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+    } finally {
+      if (importFileRef.current) {
+        importFileRef.current.value = '';
+      }
     }
   };
 
@@ -192,16 +268,59 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Search by PNL NO. or Report ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
+        {/* 선택/다운로드/Import 툴바 */}
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          {/* 전체 선택 체크박스 */}
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={approvedReports.length > 0 && selectedIds.size === approvedReports.length}
+              onChange={handleSelectAll}
+              disabled={approvedReports.length === 0}
+              className="w-4 h-4 text-emerald-600 rounded border-slate-300"
+            />
+            전체 선택
+          </label>
+
+          {/* 선택 다운로드 버튼 */}
+          <button
+            onClick={handleBatchDownload}
+            disabled={selectedIds.size === 0 || isBulkDownloading}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              selectedIds.size > 0 && !isBulkDownloading
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+            title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 다운로드` : '보고서를 선택하세요'}
+          >
+            <Download size={16} />
+            <span>{isBulkDownloading ? '다운로드 중...' : `선택 다운로드 (${selectedIds.size}개)`}</span>
+          </button>
+
+          {/* 엑셀 가져오기 버튼 */}
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-colors">
+            <FileUp size={16} />
+            <span>엑셀 가져오기</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportExcel}
+              className="hidden"
+              ref={importFileRef}
+            />
+          </label>
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search by PNL NO. or Report ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+            />
+          </div>
         </div>
       </div>
 
@@ -232,7 +351,28 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                   `}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div className="flex items-start gap-3 flex-1">
+                      {/* 체크박스 - isGenerated인 항목만 표시 */}
+                      {(report as ReportHistory & { isGenerated?: boolean }).isGenerated ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(report.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(report.id)) next.delete(report.id);
+                              else next.add(report.id);
+                              return next;
+                            });
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 mt-1 text-emerald-600 rounded border-slate-300 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-4 shrink-0" /> // 정렬용 빈 공간
+                      )}
+                      <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         {getStatusIcon(report.status)}
                         <span className="font-semibold text-slate-800">{report.reportId}</span>
@@ -242,7 +382,8 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                         <Calendar size={12} />
                         <span>{formatDate(report.generatedAt)}</span>
                       </div>
-                    </div>
+                      </div> {/* flex-1 inner */}
+                    </div> {/* flex items-start gap-3 */}
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(report.status)}`}>
                         {report.status}

@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, saveFloorPlanImage, getFloorPlanImage } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
@@ -386,6 +386,34 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // 엑셀 Import 후 Reports 병합 핸들러
+  const handleReportsImported = useCallback(async (importedReports: ReportHistory[]) => {
+    setReports(prev => {
+      // reportId 기준 Map으로 병합
+      const map = new Map(prev.map(r => [r.reportId, r]));
+
+      importedReports.forEach(r => {
+        const existing = map.get(r.reportId);
+        if (!existing || new Date(r.generatedAt) >= new Date(existing.generatedAt)) {
+          // 기존 항목이 있으면 id 유지 (IndexedDB 키), 없으면 새로 추가
+          map.set(r.reportId, existing ? { ...r, id: existing.id } : r);
+        }
+      });
+
+      return Array.from(map.values())
+        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+    });
+
+    // IndexedDB에도 저장
+    for (const r of importedReports) {
+      try {
+        await saveReport(r);
+      } catch (error) {
+        console.error(`Report IndexedDB 저장 오류 (${r.reportId}):`, error);
+      }
+    }
+  }, []);
+
   // 알림 드롭다운 및 더보기 메뉴 외부 클릭 시 닫기
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -536,7 +564,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.28</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.29</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -860,13 +888,17 @@ const App: React.FC = () => {
               ) : currentPage === 'reports' ? (
                 <ReportsList
                   reports={reports}
-                  onDeleteReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
+                  onDeleteReport={async (id) => {
+                    setReports(prev => prev.filter(r => r.id !== id));
+                    await deleteReportFromDB(id); // IndexedDB에서도 삭제
+                  }}
                   inspections={inspections}
                   onEditReport={(boardId) => {
                     // Inspection 페이지로 이동하면서 해당 패널 선택
                     setSelectedInspectionId(boardId);
                     setCurrentPage('dashboard');
                   }}
+                  onReportsImported={handleReportsImported}
                 />
               ) : (
                 <QRGenerator 
