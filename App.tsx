@@ -14,6 +14,7 @@ import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
+import { parseInspectionExcel, mergeImportedData } from './services/excelImportService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -139,6 +140,7 @@ const App: React.FC = () => {
         const savedQRCodes = await getAllQRCodes();
 
         // 2. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
+        let currentInspections: InspectionRecord[];
         if (savedInspections.length === 0 && savedQRCodes.length === 0) {
           console.log('[초기화] 최초 접속 - 초기 데이터 65면 시드');
           const initialQRCodes = generateInitialQRCodes(INITIAL_INSPECTIONS);
@@ -146,10 +148,10 @@ const App: React.FC = () => {
           await Promise.all(INITIAL_INSPECTIONS.map(ins => saveInspection(ins)));
           await saveAllQRCodes(initialQRCodes);
 
-          setInspections(INITIAL_INSPECTIONS);
+          currentInspections = INITIAL_INSPECTIONS;
           setQrCodesState(initialQRCodes);
         } else {
-          setInspections(savedInspections);
+          currentInspections = savedInspections;
           setQrCodesState(savedQRCodes);
         }
 
@@ -202,7 +204,40 @@ const App: React.FC = () => {
           console.warn('[초기화] Floor Plan 이미지 시드 실패 (무시):', err);
         }
 
-        // 4. Reports 로드
+        // 4. 차단기 데이터 엑셀 시드 (차단기 데이터가 하나도 없을 때만)
+        try {
+          const hasBreakers = currentInspections.some(ins => ins.breakers && ins.breakers.length > 0);
+          if (!hasBreakers) {
+            const excelRes = await fetch('/%EA%B0%80%EC%84%A4%EC%A0%84%EA%B8%B0%EC%A0%90%EA%B2%80_5_2026-01-30.xlsx');
+            const contentType = excelRes.headers.get('content-type') || '';
+            if (excelRes.ok && !contentType.includes('text/html')) {
+              const excelData = await excelRes.arrayBuffer();
+              const { panels, errors } = parseInspectionExcel(excelData);
+
+              if (panels.length > 0) {
+                const { mergedInspections, stats } = mergeImportedData(panels, currentInspections);
+
+                // IndexedDB에 업데이트된 레코드만 저장
+                for (const panelNo of stats.updated) {
+                  const updated = mergedInspections.find(ins => ins.panelNo === panelNo);
+                  if (updated) await saveInspection(updated);
+                }
+
+                currentInspections = mergedInspections;
+                console.log(`[초기화] 차단기 엑셀 시드 완료: ${stats.updated.length}개 패널 업데이트`);
+                if (errors.length > 0) {
+                  console.warn('[초기화] 차단기 엑셀 시드 일부 시트 오류:', errors);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[초기화] 차단기 엑셀 시드 실패 (무시):', err);
+        }
+
+        setInspections(currentInspections);
+
+        // 5. Reports 로드
         const savedReports = await getAllReports();
         if (savedReports && savedReports.length > 0) {
           setReports(savedReports);
@@ -501,7 +536,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.27</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.28</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
