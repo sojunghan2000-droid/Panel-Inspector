@@ -103,7 +103,10 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
  */
 export const saveInspection = async (inspection: InspectionRecord): Promise<void> => {
   const db = await initIndexedDB();
-  await db.put('inspections', inspection);
+  const stamped = inspection.updatedAt
+    ? inspection
+    : { ...inspection, updatedAt: new Date().toISOString() };
+  await db.put('inspections', stamped);
 };
 
 /**

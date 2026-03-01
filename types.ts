@@ -70,6 +70,7 @@ export interface InspectionRecord {
   grounding?: '양호' | '불량' | '미점검'; // 접지 (외관 점검)
   thermalImage?: ThermalImageData; // 열화상 측정 데이터
   loadSummary?: LoadSummary; // 부하 합계 정보
+  updatedAt?: string; // ISO 8601 - Supabase 동기화용 타임스탬프
 }
 
 export type InspectionStatus = InspectionRecord['status'];
