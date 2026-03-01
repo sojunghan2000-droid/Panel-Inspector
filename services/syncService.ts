@@ -213,13 +213,29 @@ export async function pullAll(
     const mergedInspections = Array.from(localMap.values());
     callbacks.onInspectionsUpdated(mergedInspections);
 
+    // ── 로컬 → Supabase 역방향 push (로컬에만 있거나, 로컬이 더 최신인 항목) ──
+    const remotePanelNos = new Set(remoteInspections.map(r => r.panelNo));
+    const inspectionsToPush = localInspections.filter(insp => {
+      if (!remotePanelNos.has(insp.panelNo)) return true; // 로컬에만 있음
+      const remote = remoteInspections.find(r => r.panelNo === insp.panelNo)!;
+      const localTs = insp.updatedAt ? new Date(insp.updatedAt).getTime() : 0;
+      const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+      return localTs > remoteTs; // 로컬이 더 최신
+    });
+    if (inspectionsToPush.length > 0) {
+      console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
+      await upsertInspections(inspectionsToPush);
+    }
+
     // ── QR Codes ──
     const remoteQRCodes = await fetchAllQRCodes();
     if (remoteQRCodes.length > 0) {
       await saveAllQRCodes(remoteQRCodes);
       callbacks.onQRCodesUpdated(remoteQRCodes);
     } else if (localQRCodes.length > 0) {
-      // 원격이 비어있고 로컬이 있으면 로컬 유지 (첫 동기화 전 상태)
+      // 원격이 비어있고 로컬이 있으면 → 로컬을 Supabase에 업로드
+      console.log(`[syncService] QR Codes 로컬→Supabase push: ${localQRCodes.length}건`);
+      await upsertQRCodes(localQRCodes);
     }
 
     // ── Reports ──
@@ -236,6 +252,16 @@ export async function pullAll(
       const mergedReports = Array.from(reportMap.values())
         .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
       callbacks.onReportsUpdated(mergedReports);
+    }
+
+    // ── 로컬에만 있는 report → Supabase push ──
+    const remoteReportIds = new Set(remoteReports.map(r => r.reportId));
+    const localOnlyReports = localReports.filter(r => !remoteReportIds.has(r.reportId));
+    if (localOnlyReports.length > 0) {
+      console.log(`[syncService] Reports 로컬→Supabase push: ${localOnlyReports.length}건`);
+      for (const report of localOnlyReports) {
+        await upsertReport(report);
+      }
     }
 
     callbacks.onSyncStatusChange('success');
