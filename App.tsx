@@ -8,13 +8,17 @@ import ReportsList from './components/ReportsList';
 import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, CheckCircle2, LogOut } from 'lucide-react';
 import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import * as XLSX from 'xlsx';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
 import { parseInspectionExcel, mergeImportedData } from './services/excelImportService';
+import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
+import LoginPage from './components/LoginPage';
+import SyncStatusBadge from './components/SyncStatusBadge';
+import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -95,6 +99,9 @@ const migrateFloorFormat = (data: any): any => {
 const App: React.FC = () => {
   const [inspections, setInspections] = useState<InspectionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [qrCodes, setQrCodesState] = useState<QRCodeData[]>([]);
 
   // QR Codes 변경 시 IndexedDB에도 저장
@@ -105,9 +112,13 @@ const App: React.FC = () => {
       saveAllQRCodes(updatedQrCodes).catch(error => {
         console.error('QR Codes IndexedDB 저장 오류:', error);
       });
+      // Supabase push (fire-and-forget)
+      if (session && isConfigured) {
+        pushAllQRCodes(updatedQrCodes).catch(console.error);
+      }
       return updatedQrCodes;
     });
-  }, []);
+  }, [session]);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
@@ -298,6 +309,46 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Supabase Auth 상태 감지
+  useEffect(() => {
+    if (!isConfigured) {
+      setIsAuthLoading(false);
+      return;
+    }
+    getSession().then(s => {
+      setSession(s);
+      setIsAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setIsAuthLoading(false);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 로그인 후 pullAll() 실행
+  useEffect(() => {
+    if (!session || !isConfigured) return;
+    pullAll(inspections, qrCodes, reports, {
+      onInspectionsUpdated: (merged) => setInspections(merged),
+      onQRCodesUpdated: (merged) => setQrCodesState(merged),
+      onReportsUpdated: (merged) => setReports(merged),
+      onSyncStatusChange: (status) => setSyncStatus(status),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  // 오프라인 → 온라인 전환 시 큐 플러시
+  useEffect(() => {
+    if (!isConfigured) return;
+    const handleOnline = () => {
+      flushOfflineQueue(inspections, qrCodes, reports).catch(console.error);
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspections, qrCodes, reports]);
+
   // PWA 설치 핸들러
   const handleInstallApp = async () => {
     if (!deferredPrompt) return;
@@ -384,7 +435,14 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('IndexedDB 저장 오류:', error);
     }
-  }, []);
+
+    // Supabase push (fire-and-forget)
+    if (session && isConfigured) {
+      for (const inspection of uniqueInspections) {
+        pushInspection(inspection).catch(console.error);
+      }
+    }
+  }, [session]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
   const handleReportsImported = useCallback(async (importedReports: ReportHistory[]) => {
@@ -538,6 +596,23 @@ const App: React.FC = () => {
     setShowScanner(true);
   }, [selectedInspectionId, setInspections, setShowScanner]);
 
+  // Auth 로딩 중
+  if (isAuthLoading && isConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-slate-300 text-sm">인증 확인 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 로그인 게이트 (Supabase가 설정된 경우에만)
+  if (!session && isConfigured) {
+    return <LoginPage onLoginSuccess={() => {}} />;
+  }
+
   return (
     <div className="flex h-screen min-h-[100dvh] bg-slate-50 text-slate-800 overflow-hidden font-sans">
       
@@ -564,7 +639,7 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.29</span></h1>
+          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.30</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -627,11 +702,20 @@ const App: React.FC = () => {
             </a>
           )}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500"></div>
-            <div>
-              <p className="text-sm font-medium">Admin User</p>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shrink-0"></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{session?.user?.email ?? 'Admin User'}</p>
               <p className="text-xs text-slate-500">Facility Manager</p>
             </div>
+            {session && (
+              <button
+                onClick={() => supabase.auth.signOut()}
+                title="로그아웃"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -648,6 +732,21 @@ const App: React.FC = () => {
             <h2 className="text-sm md:text-lg font-semibold text-slate-800 truncate">Distribution Board Manager</h2>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
+            {/* 동기화 상태 배지 */}
+            <SyncStatusBadge
+              status={syncStatus}
+              isConfigured={isConfigured}
+              onManualSync={() => {
+                if (!session) return;
+                pullAll(inspections, qrCodes, reports, {
+                  onInspectionsUpdated: (merged) => setInspections(merged),
+                  onQRCodesUpdated: (merged) => setQrCodesState(merged),
+                  onReportsUpdated: (merged) => setReports(merged),
+                  onSyncStatusChange: (status) => setSyncStatus(status),
+                });
+              }}
+            />
+
             {/* QR Scan 버튼 - 헤더 */}
             <button
               onClick={() => setShowScanner(true)}
@@ -879,6 +978,7 @@ const App: React.FC = () => {
                     onReportGenerated={async (report) => {
                       setReports(prev => [report, ...prev]);
                       await saveReport(report); // IndexedDB에도 저장
+                      if (session && isConfigured) pushReport(report).catch(console.error);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
