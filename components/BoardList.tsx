@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InspectionRecord } from '../types';
-import { ClipboardList, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { ClipboardList, AlertTriangle, CheckCircle, Clock, Search } from 'lucide-react';
 
 interface BoardListProps {
   items: InspectionRecord[];
@@ -14,6 +14,7 @@ type SortDirection = 'asc' | 'desc';
 const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) => {
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -78,6 +79,12 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
     });
   }, [items, sortField, sortDirection]);
 
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return sortedItems;
+    const q = searchQuery.toLowerCase();
+    return sortedItems.filter(item => item.panelNo.toLowerCase().includes(q));
+  }, [sortedItems, searchQuery]);
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Complete': return <CheckCircle size={16} className="text-emerald-500" />;
@@ -102,6 +109,16 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
           <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{items.length} Items</span>
         </div>
         <p className="text-xs text-slate-500 mt-1.5">데이터는 Panel Master에 등록된 분전함의 내용을 기반으로 생성됩니다.</p>
+        <div className="relative mt-2">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by PNL NO...."
+            className="w-full pl-8 pr-4 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+          />
+        </div>
       </div>
       <div className="overflow-y-auto flex-1">
         <table className="w-full text-xs md:text-sm text-left min-w-[280px]">
@@ -131,7 +148,7 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sortedItems.map((item) => (
+            {filteredItems.map((item) => (
               <tr 
                 key={item.panelNo}
                 onClick={() => onSelect(item.panelNo)}
@@ -156,7 +173,7 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
                 <td className="px-4 py-3 text-right text-slate-500 font-mono text-xs">{item.lastInspectionDate}</td>
               </tr>
             ))}
-            {sortedItems.length === 0 && (
+            {filteredItems.length === 0 && (
               <tr>
                 <td colSpan={3} className="px-4 py-8 text-center text-slate-400">
                   No records found.
