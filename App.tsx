@@ -294,9 +294,15 @@ const App: React.FC = () => {
         try {
           const [withPositions, assigned] = assignDefaultPositions(currentInspections);
           if (assigned.length > 0) {
-            const toSave = withPositions.filter(ins => assigned.includes(ins.panelNo));
+            // updatedAt을 현재 시각으로 갱신 → pullAll 때 Supabase 데이터가 덮어쓰지 않도록
+            const now = new Date().toISOString();
+            const toSave = withPositions
+              .filter(ins => assigned.includes(ins.panelNo))
+              .map(ins => ({ ...ins, updatedAt: now }));
             await Promise.all(toSave.map(ins => saveInspection(ins)));
-            currentInspections = withPositions;
+            currentInspections = withPositions.map(ins =>
+              assigned.includes(ins.panelNo) ? { ...ins, updatedAt: now } : ins
+            );
             console.log(`[초기화] 기본 위치 배정 완료: ${assigned.length}개 패널`);
           }
         } catch (err) {
@@ -383,11 +389,24 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // pullAll 후 position 없는 패널에 기본 위치 재배정
+  const applyPositionsAfterSync = useCallback((merged: InspectionRecord[]) => {
+    const [withPositions, assigned] = assignDefaultPositions(merged);
+    setInspections(withPositions);
+    if (assigned.length > 0) {
+      const now = new Date().toISOString();
+      const toSave = withPositions
+        .filter(ins => assigned.includes(ins.panelNo))
+        .map(ins => ({ ...ins, updatedAt: now }));
+      Promise.all(toSave.map(ins => saveInspection(ins))).catch(console.error);
+    }
+  }, []);
+
   // 로그인 후 pullAll() 실행
   useEffect(() => {
     if (!session || !isConfigured) return;
     pullAll(inspections, qrCodes, reports, {
-      onInspectionsUpdated: (merged) => setInspections(merged),
+      onInspectionsUpdated: applyPositionsAfterSync,
       onQRCodesUpdated: (merged) => setQrCodesState(merged),
       onReportsUpdated: (merged) => setReports(merged),
       onSyncStatusChange: (status) => setSyncStatus(status),
@@ -796,7 +815,7 @@ const App: React.FC = () => {
               onManualSync={() => {
                 if (!session) return;
                 pullAll(inspections, qrCodes, reports, {
-                  onInspectionsUpdated: (merged) => setInspections(merged),
+                  onInspectionsUpdated: applyPositionsAfterSync,
                   onQRCodesUpdated: (merged) => setQrCodesState(merged),
                   onReportsUpdated: (merged) => setReports(merged),
                   onSyncStatusChange: (status) => setSyncStatus(status),
