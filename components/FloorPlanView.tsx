@@ -872,6 +872,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             const trColor = getTRColor(inspection.panelNo, propQrCodes, inspection);
             const isSelected = selectedInspection?.panelNo === marker.id;
             const isHovered = hoveredInspection?.panelNo === marker.id;
+            // Panel Master: 패널 선택 시 선택된 마커만 표시, 나머지 숨김
+            const isHiddenByPanelMaster = mode !== 'dashboard' && !!selectedInspection && !isSelected;
 
             return (
               <div
@@ -885,6 +887,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   top: `${y}%`,
                   padding: '6px',
                   zIndex: 10,
+                  opacity: isHiddenByPanelMaster ? 0 : 1,
+                  pointerEvents: isHiddenByPanelMaster ? 'none' : 'auto',
+                  transition: 'opacity 0.2s ease',
                 }}
                 onClick={() => handleMarkerClick(inspection)}
                 onMouseEnter={() => setHoveredInspection(inspection)}
