@@ -1521,6 +1521,61 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
+        {/* Floor Plan View - 항상 최상단 표시 */}
+        <FloorPlanView
+          inspections={filteredInspections}
+          onSelectInspection={(inspection) => {
+            if (onSelectInspection) {
+              onSelectInspection(inspection.panelNo);
+            }
+          }}
+          onUpdateInspections={onUpdateInspections}
+          selectedInspectionId={selectedQRId || null}
+          onSelectionChange={(id) => {
+            if (id) {
+              const matchingQR = qrCodeMap.get(id);
+              if (matchingQR) {
+                setSelectedQR(matchingQR);
+              } else {
+                setSelectedQR(null);
+                const inspection = inspections.find(i => i.panelNo === id);
+                if (inspection) {
+                  setQrData({
+                    id: inspection.panelNo,
+                    location: 'A',
+                    floor: 'F1',
+                    position: '',
+                    positionX: inspection.position?.x?.toString() || '',
+                    positionY: inspection.position?.y?.toString() || '',
+                    contractor: '삼성물산',
+                    projectName: '성수동 K-PJT',
+                    nominalCrossSection: '', breakerCapacity: ''
+                  });
+                }
+              }
+            } else {
+              setSelectedQR(null);
+              setOpenDetailPanelForMapping(false); // 모달 닫을 때 플래그 해제
+            }
+          }}
+          qrCodes={qrCodes}
+          selectedFloor={selectedFloor}
+          onFloorChange={(floor) => {
+            // 스크롤 위치 저장
+            const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
+            const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
+            setSelectedFloor(floor);
+            // React 렌더 후 스크롤 복원
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (mainScrollRef?.current) mainScrollRef.current.scrollTop = savedMainScroll;
+                if (rightPanelScrollRef.current) rightPanelScrollRef.current.scrollTop = savedRightScroll;
+              });
+            });
+          }}
+          showDetailPanel={openDetailPanelForMapping}
+          startInEditMode={openDetailPanelForMapping}
+        />
         {/* 패널 미선택 & 폼 미표시 시 안내 메시지 */}
         {!selectedQR && !showForm ? (
           <div className="h-full flex items-center justify-center text-slate-500">
@@ -1985,61 +2040,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           document.body
         )}
 
-        {/* Floor Plan View - 마지막 순서로 배치 */}
-        <FloorPlanView
-          inspections={filteredInspections}
-          onSelectInspection={(inspection) => {
-            if (onSelectInspection) {
-              onSelectInspection(inspection.panelNo);
-            }
-          }}
-          onUpdateInspections={onUpdateInspections}
-          selectedInspectionId={selectedQRId || null}
-          onSelectionChange={(id) => {
-            if (id) {
-              const matchingQR = qrCodeMap.get(id);
-              if (matchingQR) {
-                setSelectedQR(matchingQR);
-              } else {
-                setSelectedQR(null);
-                const inspection = inspections.find(i => i.panelNo === id);
-                if (inspection) {
-                  setQrData({
-                    id: inspection.panelNo,
-                    location: 'A',
-                    floor: 'F1',
-                    position: '',
-                    positionX: inspection.position?.x?.toString() || '',
-                    positionY: inspection.position?.y?.toString() || '',
-                    contractor: '삼성물산',
-                    projectName: '성수동 K-PJT',
-                    nominalCrossSection: '', breakerCapacity: ''
-                  });
-                }
-              }
-            } else {
-              setSelectedQR(null);
-              setOpenDetailPanelForMapping(false); // 모달 닫을 때 플래그 해제
-            }
-          }}
-          qrCodes={qrCodes}
-          selectedFloor={selectedFloor}
-          onFloorChange={(floor) => {
-            // 스크롤 위치 저장
-            const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
-            const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
-            setSelectedFloor(floor);
-            // React 렌더 후 스크롤 복원
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                if (mainScrollRef?.current) mainScrollRef.current.scrollTop = savedMainScroll;
-                if (rightPanelScrollRef.current) rightPanelScrollRef.current.scrollTop = savedRightScroll;
-              });
-            });
-          }}
-          showDetailPanel={openDetailPanelForMapping}
-          startInEditMode={openDetailPanelForMapping}
-        />
         </div>
         )}
         </div>
