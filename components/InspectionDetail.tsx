@@ -430,7 +430,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     });
   }, []);
 
-  const handleBasicInfoChange = useCallback((field: string, value: string | number) => {
+  const handleBasicInfoChange = useCallback((field: string, value: string | number | null) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
 
@@ -455,7 +455,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     }));
   }, []);
 
-  const handleBreakerChange = useCallback((index: number, field: keyof BreakerInfo, value: string | number) => {
+  const handleBreakerChange = useCallback((index: number, field: keyof BreakerInfo, value: string | number | null) => {
     setFormData(prev => ({
       ...prev,
       breakers: prev.breakers?.map((breaker, i) => 
@@ -468,17 +468,17 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     const newBreaker: BreakerInfo = {
       breakerNo: '0', // 기본값 0
       category: '1차',
-      breakerCapacity: 0,
+      breakerCapacity: null,
       loadName: '',
       type: '1P', // 기본값 1P
       kind: 'MCCB',
-      currentL1: 0,
-      currentL2: 0,
-      currentL3: 0,
-      loadCapacityR: 0,
-      loadCapacityS: 0,
-      loadCapacityT: 0,
-      loadCapacityN: 0
+      currentL1: null,
+      currentL2: null,
+      currentL3: null,
+      loadCapacityR: null,
+      loadCapacityS: null,
+      loadCapacityT: null,
+      loadCapacityN: null
     };
     setFormData(prev => ({
       ...prev,
@@ -508,10 +508,10 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             ...prev.thermalImage,
             imageUrl: reader.result as string,
             equipment: prev.thermalImage?.equipment || 'KT-352',
-            temperature: prev.thermalImage?.temperature || 0,
-            maxTemp: prev.thermalImage?.maxTemp || 0,
-            minTemp: prev.thermalImage?.minTemp || 0,
-            emissivity: prev.thermalImage?.emissivity || 0.95,
+            temperature: prev.thermalImage?.temperature ?? null,
+            maxTemp: prev.thermalImage?.maxTemp ?? null,
+            minTemp: prev.thermalImage?.minTemp ?? null,
+            emissivity: prev.thermalImage?.emissivity ?? null,
             measurementTime: prev.thermalImage?.measurementTime || new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
           } as ThermalImageData
         }));
@@ -520,7 +520,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     }
   }, []);
 
-  const handleThermalImageDataChange = useCallback((field: keyof ThermalImageData, value: string | number) => {
+  const handleThermalImageDataChange = useCallback((field: keyof ThermalImageData, value: string | number | null) => {
     setFormData(prev => ({
       ...prev,
       thermalImage: {
@@ -530,7 +530,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     }));
   }, []);
 
-  const handleLoadSummaryChange = useCallback((field: keyof LoadSummary, value: number) => {
+  const handleLoadSummaryChange = useCallback((field: keyof LoadSummary, value: number | null) => {
     setFormData(prev => ({
       ...prev,
       loadSummary: {
@@ -836,8 +836,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 <input
                   type="number"
                   step="0.1"
-                  value={formData.currentL1 ?? 0}
-                  onChange={(e) => handleBasicInfoChange('currentL1', parseFloat(e.target.value) || 0)}
+                  value={formData.currentL1 ?? ''}
+                  onChange={(e) => handleBasicInfoChange('currentL1', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                   className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -846,8 +846,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 <input
                   type="number"
                   step="0.1"
-                  value={formData.currentL2 ?? 0}
-                  onChange={(e) => handleBasicInfoChange('currentL2', parseFloat(e.target.value) || 0)}
+                  value={formData.currentL2 ?? ''}
+                  onChange={(e) => handleBasicInfoChange('currentL2', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                   className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -856,8 +856,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 <input
                   type="number"
                   step="0.1"
-                  value={formData.currentL3 ?? 0}
-                  onChange={(e) => handleBasicInfoChange('currentL3', parseFloat(e.target.value) || 0)}
+                  value={formData.currentL3 ?? ''}
+                  onChange={(e) => handleBasicInfoChange('currentL3', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                   className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -997,8 +997,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                     </div>
                     <input 
                       type="number" 
-                      value={breaker.breakerCapacity} 
-                      onChange={(e) => handleBreakerChange(index, 'breakerCapacity', parseFloat(e.target.value) || 0)}
+                      value={breaker.breakerCapacity ?? ''}
+                      onChange={(e) => handleBreakerChange(index, 'breakerCapacity', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                       className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
                         isListening && activeVoiceField === `breaker-${index}-breakerCapacity` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
@@ -1125,8 +1125,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <input 
                         type="number" 
                         step="0.1"
-                        value={breaker.currentL1} 
-                        onChange={(e) => handleBreakerChange(index, 'currentL1', parseFloat(e.target.value) || 0)}
+                        value={breaker.currentL1 ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'currentL1', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1135,8 +1135,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <input 
                         type="number" 
                         step="0.1"
-                        value={breaker.currentL2} 
-                        onChange={(e) => handleBreakerChange(index, 'currentL2', parseFloat(e.target.value) || 0)}
+                        value={breaker.currentL2 ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'currentL2', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1145,8 +1145,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <input 
                         type="number" 
                         step="0.1"
-                        value={breaker.currentL3} 
-                        onChange={(e) => handleBreakerChange(index, 'currentL3', parseFloat(e.target.value) || 0)}
+                        value={breaker.currentL3 ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'currentL3', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1160,8 +1160,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <label className="block text-xs text-slate-500 mb-1">R</label>
                       <input 
                         type="number" 
-                        value={breaker.loadCapacityR} 
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityR', parseFloat(e.target.value) || 0)}
+                        value={breaker.loadCapacityR ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityR', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1169,8 +1169,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <label className="block text-xs text-slate-500 mb-1">S</label>
                       <input 
                         type="number" 
-                        value={breaker.loadCapacityS} 
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityS', parseFloat(e.target.value) || 0)}
+                        value={breaker.loadCapacityS ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityS', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1178,8 +1178,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <label className="block text-xs text-slate-500 mb-1">T</label>
                       <input 
                         type="number" 
-                        value={breaker.loadCapacityT} 
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityT', parseFloat(e.target.value) || 0)}
+                        value={breaker.loadCapacityT ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityT', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1187,8 +1187,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <label className="block text-xs text-slate-500 mb-1">N</label>
                       <input 
                         type="number" 
-                        value={breaker.loadCapacityN} 
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityN', parseFloat(e.target.value) || 0)}
+                        value={breaker.loadCapacityN ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityN', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                         className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
@@ -1277,8 +1277,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.thermalImage?.temperature || 0} 
-                onChange={(e) => handleThermalImageDataChange('temperature', parseFloat(e.target.value) || 0)}
+                value={formData.thermalImage?.temperature ?? ''}
+                onChange={(e) => handleThermalImageDataChange('temperature', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1287,8 +1287,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.01"
-                value={formData.thermalImage?.emissivity || 0.95} 
-                onChange={(e) => handleThermalImageDataChange('emissivity', parseFloat(e.target.value) || 0.95)}
+                value={formData.thermalImage?.emissivity ?? ''}
+                onChange={(e) => handleThermalImageDataChange('emissivity', e.target.value === '' ? null : (parseFloat(e.target.value) || 0.95))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1297,8 +1297,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.thermalImage?.maxTemp || 0} 
-                onChange={(e) => handleThermalImageDataChange('maxTemp', parseFloat(e.target.value) || 0)}
+                value={formData.thermalImage?.maxTemp ?? ''}
+                onChange={(e) => handleThermalImageDataChange('maxTemp', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1307,8 +1307,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.thermalImage?.minTemp || 0} 
-                onChange={(e) => handleThermalImageDataChange('minTemp', parseFloat(e.target.value) || 0)}
+                value={formData.thermalImage?.minTemp ?? ''}
+                onChange={(e) => handleThermalImageDataChange('minTemp', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1334,8 +1334,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] A</label>
               <input 
                 type="number" 
-                value={formData.loadSummary?.phaseLoadSumA || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumA', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadSumA ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumA', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1343,8 +1343,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] B</label>
               <input 
                 type="number" 
-                value={formData.loadSummary?.phaseLoadSumB || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumB', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadSumB ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumB', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1352,8 +1352,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] C</label>
               <input 
                 type="number" 
-                value={formData.loadSummary?.phaseLoadSumC || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumC', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadSumC ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadSumC', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1362,8 +1362,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.01"
-                value={formData.loadSummary?.totalLoadSum || 0} 
-                onChange={(e) => handleLoadSummaryChange('totalLoadSum', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.totalLoadSum ?? ''}
+                onChange={(e) => handleLoadSummaryChange('totalLoadSum', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1372,8 +1372,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.loadSummary?.phaseLoadShareA || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareA', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadShareA ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareA', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1382,8 +1382,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.loadSummary?.phaseLoadShareB || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareB', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadShareB ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareB', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -1392,8 +1392,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <input 
                 type="number" 
                 step="0.1"
-                value={formData.loadSummary?.phaseLoadShareC || 0} 
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareC', parseFloat(e.target.value) || 0)}
+                value={formData.loadSummary?.phaseLoadShareC ?? ''}
+                onChange={(e) => handleLoadSummaryChange('phaseLoadShareC', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>

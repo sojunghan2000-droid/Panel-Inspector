@@ -8,37 +8,37 @@ export interface Loads {
 export interface BreakerInfo {
   breakerNo: string; // 차단기 No.
   category: '1차' | '2차'; // 구분
-  breakerCapacity: number; // 차단기 용량[A]
+  breakerCapacity: number | null; // 차단기 용량[A]
   loadName: string; // 부하명 (고정부하, 이동부하X)
   type: string; // 형식
   kind: 'MCCB' | 'ELB'; // 종류
-  currentL1: number; // 전류 (A) L1
-  currentL2: number; // 전류 (A) L2
-  currentL3: number; // 전류 (A) L3
-  loadCapacityR: number; // 부하 용량[W] R
-  loadCapacityS: number; // 부하 용량[W] S
-  loadCapacityT: number; // 부하 용량[W] T
-  loadCapacityN: number; // 부하 용량[W] N
+  currentL1: number | null; // 전류 (A) L1
+  currentL2: number | null; // 전류 (A) L2
+  currentL3: number | null; // 전류 (A) L3
+  loadCapacityR: number | null; // 부하 용량[W] R
+  loadCapacityS: number | null; // 부하 용량[W] S
+  loadCapacityT: number | null; // 부하 용량[W] T
+  loadCapacityN: number | null; // 부하 용량[W] N
 }
 
 export interface ThermalImageData {
   imageUrl: string | null; // 열화상 이미지 URL
-  temperature: number; // 온도 측정값
-  maxTemp: number; // 최대 온도
-  minTemp: number; // 최소 온도
-  emissivity: number; // 방사율
+  temperature: number | null; // 온도 측정값
+  maxTemp: number | null; // 최대 온도
+  minTemp: number | null; // 최소 온도
+  emissivity: number | null; // 방사율
   measurementTime: string; // 측정 시간
   equipment: string; // 측정기 (예: KT-352)
 }
 
 export interface LoadSummary {
-  phaseLoadSumA: number; // 상별 부하 합계 [AV] A
-  phaseLoadSumB: number; // 상별 부하 합계 [AV] B
-  phaseLoadSumC: number; // 상별 부하 합계 [AV] C
-  totalLoadSum: number; // 총 연결 부하 합계[AV]
-  phaseLoadShareA: number; // 상별 부하 분담 [%] A
-  phaseLoadShareB: number; // 상별 부하 분담 [%] B
-  phaseLoadShareC: number; // 상별 부하 분담 [%] C
+  phaseLoadSumA: number | null; // 상별 부하 합계 [AV] A
+  phaseLoadSumB: number | null; // 상별 부하 합계 [AV] B
+  phaseLoadSumC: number | null; // 상별 부하 합계 [AV] C
+  totalLoadSum: number | null; // 총 연결 부하 합계[AV]
+  phaseLoadShareA: number | null; // 상별 부하 분담 [%] A
+  phaseLoadShareB: number | null; // 상별 부하 분담 [%] B
+  phaseLoadShareC: number | null; // 상별 부하 분담 [%] C
 }
 
 export interface InspectionRecord {
@@ -58,9 +58,9 @@ export interface InspectionRecord {
   contractor?: string; // 시공사
   managementNumber?: string; // 관리번호 (판넬명)
   breakers?: BreakerInfo[]; // 차단기 정보 배열
-  currentL1?: number; // 전류 (A) - 후크메가 L1
-  currentL2?: number; // 전류 (A) - 후크메가 L2
-  currentL3?: number; // 전류 (A) - 후크메가 L3
+  currentL1?: number | null; // 전류 (A) - 후크메가 L1
+  currentL2?: number | null; // 전류 (A) - 후크메가 L2
+  currentL3?: number | null; // 전류 (A) - 후크메가 L3
   tr?: string; // TR: 'A' (TR-1 900KVA) 또는 'B' (TR-2 950KVA)
   floor?: string; // 명시적 층수: 'F1'~'F6', 'B1', 'B2'
   nominalCrossSection?: string; // 공칭 단면적 (예: '95SQ', '300SQ')
