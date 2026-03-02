@@ -864,32 +864,6 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             </div>
           </div>
 
-          {/* 상태 및 점검일 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">상태</label>
-              <select
-                value={formData.status}
-                onChange={handleStatusChange}
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
-              >
-                <option value="Complete">양호</option>
-                <option value="In Progress">점검 중</option>
-                <option value="Pending">미점검</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">점검일</label>
-              <input
-                type="text"
-                value={formData.lastInspectionDate}
-                onChange={(e) => handleBasicInfoChange('lastInspectionDate', e.target.value)}
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                placeholder="예: 2024-05-20 09:30:45"
-              />
-            </div>
-          </div>
         </div>
 
         {/* 차단기 정보 섹션 */}
@@ -1526,6 +1500,33 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               녹음 중...
             </p>
           )}
+      </div>
+
+      {/* 상태 및 점검일 */}
+      <div className="grid grid-cols-2 gap-4 pt-4">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">상태</label>
+          <select
+            value={formData.status}
+            onChange={handleStatusChange}
+            className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
+          >
+            <option value="Complete">양호</option>
+            <option value="In Progress">점검 중</option>
+            <option value="Pending">미점검</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">점검일</label>
+          <input
+            type="text"
+            value={formData.lastInspectionDate}
+            onChange={(e) => handleBasicInfoChange('lastInspectionDate', e.target.value)}
+            className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            placeholder="예: 2024-05-20 09:30:45"
+          />
+        </div>
       </div>
 
       {/* Footer Actions */}
