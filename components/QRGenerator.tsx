@@ -121,6 +121,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const panelDetailSectionRef = useRef<HTMLDivElement>(null);
   const savedMainScrollOnInteractionRef = useRef<number>(0);
   const savedRightScrollOnInteractionRef = useRef<number>(0);
+  // QR 자동생성 useEffect에서 qrCodes를 의존성으로 쓰지 않기 위한 ref
+  const qrCodesRef = useRef<QRCodeData[]>([]);
+  useEffect(() => { qrCodesRef.current = qrCodes; }, [qrCodes]);
 
   const restoreMainScrollOnFocus = useCallback(() => {
     const restore = () => {
@@ -274,6 +277,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 managementNumber: qrManagementNumber || existingInspection.managementNumber,
                 floor: qrFloor || existingInspection.floor,
                 tr: qrTr || existingInspection.tr,
+                updatedAt: new Date().toISOString(), // sync 충돌 방지: 로컬 변경이 Supabase보다 최신임을 보장
               });
             }
           }
@@ -323,9 +327,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   useEffect(() => {
     if (inspections.length === 0) return;
 
-    const savedQRCodes: QRCodeData[] = qrCodes;
+    // qrCodes를 의존성으로 쓰지 않고 ref를 통해 접근 (무한 루프 방지)
+    const savedQRCodes: QRCodeData[] = qrCodesRef.current;
     const existingQRIds = new Set<string>();
-    
+
     // 기존 QR 코드에서 ID 추출
     savedQRCodes.forEach(qr => {
       try {
@@ -394,7 +399,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       });
 
       const newQRCode: QRCodeData = {
-        id: `qr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        // panelNo 기반 안정적 ID → IndexedDB put() 시 upsert 보장 (중복 방지)
+        id: `qr-${inspection.panelNo}`,
         location: location,
         floor: floor,
         position: inspection.memo || '',
@@ -409,7 +415,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       const updatedQRCodes = [...savedQRCodes, ...newQRCodes];
       setQrCodes(updatedQRCodes);
     }
-  }, [inspections, qrCodes, setQrCodes]);
+  }, [inspections, setQrCodes]); // qrCodes 의존성 제거 → ref로 접근
 
   // ID에서 "1st"를 "F1"으로 변경하는 함수
   const migrateIdFloor = (id: string): string => {
@@ -773,13 +779,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     });
 
     const updatedQRCodes = qrCodes.map(qr =>
-      qr.id === selectedQR.id 
+      qr.id === selectedQR.id
         ? {
             ...qr,
             location: finalLocation,
             floor: qrData.floor,
             position: qrData.position,
-            qrData: updatedQRData
+            qrData: updatedQRData,
+            createdAt: new Date().toISOString(), // 수정 시각 갱신 → sync 시 local이 이김
           }
         : qr
     );
@@ -1248,19 +1255,23 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     return inspections.filter(i => !qrCodes.some(qr => isInspectionMatchedWithQR(i, qr)));
   }, [inspections, qrCodes, isInspectionMatchedWithQR]);
 
-  // QR 코드 매핑 최적화 (성능 개선)
+  // QR 코드 매핑 최적화 (성능 개선) — inner id 충돌 시 최신 createdAt 우선
   const qrCodeMap = useMemo(() => {
     const map = new Map<string, QRCodeData>();
-    qrCodes.forEach(qr => {
-      try {
-        const qrData = JSON.parse(qr.qrData);
-        if (qrData.id) {
-          map.set(qrData.id, qr);
+    // 오래된 것 먼저 처리 → 최신이 나중에 덮어씌워 우선됨
+    qrCodes
+      .slice()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .forEach(qr => {
+        try {
+          const qrData = JSON.parse(qr.qrData);
+          if (qrData.id) {
+            map.set(qrData.id, qr);
+          }
+        } catch (e) {
+          // 무시
         }
-      } catch (e) {
-        // 무시
-      }
-    });
+      });
     return map;
   }, [qrCodes]);
 

@@ -464,6 +464,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
 
     // Panel Master 모드: 기존 동작
+    // 이미 선택된 마커 재클릭 → deselect (위치 편집 종료)
+    if (mode !== 'dashboard' && selectedInspection?.panelNo === inspection.panelNo) {
+      setSelectedInspection(null);
+      if (onSelectionChange) onSelectionChange(null);
+      return;
+    }
+
     // 내부 클릭 플래그 설정: scrollToMarker 호출 방지
     isInternalSelectionRef.current = true;
     setSelectedInspection(inspection);
@@ -515,9 +522,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
       onUpdateInspections(updatedInspections);
 
-      // 자동 저장 후 선택 해제 (한 번 이동하면 종료, 다시 이동하려면 위젯 재클릭 필요)
-      setSelectedInspection(null);
-      setIsEditingInspectionPosition(false);
+      // 선택 유지: 마커를 계속 이동할 수 있도록 selectedInspection을 새 위치로 업데이트
+      // (deselect 하려면 마커 재클릭)
+      const movedInspection = { ...selectedInspection, position: { x: clampedX, y: clampedY } };
+      setSelectedInspection(movedInspection);
     } else {
       // 선택된 inspection이 없으면 가장 가까운 inspection 선택하거나 새로 생성
       // 여기서는 가장 가까운 inspection을 찾아서 선택
