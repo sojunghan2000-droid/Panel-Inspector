@@ -96,6 +96,50 @@ const migrateFloorFormat = (data: any): any => {
   return data;
 };
 
+/**
+ * position이 없는 패널에 층별 그리드 좌표를 자동 배정한다.
+ * 이미 position이 있는 패널은 변경하지 않는다.
+ * @returns [업데이트된 전체 목록, 새로 position이 부여된 panelNo 목록]
+ */
+function assignDefaultPositions(
+  inspections: InspectionRecord[]
+): [InspectionRecord[], string[]] {
+  // 층별로 position 없는 패널 그룹화
+  const unpositioned = inspections.filter(ins => !ins.position);
+  if (unpositioned.length === 0) return [inspections, []];
+
+  const byFloor: Record<string, InspectionRecord[]> = {};
+  for (const ins of unpositioned) {
+    const floor = ins.floor || 'F1';
+    if (!byFloor[floor]) byFloor[floor] = [];
+    byFloor[floor].push(ins);
+  }
+
+  const positionMap: Record<string, { x: number; y: number }> = {};
+  for (const [, panels] of Object.entries(byFloor)) {
+    const count = panels.length;
+    const cols = Math.min(8, count);
+    const rows = Math.ceil(count / cols);
+    const xStep = 80 / cols;   // 좌우 10% 마진
+    const yStep = 80 / rows;   // 상하 10% 마진
+    panels.forEach((ins, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      positionMap[ins.panelNo] = {
+        x: Math.round(10 + col * xStep + xStep / 2),
+        y: Math.round(10 + row * yStep + yStep / 2),
+      };
+    });
+  }
+
+  const updated = inspections.map(ins =>
+    positionMap[ins.panelNo]
+      ? { ...ins, position: positionMap[ins.panelNo] }
+      : ins
+  );
+  return [updated, Object.keys(positionMap)];
+}
+
 const App: React.FC = () => {
   const [inspections, setInspections] = useState<InspectionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -246,9 +290,22 @@ const App: React.FC = () => {
           console.warn('[초기화] 차단기 엑셀 시드 실패 (무시):', err);
         }
 
+        // 5. position 없는 패널에 기본 위치 자동 배정
+        try {
+          const [withPositions, assigned] = assignDefaultPositions(currentInspections);
+          if (assigned.length > 0) {
+            const toSave = withPositions.filter(ins => assigned.includes(ins.panelNo));
+            await Promise.all(toSave.map(ins => saveInspection(ins)));
+            currentInspections = withPositions;
+            console.log(`[초기화] 기본 위치 배정 완료: ${assigned.length}개 패널`);
+          }
+        } catch (err) {
+          console.warn('[초기화] 기본 위치 배정 실패 (무시):', err);
+        }
+
         setInspections(currentInspections);
 
-        // 5. Reports 로드
+        // 6. Reports 로드
         const savedReports = await getAllReports();
         if (savedReports && savedReports.length > 0) {
           setReports(savedReports);
