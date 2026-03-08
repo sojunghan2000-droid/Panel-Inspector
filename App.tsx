@@ -793,7 +793,13 @@ const App: React.FC = () => {
           >
             <ShieldCheck size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight whitespace-nowrap">성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.30</span></h1>
+          <h1
+            className="font-bold text-lg tracking-tight whitespace-nowrap cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => {
+              setCurrentPage('dashboard-overview');
+              setSelectedInspectionId(null);
+            }}
+          >성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.30</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
