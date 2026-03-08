@@ -15,7 +15,7 @@ import {
   fetchAllReports,
   uploadBlob,
 } from './supabaseService';
-import { saveInspection, saveQRCode, saveAllQRCodes, saveReport } from './indexedDBService';
+import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB } from './indexedDBService';
 import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
@@ -190,7 +190,13 @@ export async function pullAll(
   try {
     // ── Inspections ──
     const remoteInspections = await fetchAllInspections();
-    const localMap = new Map(localInspections.map(r => [r.panelNo, r]));
+
+    // IDB를 직접 읽어 실제 최신 로컬 상태를 가져온다.
+    // useEffect 클로저 stale 문제로 localInspections가 [] 일 수 있기 때문.
+    const idbInspections = await getAllInspectionsFromIDB().catch(() => [] as typeof localInspections);
+    const effectiveLocal = idbInspections.length > 0 ? idbInspections : localInspections;
+
+    const localMap = new Map(effectiveLocal.map(r => [r.panelNo, r]));
 
     for (const remote of remoteInspections) {
       const local = localMap.get(remote.panelNo);
@@ -215,7 +221,7 @@ export async function pullAll(
 
     // ── 로컬 → Supabase 역방향 push (로컬에만 있거나, 로컬이 더 최신인 항목) ──
     const remotePanelNos = new Set(remoteInspections.map(r => r.panelNo));
-    const inspectionsToPush = localInspections.filter(insp => {
+    const inspectionsToPush = effectiveLocal.filter(insp => {
       if (!remotePanelNos.has(insp.panelNo)) return true; // 로컬에만 있음
       const remote = remoteInspections.find(r => r.panelNo === insp.panelNo)!;
       const localTs = insp.updatedAt ? new Date(insp.updatedAt).getTime() : 0;

@@ -1,6 +1,7 @@
 import { InspectionRecord, ReportHistory } from '../types';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
+import { getThermalImage, blobToDataURL } from './indexedDBService';
 
 const STORAGE_KEY = 'safetyguard_reports';
 
@@ -164,6 +165,9 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     [],
   ];
 
+  // 차단기 목록: record.breakers[] (정렬 없이 그대로 사용, No.1부터)
+  const breakerList = record.breakers || [];
+
   // 차단기 정보 헤더
   const breakerHeader = [
     '차단기 No.',
@@ -173,7 +177,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     '형식',
     '종류 (MCCB, ELB)',
     '전류 (A) (후크메가)',
-    '',
     '',
     '',
     '부하 용량[W]',
@@ -189,16 +192,32 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     '', '', '', '', '', '',
     'L1', 'L2', 'L3',
     'R', 'S', 'T', 'N',
-    '', '', '', ''
+    '', '', ''
   ];
 
-  // 차단기 데이터
-  const breakerRows: any[][] = [breakerHeader, breakerSubHeader];
-  
-  (record.breakers || []).forEach((breaker, index) => {
-    breakerRows.push([
-      breaker.breakerNo || (index + 1).toString(),
-      breaker.category || '1차',
+  // 차단기 데이터: No.0 = 1차 메인 (최상위 필드), No.1~ = record.breakers[]
+  const breakerDataRows: any[][] = [];
+  // No.0: 1차 메인 차단기 (record 최상위 필드)
+  breakerDataRows.push([
+    '0',
+    '1차',
+    Number(record.breakerCapacity) || 0,
+    '메인 차단기',
+    '',
+    '',
+    record.currentL1 || 0,
+    record.currentL2 || 0,
+    record.currentL3 || 0,
+    0, 0, 0, 0,
+    record.grounding || '미점검',
+    record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검',
+    ''
+  ]);
+  // No.1~: record.breakers[]
+  breakerList.forEach((breaker, index) => {
+    breakerDataRows.push([
+      (index + 1).toString(),
+      breaker.category || '2차',
       breaker.breakerCapacity || 0,
       breaker.loadName || '',
       breaker.type || '',
@@ -210,26 +229,44 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
       breaker.loadCapacityS || 0,
       breaker.loadCapacityT || 0,
       breaker.loadCapacityN || 0,
-      '',
       record.grounding || '미점검',
       record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검',
       ''
     ]);
   });
 
-  // 열화상 측정 섹션
+  const breakerRows: any[][] = [breakerHeader, breakerSubHeader, ...breakerDataRows];
+
+  // 행 번호 계산 (1-based)
+  const basicInfoRowCount = basicInfoRows.length; // = 8
+  const firstDataRowNum = basicInfoRowCount + 3;  // header(+1) + subheader(+2) + 1 = 11
+  const mainBreakerRowNum = firstDataRowNum;       // No.0 = row 11 (항상 고정)
+  const lastDataRowNum = firstDataRowNum + breakerList.length; // 1차(1행) + 2차N행
+
+  // thermalRows는 아래에서 정의되지만 길이는 3 (빈행, 제목, 내용)
+  const thermalRowsLength = 3;
+
+  // Summary 행 시작: 마지막 차단기 행 + thermalRows(3) + 빈행(1) + 1(1-based offset)
+  const summaryStart = lastDataRowNum + thermalRowsLength + 2;
+
+  // 열화상 측정 섹션 (summary 뒤)
   const thermalRows: any[][] = [
     [],
     ['열화상 측정 (측정기 : ' + (record.thermalImage?.equipment || 'KT-352') + ')', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['점검 내용', '변대/가설분전반 전류 및 발열', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
   ];
 
-  // 부하 합계 정보
-  const summaryRows: any[][] = [
-    [],
-    ['상별 부하 합계 [AV]', record.loadSummary?.phaseLoadSumA || 0, record.loadSummary?.phaseLoadSumB || 0, record.loadSummary?.phaseLoadSumC || 0, '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['총 연결 부하 합계[AV]', record.loadSummary?.totalLoadSum || 0, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['상별 부하 분담 [%]', record.loadSummary?.phaseLoadShareA || 0, record.loadSummary?.phaseLoadShareB || 0, record.loadSummary?.phaseLoadShareC || 0, '', '', '', '', '', '', '', '', '', '', '', ''],
+  // Summary 라벨 행 (수식은 addRow 후 worksheet.getCell()로 설정)
+  const summaryLabelRows: any[][] = [
+    [], // 빈 구분 행
+    ['각 R/S/T 상별 부하 합계 [AV]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['총 연결 부하 합계[AV]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['상별 부하 분담 [%]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['단상 A', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['3상 B', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['수용율(%)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['수용부하(VA)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['전류(A)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
   ];
 
   // 모든 행 결합
@@ -237,16 +274,16 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     ...basicInfoRows,
     ...breakerRows,
     ...thermalRows,
-    ...summaryRows
+    ...summaryLabelRows
   ];
 
   // ExcelJS 워크시트에 데이터 추가
   let thermalImageRow = -1; // 열화상 이미지가 삽입될 행 번호 (1-based)
-  
+
   allRows.forEach((row, rowIndex) => {
     const worksheetRow = worksheet.addRow(row);
     const rowNumber = rowIndex + 1; // 1-based 행 번호
-    
+
     // 스타일 설정
     if (rowIndex === 0) {
       // 헤더 행
@@ -263,13 +300,22 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
       const colMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
       worksheet.mergeCells(`${colMap[1]}${rowNumber}:${colMap[15]}${rowNumber}`);
     }
-    
-    // 열화상 섹션의 "점검 내용" 행 찾기 (O13셀 근처)
-    // 열화상 섹션은 thermalRows에 있고, "점검 내용" 행은 thermalRows[2]입니다
+
+    // No.0 (1차 메인 차단기) 행: 노란색 배경
+    const breakerDataStartIndex = basicInfoRowCount + 2; // 0-based index of first data row (No.0)
+    if (rowIndex === breakerDataStartIndex) {
+      worksheetRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFFF00' } // 노란색
+      };
+      worksheetRow.font = { bold: true };
+    }
+
+    // 열화상 섹션의 "점검 내용" 행 찾기
     const thermalSectionStart = basicInfoRows.length + breakerRows.length;
     if (rowIndex === thermalSectionStart + 2) {
-      // "점검 내용" 행 (O13셀 근처)
-      thermalImageRow = rowNumber; // 이 행이 O13셀 근처
+      thermalImageRow = rowNumber;
     }
   });
 
@@ -284,9 +330,9 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     { width: 10 }, // G: L1
     { width: 10 }, // H: L2
     { width: 10 }, // I: L3
-    { width: 10 }, // J: R
-    { width: 10 }, // K: S
-    { width: 10 }, // L: T
+    { width: 12 }, // J: R
+    { width: 12 }, // K: S
+    { width: 12 }, // L: T
     { width: 10 }, // M: N
     { width: 15 }, // N: 접지
     { width: 10 }, // O: 상태
@@ -294,52 +340,151 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   ];
 
   // 차단기 헤더 병합
-  const breakerHeaderRow = basicInfoRows.length + 1; // 1-based
+  const breakerHeaderRow = basicInfoRows.length + 1; // 1-based = 9
   worksheet.mergeCells(`G${breakerHeaderRow}:I${breakerHeaderRow}`); // 전류 (A) (후크메가)
-  worksheet.mergeCells(`K${breakerHeaderRow}:N${breakerHeaderRow}`); // 부하 용량[W]
+  worksheet.mergeCells(`J${breakerHeaderRow}:M${breakerHeaderRow}`); // 부하 용량[W]
 
-  // 열화상 이미지를 O13셀에 삽입
-  // 열화상 섹션의 "점검 내용" 행 찾기
-  // basicInfoRows.length = 8, breakerRows.length = 2 + 차단기 개수
-  // 열화상 섹션 시작 = basicInfoRows.length + breakerRows.length
-  // "점검 내용" 행 = 열화상 섹션 시작 + 2 (빈 행, 헤더, 점검 내용)
-  const thermalSectionStartRow = basicInfoRows.length + breakerRows.length;
-  const thermalContentRow = thermalSectionStartRow + 2; // "점검 내용" 행 (1-based)
-  
-  // O13셀에 삽입 (O = 15번째 열, 0-based로는 14)
-  const targetRow = 13; // O13셀의 행 번호 (1-based)
-  const targetCol = 14; // O열의 인덱스 (0-based)
-  
-  if (record.thermalImage?.imageUrl) {
+  // ── Summary 수식 행 설정 ──────────────────────────────────────────────────
+  const yellowFill = {
+    type: 'pattern' as const,
+    pattern: 'solid' as const,
+    fgColor: { argb: 'FFFFFF00' }
+  };
+  const labelFont = { bold: true };
+
+  // 각 summary 행 번호
+  const r0 = summaryStart;       // 각 R/S/T 상별 부하 합계 [AV]
+  const r1 = summaryStart + 1;   // 총 연결 부하 합계[AV]
+  const r2 = summaryStart + 2;   // 상별 부하 분담 [%]
+  const r3 = summaryStart + 3;   // 단상 A
+  const r4 = summaryStart + 4;   // 3상 B
+  const r5 = summaryStart + 5;   // 수용율(%)
+  const r6 = summaryStart + 6;   // 수용부하(VA)
+  const r7 = summaryStart + 7;   // 전류(A)
+
+  const applyLabelStyle = (rowNum: number) => {
+    const row = worksheet.getRow(rowNum);
+    row.fill = yellowFill;
+    row.font = labelFont;
+    worksheet.mergeCells(`A${rowNum}:I${rowNum}`);
+    worksheet.getCell(`A${rowNum}`).alignment = { horizontal: 'left', vertical: 'middle' };
+  };
+
+  // ── r0: 각 R/S/T 상별 부하 합계 [AV] ──────────────────────────
+  applyLabelStyle(r0);
+  worksheet.mergeCells(`M${r0}:P${r0}`); // N,O,P 빈 병합
+  worksheet.getCell(`J${r0}`).value = { formula: `SUM(J${firstDataRowNum}:J${lastDataRowNum})`, result: 0 };
+  worksheet.getCell(`K${r0}`).value = { formula: `SUM(K${firstDataRowNum}:K${lastDataRowNum})`, result: 0 };
+  worksheet.getCell(`L${r0}`).value = { formula: `SUM(L${firstDataRowNum}:L${lastDataRowNum})`, result: 0 };
+  ['J', 'K', 'L'].forEach(col => {
+    const cell = worksheet.getCell(`${col}${r0}`);
+    cell.fill = yellowFill;
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  // ── r1: 총 연결 부하 합계[AV] ──────────────────────────────────
+  applyLabelStyle(r1);
+  worksheet.mergeCells(`J${r1}:P${r1}`);
+  worksheet.getCell(`J${r1}`).value = { formula: `J${r0}+K${r0}+L${r0}`, result: 0 };
+  worksheet.getCell(`J${r1}`).fill = yellowFill;
+  worksheet.getCell(`J${r1}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // ── r2: 상별 부하 분담 [%] ─────────────────────────────────────
+  applyLabelStyle(r2);
+  worksheet.mergeCells(`M${r2}:P${r2}`);
+  worksheet.getCell(`J${r2}`).value = { formula: `IF(J${r1}=0,0,J${r0}/J${r1})`, result: 0 };
+  worksheet.getCell(`K${r2}`).value = { formula: `IF(J${r1}=0,0,K${r0}/J${r1})`, result: 0 };
+  worksheet.getCell(`L${r2}`).value = { formula: `IF(J${r1}=0,0,L${r0}/J${r1})`, result: 0 };
+  ['J', 'K', 'L'].forEach(col => {
+    const cell = worksheet.getCell(`${col}${r2}`);
+    cell.fill = yellowFill;
+    cell.numFmt = '0.0%';
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  // ── r3: 단상 A (형식 2P) ───────────────────────────────────────
+  applyLabelStyle(r3);
+  worksheet.mergeCells(`J${r3}:P${r3}`);
+  worksheet.getCell(`J${r3}`).value = {
+    formula: `(SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",L${firstDataRowNum}:L${lastDataRowNum}))/(1.732*380*0.9)`,
+    result: 0
+  };
+  worksheet.getCell(`J${r3}`).fill = yellowFill;
+  worksheet.getCell(`J${r3}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // ── r4: 3상 B (형식 3P 또는 4P) ───────────────────────────────
+  applyLabelStyle(r4);
+  worksheet.mergeCells(`J${r4}:P${r4}`);
+  worksheet.getCell(`J${r4}`).value = {
+    formula: `(SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",L${firstDataRowNum}:L${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",L${firstDataRowNum}:L${lastDataRowNum}))/(1.732*380*0.9)`,
+    result: 0
+  };
+  worksheet.getCell(`J${r4}`).fill = yellowFill;
+  worksheet.getCell(`J${r4}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // ── r5: 수용율(%) ─────────────────────────────────────────────
+  applyLabelStyle(r5);
+  worksheet.mergeCells(`J${r5}:P${r5}`);
+  worksheet.getCell(`J${r5}`).value = 100; // 기본값 100%, 직접 입력 수정 가능
+  worksheet.getCell(`J${r5}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } }; // 진한 노란색 (수정 가능 표시)
+  worksheet.getCell(`J${r5}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // ── r6: 수용부하(VA) ───────────────────────────────────────────
+  applyLabelStyle(r6);
+  worksheet.mergeCells(`J${r6}:P${r6}`);
+  worksheet.getCell(`J${r6}`).value = {
+    formula: `C${mainBreakerRowNum}*J${r5}/100`,
+    result: 0
+  };
+  worksheet.getCell(`J${r6}`).fill = yellowFill;
+  worksheet.getCell(`J${r6}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // ── r7: 전류(A) ────────────────────────────────────────────────
+  applyLabelStyle(r7);
+  worksheet.mergeCells(`J${r7}:P${r7}`);
+  worksheet.getCell(`J${r7}`).value = {
+    formula: `MAX(G${mainBreakerRowNum},H${mainBreakerRowNum},I${mainBreakerRowNum})`,
+    result: 0
+  };
+  worksheet.getCell(`J${r7}`).fill = yellowFill;
+  worksheet.getCell(`J${r7}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // 테두리 적용 (summary 행)
+  [r0, r1, r2, r3, r4, r5, r6, r7].forEach(rowNum => {
+    const row = worksheet.getRow(rowNum);
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+  });
+
+  // IndexedDB에서 열화상 이미지 가져오기 (excelService.ts와 동일한 패턴)
+  let thermalImageUrl = record.thermalImage?.imageUrl;
+  try {
+    const thermalImageBlob = await getThermalImage(record.panelNo);
+    if (thermalImageBlob) {
+      thermalImageUrl = await blobToDataURL(thermalImageBlob);
+    }
+  } catch (error) {
+    console.log('IndexedDB에서 열화상 이미지 가져오기 실패, imageUrl 사용:', error);
+  }
+
+  if (thermalImageUrl) {
     try {
-      console.log('열화상 이미지 삽입 시작:', {
-        imageUrl: record.thermalImage.imageUrl,
-        targetRow,
-        targetCol,
-        thermalContentRow,
-        thermalSectionStartRow,
-        basicInfoRowsLength: basicInfoRows.length,
-        breakerRowsLength: breakerRows.length
-      });
-      
-      const imageData = await imageUrlToBase64(record.thermalImage.imageUrl);
+      const imageData = await imageUrlToBase64(thermalImageUrl);
       if (imageData) {
         const imageId = workbook.addImage({
           base64: imageData.base64,
           extension: imageData.extension,
         });
-
-        // O13셀에 이미지 삽입
-        // ExcelJS의 addImage는 셀 범위 문자열을 사용하는 것이 더 안정적일 수 있습니다
-        // 또는 0-based 인덱스 사용: col=14 (O열), row=12 (13행)
-        worksheet.addImage(imageId, `O${targetRow}:P${targetRow}`);
-
-        // 행 높이 조정 (13번째 행)
-        worksheet.getRow(targetRow).height = 120;
-        // O열(15번째 열) 너비 조정
+        const imgRow = thermalImageRow > 0 ? thermalImageRow : lastDataRowNum + thermalRowsLength;
+        worksheet.addImage(imageId, `O${imgRow}:P${imgRow}`);
+        worksheet.getRow(imgRow).height = 120;
         worksheet.getColumn(15).width = 25;
-        
-        console.log('열화상 이미지 삽입 완료: O13셀');
       } else {
         console.error('이미지 데이터 변환 실패');
       }
@@ -347,7 +492,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
       console.error('열화상 이미지 삽입 오류:', error);
     }
   } else {
-    console.log('열화상 이미지 URL이 없습니다:', record.thermalImage);
+    console.log('열화상 이미지 없음:', record.panelNo);
   }
 
   // 파일 다운로드
@@ -388,6 +533,34 @@ export const generateReport = (
     console.error('Excel 생성 오류:', error);
     alert('Excel 파일 생성 중 오류가 발생했습니다.');
   });
+
+  // HTML Report용 사전 계산 변수
+  // 1차 메인 차단기: record 최상위 필드 사용
+  const mainCapacity = Number(record.breakerCapacity) || 0;
+  const mainCurrent = Math.max(
+    record.currentL1 || 0,
+    record.currentL2 || 0,
+    record.currentL3 || 0
+  );
+  const acceptedLoad = mainCapacity * (100 / 100); // 기본 수용율 100%
+
+  // 상별 부하 합계: record.breakers[] (2차 차단기)에서만 합산
+  const rSum = (record.breakers || []).reduce((s, b) => s + (b.loadCapacityR || 0), 0);
+  const sSum = (record.breakers || []).reduce((s, b) => s + (b.loadCapacityS || 0), 0);
+  const tSum = (record.breakers || []).reduce((s, b) => s + (b.loadCapacityT || 0), 0);
+  const totalSum = rSum + sSum + tSum;
+
+  const rShare = totalSum > 0 ? (rSum / totalSum * 100).toFixed(1) : '0.0';
+  const sShare = totalSum > 0 ? (sSum / totalSum * 100).toFixed(1) : '0.0';
+  const tShare = totalSum > 0 ? (tSum / totalSum * 100).toFixed(1) : '0.0';
+
+  const singleLoad = (record.breakers || []).filter(b => b.type === '2P')
+    .reduce((s, b) => s + (b.loadCapacityR || 0) + (b.loadCapacityS || 0) + (b.loadCapacityT || 0), 0);
+  const singlePhaseA = (singleLoad / (1.732 * 380 * 0.9)).toFixed(2);
+
+  const threeLoad = (record.breakers || []).filter(b => b.type === '3P' || b.type === '4P')
+    .reduce((s, b) => s + (b.loadCapacityR || 0) + (b.loadCapacityS || 0) + (b.loadCapacityT || 0), 0);
+  const threePhaseB = (threeLoad / (1.732 * 380 * 0.9)).toFixed(2);
 
   // HTML Report 생성 (사진의 엑셀 보고서 형태)
   const htmlContent = `
@@ -583,10 +756,28 @@ export const generateReport = (
         </tr>
       </thead>
       <tbody>
+        <tr>
+          <td>0</td>
+          <td>1차</td>
+          <td>${record.breakerCapacity || 0}</td>
+          <td>메인 차단기</td>
+          <td></td>
+          <td></td>
+          <td>${record.currentL1 || 0}</td>
+          <td>${record.currentL2 || 0}</td>
+          <td>${record.currentL3 || 0}</td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td>${record.grounding || '미점검'}</td>
+          <td>${record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검'}</td>
+          <td></td>
+        </tr>
         ${(record.breakers || []).map((breaker, index) => `
         <tr>
-          <td>${breaker.breakerNo || (index + 1)}</td>
-          <td>${breaker.category || '1차'}</td>
+          <td>${index + 1}</td>
+          <td>${breaker.category || '2차'}</td>
           <td>${breaker.breakerCapacity || 0}</td>
           <td>${breaker.loadName || ''}</td>
           <td>${breaker.type || ''}</td>
@@ -603,9 +794,47 @@ export const generateReport = (
           <td></td>
         </tr>
         `).join('')}
-        ${(record.breakers || []).length === 0 ? '<tr><td colspan="16" style="text-align: center; padding: 20px;">차단기 정보가 없습니다.</td></tr>' : ''}
       </tbody>
     </table>
+
+    <div class="summary-section">
+      <div class="summary-row">
+        <span class="summary-label">각 R/S/T 상별 부하 합계 [AV]</span>
+        <span>R: ${rSum}</span>
+        <span>S: ${sSum}</span>
+        <span>T: ${tSum}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">총 연결 부하 합계[AV]</span>
+        <span>${totalSum}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">상별 부하 분담 [%]</span>
+        <span>R: ${rShare}%</span>
+        <span>S: ${sShare}%</span>
+        <span>T: ${tShare}%</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">단상 A</span>
+        <span>${singlePhaseA} A</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">3상 B</span>
+        <span>${threePhaseB} A</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">수용율(%)</span>
+        <span>100</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">수용부하(VA)</span>
+        <span>${acceptedLoad}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">전류(A)</span>
+        <span>${mainCurrent}</span>
+      </div>
+    </div>
 
     <div class="thermal-section">
       <div class="thermal-title">열화상 측정 (측정기 : ${record.thermalImage?.equipment || 'KT-352'})</div>
@@ -614,33 +843,14 @@ export const generateReport = (
       <div class="thermal-image">
         <img src="${record.thermalImage.imageUrl}" alt="열화상 이미지" />
         <div style="margin-top: 5px; font-size: 10px;">
-          온도: ${record.thermalImage.temperature || 0}°C | 
-          최대: ${record.thermalImage.maxTemp || 0}°C | 
-          최소: ${record.thermalImage.minTemp || 0}°C | 
-          방사율: e=${record.thermalImage.emissivity || 0.95} | 
+          온도: ${record.thermalImage.temperature || 0}°C |
+          최대: ${record.thermalImage.maxTemp || 0}°C |
+          최소: ${record.thermalImage.minTemp || 0}°C |
+          방사율: e=${record.thermalImage.emissivity || 0.95} |
           측정시간: ${record.thermalImage.measurementTime || ''}
         </div>
       </div>
       ` : '<div style="margin-top: 10px; color: #999;">열화상 이미지 없음</div>'}
-    </div>
-
-    <div class="summary-section">
-      <div class="summary-row">
-        <span class="summary-label">상별 부하 합계 [AV]</span>
-        <span>A: ${record.loadSummary?.phaseLoadSumA || 0}</span>
-        <span>B: ${record.loadSummary?.phaseLoadSumB || 0}</span>
-        <span>C: ${record.loadSummary?.phaseLoadSumC || 0}</span>
-      </div>
-      <div class="summary-row">
-        <span class="summary-label">총 연결 부하 합계[AV]</span>
-        <span>${record.loadSummary?.totalLoadSum || 0}</span>
-      </div>
-      <div class="summary-row">
-        <span class="summary-label">상별 부하 분담 [%]</span>
-        <span>A: ${record.loadSummary?.phaseLoadShareA || 0}%</span>
-        <span>B: ${record.loadSummary?.phaseLoadShareB || 0}%</span>
-        <span>C: ${record.loadSummary?.phaseLoadShareC || 0}%</span>
-      </div>
     </div>
 
     <div style="margin-top: 30px; padding: 15px; text-align: center; font-size: 11px; color: #666; border-top: 1px solid #ddd;">

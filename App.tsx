@@ -290,6 +290,55 @@ const App: React.FC = () => {
           console.warn('[초기화] 차단기 엑셀 시드 실패 (무시):', err);
         }
 
+        // 4-b. INITIAL_INSPECTIONS 기반 누락 패널 추가 + 차단기 데이터 패치
+        try {
+          const existingNos = new Set(currentInspections.map(i => i.panelNo));
+
+          // 신규 패널: INITIAL_INSPECTIONS에 있지만 현재 DB에 없는 것 (예: 6-2-4)
+          const newPanels = INITIAL_INSPECTIONS.filter(i => !existingNos.has(i.panelNo));
+
+          // 차단기 패치: 기존 패널인데 breakers 없고 INITIAL_INSPECTIONS에는 있는 경우
+          const toPatch: InspectionRecord[] = [];
+          const patchTimestamp = new Date().toISOString(); // pullAll last-write-wins 대비
+          for (const ins of currentInspections) {
+            if (ins.breakers && ins.breakers.length > 0) continue;
+            const seed = INITIAL_INSPECTIONS.find(i => i.panelNo === ins.panelNo);
+            if (seed?.breakers && seed.breakers.length > 0) {
+              toPatch.push({
+                ...ins,
+                breakers: seed.breakers,
+                // seed 값을 우선 적용 (예: 5-2-2의 '125'→'150' 수정)
+                breakerCapacity: seed.breakerCapacity || ins.breakerCapacity,
+                currentL1: seed.currentL1 ?? ins.currentL1,
+                currentL2: seed.currentL2 ?? ins.currentL2,
+                currentL3: seed.currentL3 ?? ins.currentL3,
+                managementNumber: seed.managementNumber || ins.managementNumber,
+                // updatedAt을 지금으로 갱신 → pullAll에서 Supabase 구버전이 덮어쓰지 않도록
+                updatedAt: patchTimestamp,
+              });
+            }
+          }
+
+          if (newPanels.length > 0 || toPatch.length > 0) {
+            await Promise.all([
+              ...newPanels.map(ins => saveInspection(ins)),
+              ...toPatch.map(ins => saveInspection(ins)),
+            ]);
+            const patchedNos = new Set(toPatch.map(i => i.panelNo));
+            currentInspections = [
+              ...currentInspections.map(ins =>
+                patchedNos.has(ins.panelNo)
+                  ? toPatch.find(p => p.panelNo === ins.panelNo)!
+                  : ins
+              ),
+              ...newPanels,
+            ];
+            console.log(`[초기화] 패치 완료 - 신규: ${newPanels.length}개 (${newPanels.map(i=>i.panelNo).join(',')}), 차단기 업데이트: ${toPatch.length}개 (${toPatch.map(i=>i.panelNo).join(',')})`);
+          }
+        } catch (err) {
+          console.warn('[초기화] 패널 패치 실패 (무시):', err);
+        }
+
         // 5. position 없는 패널에 기본 위치 자동 배정
         try {
           const [withPositions, assigned] = assignDefaultPositions(currentInspections);
@@ -390,8 +439,37 @@ const App: React.FC = () => {
   }, []);
 
   // pullAll 후 position 없는 패널에 기본 위치 재배정
+  // + Supabase 구버전이 breaker 데이터를 덮어쓴 경우 재패치
   const applyPositionsAfterSync = useCallback((merged: InspectionRecord[]) => {
-    const [withPositions, assigned] = assignDefaultPositions(merged);
+    // Supabase pullAll이 breakers 없는 구버전을 가져온 경우 INITIAL_INSPECTIONS로 재패치
+    const patchTs = new Date().toISOString();
+    const toBePushed: InspectionRecord[] = [];
+    const repatchedMerged = merged.map(ins => {
+      if (ins.breakers && ins.breakers.length > 0) return ins;
+      const seed = INITIAL_INSPECTIONS.find(i => i.panelNo === ins.panelNo);
+      if (seed?.breakers && seed.breakers.length > 0) {
+        const patched: InspectionRecord = {
+          ...ins,
+          breakers: seed.breakers,
+          breakerCapacity: seed.breakerCapacity || ins.breakerCapacity,
+          currentL1: seed.currentL1 ?? ins.currentL1,
+          currentL2: seed.currentL2 ?? ins.currentL2,
+          currentL3: seed.currentL3 ?? ins.currentL3,
+          managementNumber: seed.managementNumber || ins.managementNumber,
+          updatedAt: patchTs,
+        };
+        toBePushed.push(patched);
+        return patched;
+      }
+      return ins;
+    });
+    // 재패치된 항목을 IDB에 저장 (pullAll 역방향 push가 누락된 경우 대비)
+    if (toBePushed.length > 0) {
+      Promise.all(toBePushed.map(ins => saveInspection(ins))).catch(console.error);
+      console.log(`[syncAfter] breaker 재패치: ${toBePushed.map(i => i.panelNo).join(',')}`);
+    }
+
+    const [withPositions, assigned] = assignDefaultPositions(repatchedMerged);
     setInspections(withPositions);
     if (assigned.length > 0) {
       const now = new Date().toISOString();

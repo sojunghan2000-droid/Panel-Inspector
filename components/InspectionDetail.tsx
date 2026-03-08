@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { InspectionRecord, Loads, BreakerInfo, ThermalImageData, LoadSummary } from '../types';
-import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin, Plus, Trash2, Thermometer, ChevronLeft } from 'lucide-react';
+import { Save, FileText, Camera, Upload, Sparkles, AlertCircle, CheckCircle2, Mic, MicOff, MapPin, Plus, Trash2, Thermometer, ChevronLeft, ChevronDown } from 'lucide-react';
 import { analyzeInspectionPhoto } from '../services/geminiService';
 
 interface InspectionDetailProps {
@@ -24,10 +24,12 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
   };
 
   const [formData, setFormData] = useState<InspectionRecord>(safeRecord);
+  const [expandedCurrentBreakers, setExpandedCurrentBreakers] = useState<Set<number>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [activeVoiceField, setActiveVoiceField] = useState<string | null>(null); // 현재 음성 입력 중인 필드
+  const [acceptanceRate, setAcceptanceRate] = useState(100); // 수용율(%), 기본값 100
   const recognitionRef = useRef<any>(null);
   const lastTranscriptRef = useRef<string>('');
   const processedResultsRef = useRef<Set<number>>(new Set());
@@ -43,6 +45,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
   useEffect(() => {
     onFormDataChangeRef.current = onFormDataChange;
   }, [onFormDataChange]);
+
 
   // record가 변경될 때 formData 초기화
   useEffect(() => {
@@ -660,6 +663,28 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     );
   }
 
+  // 부하 합계 자동 계산 (Excel 수식과 동일 로직)
+  const rSum = (formData.breakers || []).reduce((s, b) => s + (b.loadCapacityR || 0), 0);
+  const sSum = (formData.breakers || []).reduce((s, b) => s + (b.loadCapacityS || 0), 0);
+  const tSum = (formData.breakers || []).reduce((s, b) => s + (b.loadCapacityT || 0), 0);
+  const totalSum = rSum + sSum + tSum;
+  const rShare = totalSum > 0 ? (rSum / totalSum * 100).toFixed(1) : '0.0';
+  const sShare = totalSum > 0 ? (sSum / totalSum * 100).toFixed(1) : '0.0';
+  const tShare = totalSum > 0 ? (tSum / totalSum * 100).toFixed(1) : '0.0';
+  const singleLoad = (formData.breakers || []).filter(b => b.type === '2P')
+    .reduce((s, b) => s + (b.loadCapacityR || 0) + (b.loadCapacityS || 0) + (b.loadCapacityT || 0), 0);
+  const singlePhaseA = (singleLoad / (1.732 * 380 * 0.9)).toFixed(2);
+  const threeLoad = (formData.breakers || []).filter(b => b.type === '3P' || b.type === '4P')
+    .reduce((s, b) => s + (b.loadCapacityR || 0) + (b.loadCapacityS || 0) + (b.loadCapacityT || 0), 0);
+  const threePhaseB = (threeLoad / (1.732 * 380 * 0.9)).toFixed(2);
+  const mainCapacityNum = Number(formData.breakerCapacity) || 0;
+  const acceptedLoad = mainCapacityNum * (acceptanceRate / 100);
+  const mainCurrentMax = Math.max(
+    formData.currentL1 || 0,
+    formData.currentL2 || 0,
+    formData.currentL3 || 0
+  );
+
   return (
     <div className="bg-white h-full flex flex-col shadow-xl border-l-0 md:border-l border-slate-200 overflow-hidden">
       {/* 목록으로 버튼 - 모바일에서만 표시 */}
@@ -688,60 +713,60 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6">
         
         {/* 기본 정보 섹션 */}
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <h3 className="text-lg font-bold text-green-800 mb-4">공사용 가설 분전반</h3>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+          <h3 className="text-base font-bold text-green-800 mb-2">공사용 가설 분전반</h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">PNL NO.</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">PNL NO.</label>
               <input
                 type="text"
                 value={formData.panelNo || '-'}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
                 placeholder="-"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">PJT명</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">PJT명</label>
               <input
                 type="text"
                 value={formData.projectName || '-'}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
                 placeholder="-"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">시공사</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">시공사</label>
               <input
                 type="text"
                 value={formData.contractor || '-'}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
                 placeholder="-"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">관리번호 (판넬명)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">관리번호 (판넬명)</label>
               <input
                 type="text"
                 value={formData.managementNumber || '-'}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
                 placeholder="-"
               />
             </div>
           </div>
 
           {/* TR, 층수, 공칭 단면적 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">TR</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">TR</label>
               <select
                 value={formData.tr || ''}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
               >
                 <option value="">-</option>
                 <option value="A">TR-1 900KVA</option>
@@ -749,11 +774,11 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">층수</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">층수</label>
               <select
                 value={formData.floor || ''}
                 disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
               >
                 <option value="">-</option>
                 <option value="F1">F1 (지상1층)</option>
@@ -767,98 +792,99 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">공칭 단면적</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">공칭 단면적</label>
               <input
                 type="text"
-                value={formData.nominalCrossSection || '-'}
-                disabled
-                className="w-full rounded-lg border-slate-300 border px-3 py-2 text-slate-500 bg-slate-100 cursor-not-allowed"
+                value={formData.nominalCrossSection || ''}
+                className="w-full rounded-lg px-2 py-1.5 text-sm outline-none border border-slate-300 text-slate-700 bg-white focus:ring-1 focus:ring-blue-500"
                 placeholder="-"
+                onChange={(e) => handleBasicInfoChange('nominalCrossSection', e.target.value)}
               />
             </div>
           </div>
 
           {/* 점검자 정보 */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-semibold text-slate-700">점검자</label>
+          <div className="mb-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700">점검자</label>
               <button
                 type="button"
                 onClick={addInspector}
-                className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200"
               >
-                <Plus size={14} />
+                <Plus size={12} />
                 추가
               </button>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {(formData.inspectors || []).map((inspector, index) => (
-                <div key={index} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={inspector} 
+                <div key={index} className="flex gap-1">
+                  <input
+                    type="text"
+                    value={inspector}
                     onChange={(e) => handleInspectorChange(index, e.target.value)}
-                    className="flex-1 rounded-lg border-slate-300 border px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="flex-1 rounded-lg border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 focus:border-transparent outline-none"
                     placeholder="예: 이재두 프로"
                   />
                   <button
                     type="button"
                     onClick={() => removeInspector(index)}
-                    className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    className="px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               ))}
               {(!formData.inspectors || formData.inspectors.length === 0) && (
-                <p className="text-sm text-slate-500">점검자를 추가해주세요</p>
+                <p className="text-xs text-slate-500">점검자를 추가해주세요</p>
               )}
             </div>
           </div>
 
-          {/* 차단기 용량 (Panel Master 연계 - 읽기 전용) */}
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">차단기 용량 (A)</label>
+          {/* 차단기 용량 (직접 편집 가능) */}
+          <div className="mb-2">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">차단기 용량 (A)</label>
             <input
-              type="text"
-              value={formData.breakerCapacity ? `${formData.breakerCapacity} A` : '-'}
-              disabled
-              className="w-full rounded border-slate-300 border px-3 py-2 text-sm bg-slate-100 text-slate-500 cursor-not-allowed"
+              type="number"
+              value={formData.breakerCapacity ?? ''}
+              className="w-full rounded px-2 py-1.5 text-sm outline-none border border-slate-300 text-slate-700 bg-white focus:ring-1 focus:ring-blue-500"
+              placeholder="-"
+              onChange={(e) => handleBasicInfoChange('breakerCapacity', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
             />
           </div>
 
-          {/* 전류 (A) - 후크메가 */}
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">전류 (A) - 후크메가</label>
+          {/* 전류 (A) - 후크메가 (직접 편집 가능) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">전류 (A) - 후크메가</label>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">L1</label>
+                <label className="block text-xs text-slate-500 mb-0.5">L1</label>
                 <input
                   type="number"
                   step="0.1"
                   value={formData.currentL1 ?? ''}
                   onChange={(e) => handleBasicInfoChange('currentL1', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                  className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">L2</label>
+                <label className="block text-xs text-slate-500 mb-0.5">L2</label>
                 <input
                   type="number"
                   step="0.1"
                   value={formData.currentL2 ?? ''}
                   onChange={(e) => handleBasicInfoChange('currentL2', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                  className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">L3</label>
+                <label className="block text-xs text-slate-500 mb-0.5">L3</label>
                 <input
                   type="number"
                   step="0.1"
                   value={formData.currentL3 ?? ''}
                   onChange={(e) => handleBasicInfoChange('currentL3', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                  className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -880,90 +906,27 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
             </button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-2">
             {(formData.breakers || []).map((breaker, index) => (
-              <div key={index} className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-slate-700">차단기 #{index + 1}</h4>
+              <div key={index} className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold text-slate-700">차단기 #{index + 1}</h4>
                   <button
                     type="button"
                     onClick={() => removeBreaker(index)}
-                    className="text-red-600 hover:bg-red-50 p-1 rounded"
+                    className="text-red-600 hover:bg-red-50 p-0.5 rounded"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-3 mb-3">
+
+                <div className="grid grid-cols-2 gap-1 mb-1">
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-slate-600">차단기 No.</label>
-                      <button
-                        type="button"
-                        onClick={() => toggleListening(`breaker-${index}-breakerNo`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          isListening && activeVoiceField === `breaker-${index}-breakerNo`
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-                        }`}
-                      >
-                        {isListening && activeVoiceField === `breaker-${index}-breakerNo` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <select 
-                      value={breaker.breakerNo || '0'} 
-                      onChange={(e) => handleBreakerChange(index, 'breakerNo', e.target.value)}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
-                        isListening && activeVoiceField === `breaker-${index}-breakerNo` ? 'border-red-300 bg-red-50' : 'border-slate-300'
-                      }`}
-                      style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
-                    >
-                      {Array.from({ length: 11 }, (_, i) => (
-                        <option key={i} value={i.toString()}>{i}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-slate-600">구분</label>
-                      <button
-                        type="button"
-                        onClick={() => toggleListening(`breaker-${index}-category`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          isListening && activeVoiceField === `breaker-${index}-category`
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-                        }`}
-                      >
-                        {isListening && activeVoiceField === `breaker-${index}-category` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <select 
-                      value={breaker.category} 
+                    <label className="block text-xs font-medium text-slate-600 mb-0.5">구분</label>
+                    <select
+                      value={breaker.category}
                       onChange={(e) => handleBreakerChange(index, 'category', e.target.value as '1차' | '2차')}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
-                        isListening && activeVoiceField === `breaker-${index}-category` ? 'border-red-300 bg-red-50' : 'border-slate-300'
-                      }`}
+                      className="w-full rounded border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white border-slate-300"
                       style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="1차">1차</option>
@@ -971,70 +934,20 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                     </select>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-slate-600">차단기 용량[A]</label>
-                      <button
-                        type="button"
-                        onClick={() => toggleListening(`breaker-${index}-breakerCapacity`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          isListening && activeVoiceField === `breaker-${index}-breakerCapacity`
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-                        }`}
-                      >
-                        {isListening && activeVoiceField === `breaker-${index}-breakerCapacity` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <input 
-                      type="number" 
+                    <label className="block text-xs font-medium text-slate-600 mb-0.5">차단기 용량[A]</label>
+                    <input
+                      type="number"
                       value={breaker.breakerCapacity ?? ''}
                       onChange={(e) => handleBreakerChange(index, 'breakerCapacity', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
-                        isListening && activeVoiceField === `breaker-${index}-breakerCapacity` ? 'border-red-300 bg-red-50' : 'border-slate-300'
-                      }`}
+                      className="w-full rounded border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none border-slate-300"
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-slate-600">종류</label>
-                      <button
-                        type="button"
-                        onClick={() => toggleListening(`breaker-${index}-kind`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          isListening && activeVoiceField === `breaker-${index}-kind`
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-                        }`}
-                      >
-                        {isListening && activeVoiceField === `breaker-${index}-kind` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <select 
-                      value={breaker.kind} 
+                    <label className="block text-xs font-medium text-slate-600 mb-0.5">종류</label>
+                    <select
+                      value={breaker.kind}
                       onChange={(e) => handleBreakerChange(index, 'kind', e.target.value as 'MCCB' | 'ELB')}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
-                        isListening && activeVoiceField === `breaker-${index}-kind` ? 'border-red-300 bg-red-50' : 'border-slate-300'
-                      }`}
+                      className="w-full rounded border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white border-slate-300"
                       style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="MCCB">MCCB</option>
@@ -1042,36 +955,11 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                     </select>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-slate-600">형식</label>
-                      <button
-                        type="button"
-                        onClick={() => toggleListening(`breaker-${index}-type`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          isListening && activeVoiceField === `breaker-${index}-type`
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-                        }`}
-                      >
-                        {isListening && activeVoiceField === `breaker-${index}-type` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <select 
-                      value={breaker.type || '1P'} 
+                    <label className="block text-xs font-medium text-slate-600 mb-0.5">형식</label>
+                    <select
+                      value={breaker.type || '1P'}
                       onChange={(e) => handleBreakerChange(index, 'type', e.target.value)}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white ${
-                        isListening && activeVoiceField === `breaker-${index}-type` ? 'border-red-300 bg-red-50' : 'border-slate-300'
-                      }`}
+                      className="w-full rounded border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer bg-white border-slate-300"
                       style={{ pointerEvents: 'auto', zIndex: 9999, position: 'relative' }}
                     >
                       <option value="1P">1P</option>
@@ -1080,36 +968,30 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                       <option value="4P">4P</option>
                     </select>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
+                  <div className="col-span-2">
+                    <div className="flex items-center justify-between mb-0.5">
                       <label className="block text-xs font-medium text-slate-600">부하명</label>
                       <button
                         type="button"
                         onClick={() => toggleListening(`breaker-${index}-loadName`)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                        className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                           isListening && activeVoiceField === `breaker-${index}-loadName`
                             ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
                         }`}
                       >
                         {isListening && activeVoiceField === `breaker-${index}-loadName` ? (
-                          <>
-                            <MicOff size={12} />
-                            <span>중지</span>
-                          </>
+                          <><MicOff size={10} /><span>중지</span></>
                         ) : (
-                          <>
-                            <Mic size={12} />
-                            <span>음성</span>
-                          </>
+                          <><Mic size={10} /><span>음성</span></>
                         )}
                       </button>
                     </div>
-                    <input 
-                      type="text" 
-                      value={breaker.loadName} 
+                    <input
+                      type="text"
+                      value={breaker.loadName}
                       onChange={(e) => handleBreakerChange(index, 'loadName', e.target.value)}
-                      className={`w-full rounded border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
+                      className={`w-full rounded border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none ${
                         isListening && activeVoiceField === `breaker-${index}-loadName` ? 'border-red-300 bg-red-50' : 'border-slate-300'
                       }`}
                       placeholder="고정부하, 이동부하X"
@@ -1117,82 +999,108 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-slate-600 mb-2">전류 (A) - 후크메가</label>
-                  <div className="grid grid-cols-3 gap-2">
+                {/* 부하 용량[W] - 전류 위로 이동 */}
+                <div className="mb-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-0.5">부하 용량[W]</label>
+                  <div className="grid grid-cols-4 gap-1.5">
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">L1</label>
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        value={breaker.currentL1 ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'currentL1', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      <label className="block text-xs text-slate-500 mb-0.5">R</label>
+                      <input
+                        type="number"
+                        value={breaker.loadCapacityR ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityR', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                        className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">L2</label>
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        value={breaker.currentL2 ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'currentL2', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      <label className="block text-xs text-slate-500 mb-0.5">S</label>
+                      <input
+                        type="number"
+                        value={breaker.loadCapacityS ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityS', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                        className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">L3</label>
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        value={breaker.currentL3 ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'currentL3', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      <label className="block text-xs text-slate-500 mb-0.5">T</label>
+                      <input
+                        type="number"
+                        value={breaker.loadCapacityT ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityT', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                        className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-0.5">N</label>
+                      <input
+                        type="number"
+                        value={breaker.loadCapacityN ?? ''}
+                        onChange={(e) => handleBreakerChange(index, 'loadCapacityN', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                        className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                     </div>
                   </div>
                 </div>
 
+                {/* 전류 (A) - 접기/펼치기, 부하용량 아래로 이동 */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-2">부하 용량[W]</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">R</label>
-                      <input 
-                        type="number" 
-                        value={breaker.loadCapacityR ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityR', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-                      />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCurrentBreakers(prev => {
+                      const next = new Set(prev);
+                      next.has(index) ? next.delete(index) : next.add(index);
+                      return next;
+                    })}
+                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 w-full text-left mb-0.5"
+                  >
+                    <ChevronDown
+                      size={12}
+                      className={`transition-transform flex-shrink-0 ${expandedCurrentBreakers.has(index) ? 'rotate-180' : ''}`}
+                    />
+                    <span>전류 (A) - 후크메가</span>
+                    {!expandedCurrentBreakers.has(index) && (breaker.currentL1 != null || breaker.currentL2 != null || breaker.currentL3 != null) && (
+                      <span className="ml-1 text-slate-400">
+                        {[breaker.currentL1, breaker.currentL2, breaker.currentL3]
+                          .map((v, i) => v != null ? `L${i + 1}:${v}` : null)
+                          .filter(Boolean)
+                          .join(' ')}
+                      </span>
+                    )}
+                  </button>
+                  {expandedCurrentBreakers.has(index) && (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-0.5">L1</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={breaker.currentL1 ?? ''}
+                          onChange={(e) => handleBreakerChange(index, 'currentL1', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                          className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-0.5">L2</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={breaker.currentL2 ?? ''}
+                          onChange={(e) => handleBreakerChange(index, 'currentL2', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                          className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-0.5">L3</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={breaker.currentL3 ?? ''}
+                          onChange={(e) => handleBreakerChange(index, 'currentL3', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                          className="w-full rounded border-slate-300 border px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">S</label>
-                      <input 
-                        type="number" 
-                        value={breaker.loadCapacityS ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityS', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">T</label>
-                      <input 
-                        type="number" 
-                        value={breaker.loadCapacityT ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityT', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">N</label>
-                      <input 
-                        type="number" 
-                        value={breaker.loadCapacityN ?? ''}
-                        onChange={(e) => handleBreakerChange(index, 'loadCapacityN', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                        className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1328,74 +1236,75 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
         {/* 부하 합계 정보 */}
         <div className="border border-slate-200 rounded-lg p-4">
           <h3 className="text-lg font-bold text-slate-800 mb-4">부하 합계 정보</h3>
-          
-          <div className="grid grid-cols-2 gap-3 mb-3">
+
+          {/* Row 1: 상별 부하 합계 R/S/T */}
+          <div className="grid grid-cols-3 gap-3 mb-2">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] A</label>
-              <input 
-                type="number" 
-                value={formData.loadSummary?.phaseLoadSumA ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumA', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] R</label>
+              <input type="number" readOnly value={rSum} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] S</label>
+              <input type="number" readOnly value={sSum} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] T</label>
+              <input type="number" readOnly value={tSum} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+          </div>
+
+          {/* Row 2: 총 연결 부하 합계 */}
+          <div className="mb-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">총 연결 부하 합계 [AV]</label>
+            <input type="number" readOnly value={totalSum} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+          </div>
+
+          {/* Row 3: 상별 부하 분담 R/S/T */}
+          <div className="grid grid-cols-3 gap-3 mb-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] R</label>
+              <input type="text" readOnly value={`${rShare}%`} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] S</label>
+              <input type="text" readOnly value={`${sShare}%`} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] T</label>
+              <input type="text" readOnly value={`${tShare}%`} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+          </div>
+
+          {/* Row 4: 단상 A, 3상 B */}
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">단상 A [A]</label>
+              <input type="text" readOnly value={singlePhaseA} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">3상 B [A]</label>
+              <input type="text" readOnly value={threePhaseB} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
+            </div>
+          </div>
+
+          {/* Row 5: 수용율, 수용부하, 전류 */}
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">수용율 (%)</label>
+              <input
+                type="number"
+                value={acceptanceRate}
+                onChange={(e) => setAcceptanceRate(parseFloat(e.target.value) || 0)}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] B</label>
-              <input 
-                type="number" 
-                value={formData.loadSummary?.phaseLoadSumB ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumB', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">수용부하 (VA)</label>
+              <input type="number" readOnly value={acceptedLoad} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 합계 [AV] C</label>
-              <input 
-                type="number" 
-                value={formData.loadSummary?.phaseLoadSumC ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadSumC', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">총 연결 부하 합계[AV]</label>
-              <input 
-                type="number" 
-                step="0.01"
-                value={formData.loadSummary?.totalLoadSum ?? ''}
-                onChange={(e) => handleLoadSummaryChange('totalLoadSum', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] A</label>
-              <input 
-                type="number" 
-                step="0.1"
-                value={formData.loadSummary?.phaseLoadShareA ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareA', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] B</label>
-              <input 
-                type="number" 
-                step="0.1"
-                value={formData.loadSummary?.phaseLoadShareB ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareB', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">상별 부하 분담 [%] C</label>
-              <input 
-                type="number" 
-                step="0.1"
-                value={formData.loadSummary?.phaseLoadShareC ?? ''}
-                onChange={(e) => handleLoadSummaryChange('phaseLoadShareC', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">전류 (A)</label>
+              <input type="number" readOnly value={mainCurrentMax} className="w-full rounded border-slate-200 border px-2 py-1.5 text-sm text-slate-500 bg-slate-50 outline-none cursor-default" />
             </div>
           </div>
         </div>
