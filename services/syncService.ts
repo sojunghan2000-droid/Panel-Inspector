@@ -15,7 +15,7 @@ import {
   fetchAllReports,
   uploadBlob,
 } from './supabaseService';
-import { saveInspection, saveAllQRCodes, saveReport } from './indexedDBService';
+import { saveInspection, saveQRCode, saveAllQRCodes, saveReport } from './indexedDBService';
 import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
@@ -227,15 +227,43 @@ export async function pullAll(
       await upsertInspections(inspectionsToPush);
     }
 
-    // ── QR Codes ──
+    // ── QR Codes — Inspection과 동일한 양방향 병합 (createdAt 기준 last-write-wins) ──
     const remoteQRCodes = await fetchAllQRCodes();
-    if (remoteQRCodes.length > 0) {
-      await saveAllQRCodes(remoteQRCodes);
-      callbacks.onQRCodesUpdated(remoteQRCodes);
-    } else if (localQRCodes.length > 0) {
-      // 원격이 비어있고 로컬이 있으면 → 로컬을 Supabase에 업로드
-      console.log(`[syncService] QR Codes 로컬→Supabase push: ${localQRCodes.length}건`);
-      await upsertQRCodes(localQRCodes);
+    const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
+
+    for (const remote of remoteQRCodes) {
+      const local = localQRMap.get(remote.id);
+      if (!local) {
+        // 원격에만 존재 → 로컬에 추가
+        localQRMap.set(remote.id, remote);
+        await saveQRCode(remote);
+      } else {
+        // createdAt을 updatedAt 대용으로 사용 (수정 시 갱신됨)
+        const remoteTs = new Date(remote.createdAt).getTime();
+        const localTs = new Date(local.createdAt).getTime();
+        if (remoteTs > localTs) {
+          // 원격이 더 최신 → 덮어쓰기
+          localQRMap.set(remote.id, remote);
+          await saveQRCode(remote);
+        }
+        // 로컬이 더 최신 또는 동일 → 유지
+      }
+    }
+    const mergedQRCodes = Array.from(localQRMap.values());
+    callbacks.onQRCodesUpdated(mergedQRCodes);
+
+    // 로컬 → Supabase 역방향 push (로컬에만 있는 QR 코드)
+    const remoteQRIds = new Set(remoteQRCodes.map(q => q.id));
+    const qrsToPush = localQRCodes.filter(q => {
+      if (!remoteQRIds.has(q.id)) return true; // 로컬에만 존재
+      const remote = remoteQRCodes.find(r => r.id === q.id)!;
+      const localTs = new Date(q.createdAt).getTime();
+      const remoteTs = new Date(remote.createdAt).getTime();
+      return localTs > remoteTs; // 로컬이 더 최신
+    });
+    if (qrsToPush.length > 0) {
+      console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
+      await upsertQRCodes(qrsToPush);
     }
 
     // ── Reports ──
