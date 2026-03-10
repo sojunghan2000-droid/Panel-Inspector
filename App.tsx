@@ -798,13 +798,14 @@ const App: React.FC = () => {
             onClick={() => {
               setCurrentPage('dashboard-overview');
               setSelectedInspectionId(null);
+              setIsSidebarOpen(prev => !prev);
             }}
           >성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.30</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
           <div 
-            onClick={() => setCurrentPage('dashboard-overview')}
+            onClick={() => { setCurrentPage('dashboard-overview'); setIsSidebarOpen(prev => !prev); }}
             className={`px-3 py-2 rounded-lg font-medium flex items-center gap-3 cursor-pointer transition-colors ${
               currentPage === 'dashboard-overview' 
                 ? 'bg-slate-800 text-white' 
@@ -815,7 +816,7 @@ const App: React.FC = () => {
             Dashboard
           </div>
           <div 
-            onClick={() => setCurrentPage('dashboard')}
+            onClick={() => { setCurrentPage('dashboard'); setIsSidebarOpen(prev => !prev); }}
             className={`px-3 py-2 rounded-lg font-medium flex items-center gap-3 cursor-pointer transition-colors ${
               currentPage === 'dashboard' 
                 ? 'bg-slate-800 text-white' 
@@ -826,7 +827,7 @@ const App: React.FC = () => {
             Inspection
           </div>
           <div 
-            onClick={() => setCurrentPage('reports')}
+            onClick={() => { setCurrentPage('reports'); setIsSidebarOpen(prev => !prev); }}
             className={`px-3 py-2 rounded-lg font-medium flex items-center gap-3 cursor-pointer transition-colors ${
               currentPage === 'reports' 
                 ? 'bg-slate-800 text-white' 
@@ -837,7 +838,7 @@ const App: React.FC = () => {
             Reports
           </div>
           <div 
-            onClick={() => setCurrentPage('qr-generator')}
+            onClick={() => { setCurrentPage('qr-generator'); setIsSidebarOpen(prev => !prev); }}
             className={`px-3 py-2 rounded-lg font-medium flex items-center gap-3 cursor-pointer transition-colors ${
               currentPage === 'qr-generator' 
                 ? 'bg-slate-800 text-white' 
