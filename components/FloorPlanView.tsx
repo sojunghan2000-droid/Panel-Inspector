@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
-import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ChevronLeft } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 
 interface FloorPlanViewProps {
@@ -714,6 +714,18 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      {selectedInspectionId && (
+        <button
+          onClick={() => {
+            setSelectedInspection(null);
+            onSelectionChange?.(null);
+          }}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 px-4 pt-3 text-sm font-medium"
+        >
+          <ChevronLeft size={16} />
+          전체 보기
+        </button>
+      )}
       <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
