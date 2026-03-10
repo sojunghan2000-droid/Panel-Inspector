@@ -781,14 +781,14 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 className="w-full rounded-lg border-slate-300 border px-2 py-1.5 text-sm text-slate-500 bg-slate-100 cursor-not-allowed"
               >
                 <option value="">-</option>
+                <option value="B2">B2 (지하2층)</option>
+                <option value="B1">B1 (지하1층)</option>
                 <option value="F1">F1 (지상1층)</option>
                 <option value="F2">F2 (지상2층)</option>
                 <option value="F3">F3 (지상3층)</option>
                 <option value="F4">F4 (지상4층)</option>
                 <option value="F5">F5 (지상5층)</option>
                 <option value="F6">F6 (지상6층)</option>
-                <option value="B1">B1 (지하1층)</option>
-                <option value="B2">B2 (지하2층)</option>
               </select>
             </div>
             <div>
