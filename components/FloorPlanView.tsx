@@ -740,14 +740,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             onChange={(e) => handleFloorChange(e.target.value)}
             className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none cursor-pointer"
           >
+            <option value="B2">B2 (지하2층)</option>
+            <option value="B1">B1 (지하1층)</option>
             <option value="F1">F1 (지상1층)</option>
             <option value="F2">F2 (지상2층)</option>
             <option value="F3">F3 (지상3층)</option>
             <option value="F4">F4 (지상4층)</option>
             <option value="F5">F5 (지상5층)</option>
             <option value="F6">F6 (지상6층)</option>
-            <option value="B1">B1 (지하1층)</option>
-            <option value="B2">B2 (지하2층)</option>
           </select>
           {/* 배경 이미지 업로드 버튼 */}
           <label className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer text-sm font-medium transition-colors">
@@ -1015,14 +1015,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                       onChange={(e) => setEditingFloor(e.target.value)}
                       className="text-xs px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     >
-                      <option value="F6">F6 (지상6층)</option>
-                      <option value="F5">F5 (지상5층)</option>
-                      <option value="F4">F4 (지상4층)</option>
-                      <option value="F3">F3 (지상3층)</option>
-                      <option value="F2">F2 (지상2층)</option>
-                      <option value="F1">F1 (지상1층)</option>
-                      <option value="B1">B1 (지하1층)</option>
                       <option value="B2">B2 (지하2층)</option>
+                      <option value="B1">B1 (지하1층)</option>
+                      <option value="F1">F1 (지상1층)</option>
+                      <option value="F2">F2 (지상2층)</option>
+                      <option value="F3">F3 (지상3층)</option>
+                      <option value="F4">F4 (지상4층)</option>
+                      <option value="F5">F5 (지상5층)</option>
+                      <option value="F6">F6 (지상6층)</option>
                     </select>
                   </div>
                 )}
@@ -1207,7 +1207,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               }}
               className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors"
             >
-              취소
+              확인
             </button>
           </div>
         )}

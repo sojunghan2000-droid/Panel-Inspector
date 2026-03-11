@@ -1677,7 +1677,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               {selectedQR ? (
                 <>
                   <Eye size={20} className="text-blue-600" />
-                  패널 상세 정보 — {selectedQRId}
+                  패널 상세 정보 — {qrData.id}
                 </>
               ) : (
                 <>
@@ -1714,14 +1714,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   onFocus={restoreMainScrollOnFocus}
                   className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
                 >
-                  <option value="F6">F6 (지상6층)</option>
-                  <option value="F5">F5 (지상5층)</option>
-                  <option value="F4">F4 (지상4층)</option>
-                  <option value="F3">F3 (지상3층)</option>
-                  <option value="F2">F2 (지상2층)</option>
-                  <option value="F1">F1 (지상1층)</option>
-                  <option value="B1">B1 (지하1층)</option>
                   <option value="B2">B2 (지하2층)</option>
+                  <option value="B1">B1 (지하1층)</option>
+                  <option value="F1">F1 (지상1층)</option>
+                  <option value="F2">F2 (지상2층)</option>
+                  <option value="F3">F3 (지상3층)</option>
+                  <option value="F4">F4 (지상4층)</option>
+                  <option value="F5">F5 (지상5층)</option>
+                  <option value="F6">F6 (지상6층)</option>
                 </select>
               </div>
 
