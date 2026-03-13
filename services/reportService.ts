@@ -149,320 +149,289 @@ const imageUrlToBase64 = async (url: string): Promise<{ base64: string; extensio
 };
 
 // Excel 파일 생성 함수 (ExcelJS 사용)
+// 레이아웃: A-D(판넬정보 수직병합) | E-J(차단기정보) | K-M(전류L1/L2/L3) | N-Q(부하용량R/S/T/N) | R-S(열화상 수직병합) | T-V(접지/상태/비고)
 export const generateExcelReport = async (record: InspectionRecord): Promise<void> => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('점검 보고서');
 
-  // 기본 정보 행
-  const basicInfoRows: any[][] = [
-    ['공사용 가설 분전반', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '가설 전기 점검'],
-    [],
-    ['PNL NO.', record.panelNo, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['PJT명', record.projectName || '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['시공사', record.contractor || '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['관리번호 (판넬명)', record.managementNumber || '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['점검자', (record.inspectors || []).join(', ') || '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    [],
+  // 22개 열 너비 설정 (A-V)
+  worksheet.columns = [
+    { width: 10 },  // A: PNL NO.
+    { width: 18 },  // B: PJT명
+    { width: 14 },  // C: 시공사
+    { width: 16 },  // D: 관리번호
+    { width: 10 },  // E: 차단기 No.
+    { width: 8 },   // F: 구분
+    { width: 10 },  // G: 차단기 용량[A]
+    { width: 24 },  // H: 부하명
+    { width: 8 },   // I: 형식
+    { width: 10 },  // J: 종류
+    { width: 8 },   // K: L1 전류
+    { width: 8 },   // L: L2 전류
+    { width: 8 },   // M: L3 전류
+    { width: 10 },  // N: R 부하용량
+    { width: 10 },  // O: S 부하용량
+    { width: 10 },  // P: T 부하용량
+    { width: 10 },  // Q: N 부하용량
+    { width: 18 },  // R: 열화상
+    { width: 18 },  // S: 열화상(span)
+    { width: 14 },  // T: 접지
+    { width: 10 },  // U: 상태
+    { width: 18 },  // V: 비고
   ];
 
-  // 차단기 목록: record.breakers[] (정렬 없이 그대로 사용, No.1부터)
+  const thinBorder = {
+    top: { style: 'thin' as const },
+    left: { style: 'thin' as const },
+    bottom: { style: 'thin' as const },
+    right: { style: 'thin' as const }
+  };
+  const applyBorderToRow = (rowNum: number, colCount: number = 22) => {
+    for (let c = 1; c <= colCount; c++) {
+      worksheet.getCell(rowNum, c).border = thinBorder;
+    }
+  };
+
+  const yellowFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFF00' } };
+  const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE3F2FD' } };
+  const titleFill  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8F5E9' } };
+
+  // ── Row 1: 타이틀 ──────────────────────────────────────────────
+  worksheet.addRow(new Array(22).fill(''));
+  worksheet.mergeCells('A1:U1');
+  worksheet.getCell('A1').value = '공사용 가설 분전반';
+  worksheet.getCell('V1').value = '가설 전기 점검';
+  const titleRow = worksheet.getRow(1);
+  titleRow.height = 26;
+  titleRow.font = { bold: true, size: 14 };
+  titleRow.fill = titleFill;
+  titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+  applyBorderToRow(1);
+
+  // ── Rows 2-3: 헤더 2행 ────────────────────────────────────────
+  worksheet.addRow(new Array(22).fill(''));
+  worksheet.addRow(new Array(22).fill(''));
+
+  // Row 2 헤더 셀 값
+  const hdr2Values: Record<string, string> = {
+    A2: 'PNL NO.', B2: 'PJT명', C2: '시공사', D2: '관리번호\n(판넬명)',
+    E2: '차단기\nNo.', F2: '구분\n(1차,2차)', G2: '차단기\n용량[A]',
+    H2: '부하명\n(고정,이동X)', I2: '형식', J2: '종류\n(MCCB,ELB)',
+    K2: '전류 (A)\n(후크메가)', N2: '부하 용량[W]',
+    R2: '열화상\n측정', T2: '접지\n(외관)', U2: '상태', V2: '비고'
+  };
+  Object.entries(hdr2Values).forEach(([addr, val]) => {
+    worksheet.getCell(addr).value = val;
+  });
+
+  // Row 3 서브헤더 셀 값
+  const hdr3Values: Record<string, string> = {
+    K3: 'L1', L3: 'L2', M3: 'L3',
+    N3: 'R', O3: 'S', P3: 'T', Q3: 'N'
+  };
+  Object.entries(hdr3Values).forEach(([addr, val]) => {
+    worksheet.getCell(addr).value = val;
+  });
+
+  // Row 2 병합 (rowspan 2)
+  ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'T', 'U', 'V'].forEach(col => {
+    worksheet.mergeCells(`${col}2:${col}3`);
+  });
+  worksheet.mergeCells('K2:M2'); // 전류 colspan 3
+  worksheet.mergeCells('N2:Q2'); // 부하용량 colspan 4
+  worksheet.mergeCells('R2:S2'); // 열화상 colspan 2
+
+  [2, 3].forEach(rowNum => {
+    const row = worksheet.getRow(rowNum);
+    row.font = { bold: true, size: 10 };
+    row.fill = headerFill;
+    row.height = rowNum === 2 ? 32 : 18;
+    row.alignment = { wrapText: true, horizontal: 'center', vertical: 'middle' };
+    applyBorderToRow(rowNum);
+  });
+
+  // ── 데이터 행 ─────────────────────────────────────────────────
   const breakerList = record.breakers || [];
+  const totalBreakerRows = 1 + breakerList.length; // No.0(1차 메인) + 2차 N개
+  const dataStartRow = 4;
+  const dataEndRow = dataStartRow + totalBreakerRows - 1;
 
-  // 차단기 정보 헤더
-  const breakerHeader = [
-    '차단기 No.',
-    '구분 (1차, 2차)',
-    '차단기 용량[A]',
-    '부하명 (고정부하, 이동부하X)',
-    '형식',
-    '종류 (MCCB, ELB)',
-    '전류 (A) (후크메가)',
-    '',
-    '',
-    '부하 용량[W]',
-    '',
-    '',
-    '',
-    '접지 (외관 점검)',
-    '상태',
-    '비고'
-  ];
+  const statusText  = record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검';
+  const groundingText = record.grounding || '미점검';
 
-  const breakerSubHeader = [
-    '', '', '', '', '', '',
-    'L1', 'L2', 'L3',
-    'R', 'S', 'T', 'N',
-    '', '', ''
-  ];
-
-  // 차단기 데이터: No.0 = 1차 메인 (최상위 필드), No.1~ = record.breakers[]
-  const breakerDataRows: any[][] = [];
-  // No.0: 1차 메인 차단기 (record 최상위 필드)
-  breakerDataRows.push([
-    '0',
-    '1차',
+  // No.0: 1차 메인 차단기
+  worksheet.addRow([
+    record.panelNo || '', record.projectName || '',
+    record.contractor || '', record.managementNumber || '',
+    '0', '1차',
     Number(record.breakerCapacity) || 0,
-    '메인 차단기',
-    '',
-    '',
-    record.currentL1 || 0,
-    record.currentL2 || 0,
-    record.currentL3 || 0,
+    '메인 차단기', '', '',
+    record.currentL1 || 0, record.currentL2 || 0, record.currentL3 || 0,
     0, 0, 0, 0,
-    record.grounding || '미점검',
-    record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검',
-    ''
+    '', '',
+    groundingText, statusText, ''
   ]);
-  // No.1~: record.breakers[]
+
+  // No.1~: 2차 차단기
   breakerList.forEach((breaker, index) => {
-    breakerDataRows.push([
-      (index + 1).toString(),
-      breaker.category || '2차',
+    worksheet.addRow([
+      record.panelNo || '', record.projectName || '',
+      record.contractor || '', record.managementNumber || '',
+      (index + 1).toString(), breaker.category || '2차',
       breaker.breakerCapacity || 0,
-      breaker.loadName || '',
-      breaker.type || '',
-      breaker.kind || 'MCCB',
-      breaker.currentL1 || 0,
-      breaker.currentL2 || 0,
-      breaker.currentL3 || 0,
-      breaker.loadCapacityR || 0,
-      breaker.loadCapacityS || 0,
-      breaker.loadCapacityT || 0,
-      breaker.loadCapacityN || 0,
-      record.grounding || '미점검',
-      record.status === 'Complete' ? '양호' : record.status === 'In Progress' ? '점검 중' : '미점검',
-      ''
+      breaker.loadName || '', breaker.type || '', breaker.kind || 'MCCB',
+      breaker.currentL1 || 0, breaker.currentL2 || 0, breaker.currentL3 || 0,
+      breaker.loadCapacityR || 0, breaker.loadCapacityS || 0,
+      breaker.loadCapacityT || 0, breaker.loadCapacityN || 0,
+      '', '',
+      groundingText, statusText, ''
     ]);
   });
 
-  const breakerRows: any[][] = [breakerHeader, breakerSubHeader, ...breakerDataRows];
+  // 판넬 정보(A-D) 및 열화상(R-S), 접지/상태(T-U) 수직 병합
+  if (totalBreakerRows > 1) {
+    ['A', 'B', 'C', 'D'].forEach(col => {
+      worksheet.mergeCells(`${col}${dataStartRow}:${col}${dataEndRow}`);
+    });
+    worksheet.mergeCells(`R${dataStartRow}:S${dataEndRow}`);
+    ['T', 'U'].forEach(col => {
+      worksheet.mergeCells(`${col}${dataStartRow}:${col}${dataEndRow}`);
+    });
+  } else {
+    worksheet.mergeCells(`R${dataStartRow}:S${dataStartRow}`);
+  }
 
-  // 행 번호 계산 (1-based)
-  const basicInfoRowCount = basicInfoRows.length; // = 8
-  const firstDataRowNum = basicInfoRowCount + 3;  // header(+1) + subheader(+2) + 1 = 11
-  const mainBreakerRowNum = firstDataRowNum;       // No.0 = row 11 (항상 고정)
-  const lastDataRowNum = firstDataRowNum + breakerList.length; // 1차(1행) + 2차N행
-
-  // thermalRows는 아래에서 정의되지만 길이는 3 (빈행, 제목, 내용)
-  const thermalRowsLength = 3;
-
-  // Summary 행 시작: 마지막 차단기 행 + thermalRows(3) + 빈행(1) + 1(1-based offset)
-  const summaryStart = lastDataRowNum + thermalRowsLength + 2;
-
-  // 열화상 측정 섹션 (summary 뒤)
-  const thermalRows: any[][] = [
-    [],
-    ['열화상 측정 (측정기 : ' + (record.thermalImage?.equipment || 'KT-352') + ')', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['점검 내용', '변대/가설분전반 전류 및 발열', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-  ];
-
-  // Summary 라벨 행 (수식은 addRow 후 worksheet.getCell()로 설정)
-  const summaryLabelRows: any[][] = [
-    [], // 빈 구분 행
-    ['각 R/S/T 상별 부하 합계 [AV]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['총 연결 부하 합계[AV]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['상별 부하 분담 [%]', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['단상 A', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['3상 B', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['수용율(%)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['수용부하(VA)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['전류(A)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-  ];
-
-  // 모든 행 결합
-  const allRows = [
-    ...basicInfoRows,
-    ...breakerRows,
-    ...thermalRows,
-    ...summaryLabelRows
-  ];
-
-  // ExcelJS 워크시트에 데이터 추가
-  let thermalImageRow = -1; // 열화상 이미지가 삽입될 행 번호 (1-based)
-
-  allRows.forEach((row, rowIndex) => {
-    const worksheetRow = worksheet.addRow(row);
-    const rowNumber = rowIndex + 1; // 1-based 행 번호
-
-    // 스타일 설정
-    if (rowIndex === 0) {
-      // 헤더 행
-      worksheetRow.font = { bold: true, size: 14 };
-      worksheetRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE8F5E9' }
-      };
-      worksheet.mergeCells(`A1:O1`); // 공사용 가설 분전반
-      worksheet.getCell('P1').value = '가설 전기 점검';
-    } else if (rowIndex >= 2 && rowIndex <= 6) {
-      // 기본 정보 행 병합
-      const colMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
-      worksheet.mergeCells(`${colMap[1]}${rowNumber}:${colMap[15]}${rowNumber}`);
+  // 데이터 행 스타일
+  for (let r = dataStartRow; r <= dataEndRow; r++) {
+    const row = worksheet.getRow(r);
+    row.height = 20;
+    row.alignment = { horizontal: 'center', vertical: 'middle' };
+    if (r === dataStartRow) {
+      row.fill = yellowFill;
+      row.font = { bold: true };
     }
-
-    // No.0 (1차 메인 차단기) 행: 노란색 배경
-    const breakerDataStartIndex = basicInfoRowCount + 2; // 0-based index of first data row (No.0)
-    if (rowIndex === breakerDataStartIndex) {
-      worksheetRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFFFFF00' } // 노란색
-      };
-      worksheetRow.font = { bold: true };
-    }
-
-    // 열화상 섹션의 "점검 내용" 행 찾기
-    const thermalSectionStart = basicInfoRows.length + breakerRows.length;
-    if (rowIndex === thermalSectionStart + 2) {
-      thermalImageRow = rowNumber;
-    }
+    applyBorderToRow(r);
+  }
+  // 병합 셀 정렬 재설정
+  ['A', 'B', 'C', 'D', 'R', 'T', 'U'].forEach(col => {
+    worksheet.getCell(`${col}${dataStartRow}`).alignment = {
+      horizontal: 'center', vertical: 'middle', wrapText: true
+    };
   });
 
-  // 열 너비 설정
-  worksheet.columns = [
-    { width: 12 }, // A: 차단기 No.
-    { width: 12 }, // B: 구분
-    { width: 12 }, // C: 차단기 용량
-    { width: 30 }, // D: 부하명
-    { width: 10 }, // E: 형식
-    { width: 12 }, // F: 종류
-    { width: 10 }, // G: L1
-    { width: 10 }, // H: L2
-    { width: 10 }, // I: L3
-    { width: 12 }, // J: R
-    { width: 12 }, // K: S
-    { width: 12 }, // L: T
-    { width: 10 }, // M: N
-    { width: 15 }, // N: 접지
-    { width: 10 }, // O: 상태
-    { width: 20 }, // P: 비고
+  // ── Summary 행 ────────────────────────────────────────────────
+  const blankRowNum = dataEndRow + 1;
+  worksheet.addRow(new Array(22).fill(''));
+  worksheet.getRow(blankRowNum).height = 6;
+
+  const summaryStart = dataEndRow + 2;
+  const summaryLabels = [
+    '각 R/S/T 상별 부하 합계 [AV]',
+    '총 연결 부하 합계[AV]',
+    '상별 부하 분담 [%]',
+    '단상 A',
+    '3상 B',
+    '수용율(%)',
+    '수용부하(VA)',
+    '전류(A)'
   ];
+  summaryLabels.forEach(() => {
+    worksheet.addRow(new Array(22).fill(''));
+  });
 
-  // 차단기 헤더 병합
-  const breakerHeaderRow = basicInfoRows.length + 1; // 1-based = 9
-  worksheet.mergeCells(`G${breakerHeaderRow}:I${breakerHeaderRow}`); // 전류 (A) (후크메가)
-  worksheet.mergeCells(`J${breakerHeaderRow}:M${breakerHeaderRow}`); // 부하 용량[W]
+  const r0 = summaryStart;
+  const r1 = summaryStart + 1;
+  const r2 = summaryStart + 2;
+  const r3 = summaryStart + 3;
+  const r4 = summaryStart + 4;
+  const r5 = summaryStart + 5;
+  const r6 = summaryStart + 6;
+  const r7 = summaryStart + 7;
 
-  // ── Summary 수식 행 설정 ──────────────────────────────────────────────────
-  const yellowFill = {
-    type: 'pattern' as const,
-    pattern: 'solid' as const,
-    fgColor: { argb: 'FFFFFF00' }
-  };
-  const labelFont = { bold: true };
-
-  // 각 summary 행 번호
-  const r0 = summaryStart;       // 각 R/S/T 상별 부하 합계 [AV]
-  const r1 = summaryStart + 1;   // 총 연결 부하 합계[AV]
-  const r2 = summaryStart + 2;   // 상별 부하 분담 [%]
-  const r3 = summaryStart + 3;   // 단상 A
-  const r4 = summaryStart + 4;   // 3상 B
-  const r5 = summaryStart + 5;   // 수용율(%)
-  const r6 = summaryStart + 6;   // 수용부하(VA)
-  const r7 = summaryStart + 7;   // 전류(A)
-
-  const applyLabelStyle = (rowNum: number) => {
+  const applySummaryLabelStyle = (rowNum: number, label: string) => {
+    worksheet.getCell(rowNum, 1).value = label;
     const row = worksheet.getRow(rowNum);
     row.fill = yellowFill;
-    row.font = labelFont;
-    worksheet.mergeCells(`A${rowNum}:I${rowNum}`);
+    row.font = { bold: true };
+    row.height = 20;
+    worksheet.mergeCells(`A${rowNum}:M${rowNum}`);
     worksheet.getCell(`A${rowNum}`).alignment = { horizontal: 'left', vertical: 'middle' };
+    applyBorderToRow(rowNum);
   };
 
-  // ── r0: 각 R/S/T 상별 부하 합계 [AV] ──────────────────────────
-  applyLabelStyle(r0);
-  worksheet.mergeCells(`M${r0}:P${r0}`); // N,O,P 빈 병합
-  worksheet.getCell(`J${r0}`).value = { formula: `SUM(J${firstDataRowNum}:J${lastDataRowNum})`, result: 0 };
-  worksheet.getCell(`K${r0}`).value = { formula: `SUM(K${firstDataRowNum}:K${lastDataRowNum})`, result: 0 };
-  worksheet.getCell(`L${r0}`).value = { formula: `SUM(L${firstDataRowNum}:L${lastDataRowNum})`, result: 0 };
-  ['J', 'K', 'L'].forEach(col => {
+  // r0: 각 R/S/T 상별 부하 합계 [AV] — 값: N(R합계), O(S합계), P(T합계)
+  applySummaryLabelStyle(r0, summaryLabels[0]);
+  worksheet.mergeCells(`Q${r0}:V${r0}`);
+  ['N', 'O', 'P'].forEach(col => {
     const cell = worksheet.getCell(`${col}${r0}`);
+    cell.value = { formula: `SUM(${col}${dataStartRow}:${col}${dataEndRow})`, result: 0 };
     cell.fill = yellowFill;
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
 
-  // ── r1: 총 연결 부하 합계[AV] ──────────────────────────────────
-  applyLabelStyle(r1);
-  worksheet.mergeCells(`J${r1}:P${r1}`);
-  worksheet.getCell(`J${r1}`).value = { formula: `J${r0}+K${r0}+L${r0}`, result: 0 };
-  worksheet.getCell(`J${r1}`).fill = yellowFill;
-  worksheet.getCell(`J${r1}`).alignment = { horizontal: 'center', vertical: 'middle' };
+  // r1: 총 연결 부하 합계
+  applySummaryLabelStyle(r1, summaryLabels[1]);
+  worksheet.mergeCells(`N${r1}:V${r1}`);
+  worksheet.getCell(`N${r1}`).value = { formula: `N${r0}+O${r0}+P${r0}`, result: 0 };
+  worksheet.getCell(`N${r1}`).fill = yellowFill;
+  worksheet.getCell(`N${r1}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── r2: 상별 부하 분담 [%] ─────────────────────────────────────
-  applyLabelStyle(r2);
-  worksheet.mergeCells(`M${r2}:P${r2}`);
-  worksheet.getCell(`J${r2}`).value = { formula: `IF(J${r1}=0,0,J${r0}/J${r1})`, result: 0 };
-  worksheet.getCell(`K${r2}`).value = { formula: `IF(J${r1}=0,0,K${r0}/J${r1})`, result: 0 };
-  worksheet.getCell(`L${r2}`).value = { formula: `IF(J${r1}=0,0,L${r0}/J${r1})`, result: 0 };
-  ['J', 'K', 'L'].forEach(col => {
+  // r2: 상별 부하 분담 [%]
+  applySummaryLabelStyle(r2, summaryLabels[2]);
+  worksheet.mergeCells(`Q${r2}:V${r2}`);
+  ['N', 'O', 'P'].forEach(col => {
     const cell = worksheet.getCell(`${col}${r2}`);
+    cell.value = { formula: `IF(N${r1}=0,0,${col}${r0}/N${r1})`, result: 0 };
     cell.fill = yellowFill;
     cell.numFmt = '0.0%';
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
 
-  // ── r3: 단상 A (형식 2P) ───────────────────────────────────────
-  applyLabelStyle(r3);
-  worksheet.mergeCells(`J${r3}:P${r3}`);
-  worksheet.getCell(`J${r3}`).value = {
-    formula: `(SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"2P",L${firstDataRowNum}:L${lastDataRowNum}))/(1.732*380*0.9)`,
+  // r3: 단상 A (형식 I열 = "2P")
+  applySummaryLabelStyle(r3, summaryLabels[3]);
+  worksheet.mergeCells(`N${r3}:V${r3}`);
+  worksheet.getCell(`N${r3}`).value = {
+    formula: `(SUMIF(I${dataStartRow}:I${dataEndRow},"2P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"2P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"2P",P${dataStartRow}:P${dataEndRow}))/(1.732*380*0.9)`,
     result: 0
   };
-  worksheet.getCell(`J${r3}`).fill = yellowFill;
-  worksheet.getCell(`J${r3}`).alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.getCell(`N${r3}`).fill = yellowFill;
+  worksheet.getCell(`N${r3}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── r4: 3상 B (형식 3P 또는 4P) ───────────────────────────────
-  applyLabelStyle(r4);
-  worksheet.mergeCells(`J${r4}:P${r4}`);
-  worksheet.getCell(`J${r4}`).value = {
-    formula: `(SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",J${firstDataRowNum}:J${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",K${firstDataRowNum}:K${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"3P",L${firstDataRowNum}:L${lastDataRowNum})+SUMIF(E${firstDataRowNum}:E${lastDataRowNum},"4P",L${firstDataRowNum}:L${lastDataRowNum}))/(1.732*380*0.9)`,
+  // r4: 3상 B (형식 "3P" 또는 "4P")
+  applySummaryLabelStyle(r4, summaryLabels[4]);
+  worksheet.mergeCells(`N${r4}:V${r4}`);
+  worksheet.getCell(`N${r4}`).value = {
+    formula: `(SUMIF(I${dataStartRow}:I${dataEndRow},"3P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"3P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"3P",P${dataStartRow}:P${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",P${dataStartRow}:P${dataEndRow}))/(1.732*380*0.9)`,
     result: 0
   };
-  worksheet.getCell(`J${r4}`).fill = yellowFill;
-  worksheet.getCell(`J${r4}`).alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.getCell(`N${r4}`).fill = yellowFill;
+  worksheet.getCell(`N${r4}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── r5: 수용율(%) ─────────────────────────────────────────────
-  applyLabelStyle(r5);
-  worksheet.mergeCells(`J${r5}:P${r5}`);
-  worksheet.getCell(`J${r5}`).value = 100; // 기본값 100%, 직접 입력 수정 가능
-  worksheet.getCell(`J${r5}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } }; // 진한 노란색 (수정 가능 표시)
-  worksheet.getCell(`J${r5}`).alignment = { horizontal: 'center', vertical: 'middle' };
+  // r5: 수용율(%) — 기본 100%, 직접 수정 가능
+  applySummaryLabelStyle(r5, summaryLabels[5]);
+  worksheet.mergeCells(`N${r5}:V${r5}`);
+  worksheet.getCell(`N${r5}`).value = 100;
+  worksheet.getCell(`N${r5}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } };
+  worksheet.getCell(`N${r5}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── r6: 수용부하(VA) ───────────────────────────────────────────
-  applyLabelStyle(r6);
-  worksheet.mergeCells(`J${r6}:P${r6}`);
-  worksheet.getCell(`J${r6}`).value = {
-    formula: `C${mainBreakerRowNum}*J${r5}/100`,
+  // r6: 수용부하(VA) — G열(차단기용량) × 수용율
+  applySummaryLabelStyle(r6, summaryLabels[6]);
+  worksheet.mergeCells(`N${r6}:V${r6}`);
+  worksheet.getCell(`N${r6}`).value = { formula: `G${dataStartRow}*N${r5}/100`, result: 0 };
+  worksheet.getCell(`N${r6}`).fill = yellowFill;
+  worksheet.getCell(`N${r6}`).alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // r7: 전류(A) — K/L/M열(L1/L2/L3) MAX
+  applySummaryLabelStyle(r7, summaryLabels[7]);
+  worksheet.mergeCells(`N${r7}:V${r7}`);
+  worksheet.getCell(`N${r7}`).value = {
+    formula: `MAX(K${dataStartRow},L${dataStartRow},M${dataStartRow})`,
     result: 0
   };
-  worksheet.getCell(`J${r6}`).fill = yellowFill;
-  worksheet.getCell(`J${r6}`).alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.getCell(`N${r7}`).fill = yellowFill;
+  worksheet.getCell(`N${r7}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── r7: 전류(A) ────────────────────────────────────────────────
-  applyLabelStyle(r7);
-  worksheet.mergeCells(`J${r7}:P${r7}`);
-  worksheet.getCell(`J${r7}`).value = {
-    formula: `MAX(G${mainBreakerRowNum},H${mainBreakerRowNum},I${mainBreakerRowNum})`,
-    result: 0
-  };
-  worksheet.getCell(`J${r7}`).fill = yellowFill;
-  worksheet.getCell(`J${r7}`).alignment = { horizontal: 'center', vertical: 'middle' };
-
-  // 테두리 적용 (summary 행)
-  [r0, r1, r2, r3, r4, r5, r6, r7].forEach(rowNum => {
-    const row = worksheet.getRow(rowNum);
-    row.eachCell({ includeEmpty: true }, cell => {
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-    });
-  });
-
-  // IndexedDB에서 열화상 이미지 가져오기 (excelService.ts와 동일한 패턴)
+  // ── 열화상 이미지 삽입 (R:S 열, 데이터 전체 행 span) ──────────
   let thermalImageUrl = record.thermalImage?.imageUrl;
   try {
     const thermalImageBlob = await getThermalImage(record.panelNo);
@@ -481,10 +450,13 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
           base64: imageData.base64,
           extension: imageData.extension,
         });
-        const imgRow = thermalImageRow > 0 ? thermalImageRow : lastDataRowNum + thermalRowsLength;
-        worksheet.addImage(imageId, `O${imgRow}:P${imgRow}`);
-        worksheet.getRow(imgRow).height = 120;
-        worksheet.getColumn(15).width = 25;
+        // R:S 열에 데이터 행 전체 span으로 삽입
+        worksheet.addImage(imageId, `R${dataStartRow}:S${dataEndRow}`);
+        // 이미지 영역 행 높이 설정 (최소 80px 확보)
+        const perRowHeight = Math.max(80 / totalBreakerRows, 20);
+        for (let r = dataStartRow; r <= dataEndRow; r++) {
+          worksheet.getRow(r).height = perRowHeight;
+        }
       } else {
         console.error('이미지 데이터 변환 실패');
       }
@@ -495,7 +467,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     console.log('열화상 이미지 없음:', record.panelNo);
   }
 
-  // 파일 다운로드
+  // ── 파일 다운로드 ─────────────────────────────────────────────
   const fileName = `가설전기점검_${record.panelNo}_${new Date().toISOString().split('T')[0]}.xlsx`;
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
