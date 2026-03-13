@@ -167,7 +167,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-blue-100 rounded-lg">

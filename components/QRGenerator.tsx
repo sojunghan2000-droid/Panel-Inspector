@@ -124,6 +124,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   // QR 자동생성 useEffect에서 qrCodes를 의존성으로 쓰지 않기 위한 ref
   const qrCodesRef = useRef<QRCodeData[]>([]);
   useEffect(() => { qrCodesRef.current = qrCodes; }, [qrCodes]);
+  // registerAllQRCodesAsInspections에서 inspections를 의존성으로 쓰지 않기 위한 ref (무한 루프 방지)
+  const inspectionsRef = useRef<InspectionRecord[]>([]);
+  useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
 
   const restoreMainScrollOnFocus = useCallback(() => {
     const restore = () => {
@@ -182,6 +185,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     if (!onUpdateInspections) return;
 
     const savedQRCodes = qrCodes;
+    const currentInspections = inspectionsRef.current;
     const newInspections: InspectionRecord[] = [];
     const updatedExisting: Partial<InspectionRecord>[] = [];
 
@@ -195,7 +199,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         const floorCode = qr.floor.replace(/\s+/g, '').toUpperCase();
 
         // PNL NO.로 먼저 확인 (정확한 매칭)
-        const existingInspectionById = inspections.find(inspection => {
+        const existingInspectionById = currentInspections.find(inspection => {
           try {
             const qrDataId = qrData.id;
             return inspection.panelNo === qrDataId;
@@ -205,7 +209,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         });
 
         // PNL NO.로 찾지 못한 경우에만 패턴 매칭 시도
-        const existingInspection = existingInspectionById || inspections.find(inspection => {
+        const existingInspection = existingInspectionById || currentInspections.find(inspection => {
           if (inspection.panelNo.includes(locationCode) || inspection.panelNo.includes(floorCode)) {
             return true;
           }
@@ -257,7 +261,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           const qrFloor = qrData.floor || '';
           const qrTr = qrData.location || '';
 
-          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity || qrManagementNumber) {
+          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity || qrManagementNumber || qrFloor || qrTr) {
             const needsUpdate =
               (qrContractor && existingInspection.contractor !== qrContractor) ||
               (qrProjectName && existingInspection.projectName !== qrProjectName) ||
@@ -288,7 +292,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     });
 
     // 기존 inspections에 updatedExisting 머지
-    let mergedInspections = inspections.filter((inspection, index, self) =>
+    let mergedInspections = currentInspections.filter((inspection, index, self) =>
       index === self.findIndex(i => i.panelNo === inspection.panelNo)
     );
     if (updatedExisting.length > 0) {
@@ -310,11 +314,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     } else if (updatedExisting.length > 0) {
       onUpdateInspections(mergedInspections);
     } else {
-      if (mergedInspections.length !== inspections.length) {
+      if (mergedInspections.length !== currentInspections.length) {
         onUpdateInspections(mergedInspections);
       }
     }
-  }, [inspections, onUpdateInspections]);
+  }, [onUpdateInspections]);
 
   // QR 코드 목록이 변경될 때마다 InspectionRecord로 등록
   useEffect(() => {
@@ -325,7 +329,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   // 모든 InspectionRecord에 대해 QR 코드 자동 생성
   useEffect(() => {
-    if (inspections.length === 0) return;
+    const currentInspections = inspectionsRef.current;
+    if (currentInspections.length === 0) return;
 
     // qrCodes를 의존성으로 쓰지 않고 ref를 통해 접근 (무한 루프 방지)
     const savedQRCodes: QRCodeData[] = qrCodesRef.current;
@@ -344,7 +349,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     });
 
     // QR 코드가 없는 InspectionRecord 찾기
-    const inspectionsWithoutQR = inspections.filter(inspection => {
+    const inspectionsWithoutQR = currentInspections.filter(inspection => {
       return !existingQRIds.has(inspection.panelNo);
     });
 
@@ -415,7 +420,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       const updatedQRCodes = [...savedQRCodes, ...newQRCodes];
       setQrCodes(updatedQRCodes);
     }
-  }, [inspections, setQrCodes]); // qrCodes 의존성 제거 → ref로 접근
+  }, [inspections.length, setQrCodes]); // inspections 참조 대신 length만 의존 → ref로 접근 (무한 루프 방지)
 
   // ID에서 "1st"를 "F1"으로 변경하는 함수
   const migrateIdFloor = (id: string): string => {
@@ -823,10 +828,36 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // 저장된 층으로 FloorPlanView 이동
     setSelectedFloor(qrData.floor);
 
-    alert('QR 코드가 수정되었습니다.');
-    // 수정된 QR 코드를 기반으로 InspectionRecord 업데이트
+    // 기존 inspection의 floor/tr을 직접 업데이트 (QR 코드 수정 시 inspection에 즉시 반영)
     if (onUpdateInspections) {
-      registerAllQRCodesAsInspections();
+      const currentInspections = inspectionsRef.current;
+      const updatedInspections = currentInspections.map(ins => {
+        if (ins.panelNo === finalId) {
+          return {
+            ...ins,
+            floor: qrData.floor,
+            tr: qrData.location,
+            contractor: qrData.contractor || ins.contractor,
+            projectName: qrData.projectName || ins.projectName,
+            nominalCrossSection: qrData.nominalCrossSection || ins.nominalCrossSection,
+            breakerCapacity: qrData.breakerCapacity || ins.breakerCapacity,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return ins;
+      });
+      onUpdateInspections(updatedInspections);
+    }
+
+    alert('QR 코드가 수정되었습니다.');
+
+    // FloorPlanView에서 변경된 층으로 자동 이동 + 마커 포커스
+    // 같은 패널이 이미 선택된 경우에도 동작하도록 한번 초기화 후 재선택
+    if (onSelectInspection) {
+      onSelectInspection('');
+      setTimeout(() => {
+        onSelectInspection(finalId);
+      }, 150);
     }
     // alert/리렌더 후 스크롤 복원 (여러 시점에 복원)
     restoreScrollAfterAction();
@@ -1604,7 +1635,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         ) : (
         <div
-          className="max-w-4xl mx-auto p-6 space-y-6"
+          className="p-3 md:p-4 space-y-6"
           style={{ overflow: isSelectFocused ? 'visible' : undefined, position: 'relative' }}
           onMouseDown={() => {
             savedMainScrollOnInteractionRef.current = mainScrollRef?.current?.scrollTop ?? 0;
