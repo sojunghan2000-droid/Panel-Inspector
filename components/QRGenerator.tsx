@@ -1556,8 +1556,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
-        {/* Floor Plan View - 패널 상세 아래 표시 (order-2) */}
-        <div className="order-2">
+        {/* Floor Plan View - 패널 상세 위에 표시 (order-1) */}
+        <div className="order-1">
         <FloorPlanView
           inspections={filteredInspections}
           onSelectInspection={(inspection) => {
@@ -1617,9 +1617,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           startInEditMode={openDetailPanelForMapping}
         />
         </div>
-        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 (order-1) */}
+        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 (order-2) */}
         {!selectedQR && !showForm ? (
-          <div className="order-1 h-full flex items-center justify-center text-slate-500">
+          <div className="order-2 h-full flex items-center justify-center text-slate-500">
             <div className="text-center">
               <div className="p-4 bg-slate-100 rounded-full inline-block mb-4">
                 <QrCode size={48} className="text-slate-400" />
@@ -1645,7 +1645,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         ) : (
         <div
-          className="order-1 p-3 md:p-4 space-y-6"
+          className="order-2 p-3 md:p-4 space-y-6"
           style={{ overflow: isSelectFocused ? 'visible' : undefined, position: 'relative' }}
           onMouseDown={() => {
             savedMainScrollOnInteractionRef.current = mainScrollRef?.current?.scrollTop ?? 0;
