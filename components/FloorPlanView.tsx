@@ -109,6 +109,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   // 줌 기능 상태
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
+  // 팬(이동) 기능 상태
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
+  const didPanRef = useRef(false); // 팬 동작이 발생했으면 클릭 이벤트 무시
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetStartRef = useRef({ x: 0, y: 0 });
   const zoomContainerRef = useRef<HTMLDivElement>(null);
   const zoomInnerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -340,43 +346,111 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     setZoomOrigin({ x: originX, y: originY });
     setZoomLevel(prev => {
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      return Math.max(1, Math.min(5, +(prev + delta).toFixed(1)));
+      const next = Math.max(1, Math.min(5, +(prev + delta).toFixed(1)));
+      if (next <= 1) setPanOffset({ x: 0, y: 0 });
+      return next;
     });
   }, []);
 
-  // 줌: 모바일 핀치 줌 핸들러
+  // 줌: 모바일 핀치 줌 + 1손가락 팬 핸들러
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 1 && zoomLevel > 1) {
+      // 줌 상태에서 1손가락 터치 → 팬 시작
+      isPanningRef.current = true;
+      didPanRef.current = false;
+      panStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      panOffsetStartRef.current = { ...panOffset };
+    }
+    if (e.touches.length === 2) {
+      // 2손가락 → 핀치 줌 (팬 중단)
+      isPanningRef.current = false;
+    }
+  }, [zoomLevel, panOffset]);
+
   const handleTouchMove = useCallback((e: TouchEvent) => {
     if (e.touches.length === 2) {
       e.preventDefault();
+      isPanningRef.current = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       if (lastTouchDistanceRef.current !== null) {
         const delta = (distance - lastTouchDistanceRef.current) * 0.01;
-        setZoomLevel(prev => Math.max(1, Math.min(5, +(prev + delta).toFixed(1))));
+        setZoomLevel(prev => {
+          const next = Math.max(1, Math.min(5, +(prev + delta).toFixed(1)));
+          if (next <= 1) setPanOffset({ x: 0, y: 0 });
+          return next;
+        });
       }
       lastTouchDistanceRef.current = distance;
+    } else if (e.touches.length === 1 && isPanningRef.current && zoomLevel > 1) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - panStartRef.current.x;
+      const dy = e.touches[0].clientY - panStartRef.current.y;
+      // 5px 이상 이동해야 팬으로 인식 (탭과 구분)
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        didPanRef.current = true;
+      }
+      setPanOffset({
+        x: panOffsetStartRef.current.x + dx,
+        y: panOffsetStartRef.current.y + dy,
+      });
     }
-  }, []);
+  }, [zoomLevel]);
 
   const handleTouchEnd = useCallback(() => {
     lastTouchDistanceRef.current = null;
+    isPanningRef.current = false;
   }, []);
 
-  // 줌: 이벤트 리스너 등록
+  // 데스크톱 마우스 드래그 팬 (줌 상태에서만)
+  const handleZoomMouseDown = useCallback((e: React.MouseEvent) => {
+    if (zoomLevel <= 1) return;
+    // 버튼/입력 필드 클릭은 제외
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('[data-marker-id]')) return;
+    e.preventDefault();
+    isPanningRef.current = true;
+    didPanRef.current = false;
+    panStartRef.current = { x: e.clientX, y: e.clientY };
+    panOffsetStartRef.current = { ...panOffset };
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - panStartRef.current.x;
+      const dy = ev.clientY - panStartRef.current.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        didPanRef.current = true;
+      }
+      setPanOffset({
+        x: panOffsetStartRef.current.x + dx,
+        y: panOffsetStartRef.current.y + dy,
+      });
+    };
+    const handleMouseUp = () => {
+      isPanningRef.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [zoomLevel, panOffset]);
+
+  // 줌 & 팬: 이벤트 리스너 등록
   useEffect(() => {
     const el = zoomContainerRef.current;
     if (!el) return;
     el.addEventListener('wheel', handleWheel, { passive: false });
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
     el.addEventListener('touchmove', handleTouchMove, { passive: false });
     el.addEventListener('touchend', handleTouchEnd);
     return () => {
       el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [handleWheel, handleTouchMove, handleTouchEnd]);
+  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   // 드래그 핸들러
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -547,6 +621,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 팬(이동) 동작 후 클릭은 무시
+    if (didPanRef.current) {
+      didPanRef.current = false;
+      return;
+    }
     // 마커 클릭은 제외
     const target = e.target as HTMLElement;
     if (target.closest('[data-marker-id]')) {
@@ -881,12 +960,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         ) : (
         <div
           ref={zoomInnerRef}
-          className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none"
+          className={`relative w-full h-full min-h-[40vh] md:min-h-[600px] touch-none ${zoomLevel > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
           onClick={handleImageClick}
+          onMouseDown={handleZoomMouseDown}
           style={{
-            transform: `scale(${zoomLevel})`,
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
             transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
-            transition: 'transform 0.15s ease-out',
+            transition: isPanningRef.current ? 'none' : 'transform 0.15s ease-out',
           }}
         >
           {/* Floor Plan Image - 낮은 해상도, 최하위 z-index */}
@@ -1280,7 +1360,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         {/* 줌 리셋 버튼 */}
         {zoomLevel > 1 && (
           <button
-            onClick={() => { setZoomLevel(1); setZoomOrigin({ x: 50, y: 50 }); }}
+            onClick={() => { setZoomLevel(1); setZoomOrigin({ x: 50, y: 50 }); setPanOffset({ x: 0, y: 0 }); }}
             className="absolute bottom-3 right-3 z-20 bg-white/90 hover:bg-white rounded-lg px-3 py-1.5 shadow-md text-xs font-medium text-slate-600 border border-slate-200 flex items-center gap-1.5"
           >
             <ZoomOut size={14} />
