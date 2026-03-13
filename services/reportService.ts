@@ -747,8 +747,6 @@ export const generateReport = (
   (newReport as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
   if (onReportSaved) {
     onReportSaved(newReport);
-  } else {
-    saveReportToStorage(newReport);
   }
 
   // Open report in new window

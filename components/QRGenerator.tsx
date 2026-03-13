@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, ArrowUpDown, Hash, Zap, GitBranch, ChevronLeft } from 'lucide-react';
+import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, Hash, Zap, GitBranch, ChevronLeft } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
 import FloorPlanView from './FloorPlanView';
 import TRSystemModal from './TRSystemModal';
@@ -704,14 +704,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
   };
 
-  const handleEditQR = (qr: QRCodeData, e: React.MouseEvent) => {
-    e.stopPropagation();
-    (e.currentTarget as HTMLElement).blur();
-    const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
-    const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
+  const selectQR = (qr: QRCodeData) => {
     setSelectedQR(qr);
     setIsEditing(true);
-    setShowForm(false); // 통합 폼에서 selectedQR 기반으로 표시
+    setShowForm(false);
     try {
       const data = JSON.parse(qr.qrData);
       const position = data.position || {};
@@ -727,7 +723,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
       });
       setGeneratedQR(qr.qrData);
-    } catch (e) {
+    } catch {
       setQrData({
         id: '',
         location: qr.location,
@@ -741,6 +737,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       });
       setGeneratedQR(qr.qrData);
     }
+  };
+
+  const handleEditQR = (qr: QRCodeData, e: React.MouseEvent) => {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).blur();
+    const savedRightScroll = rightPanelScrollRef.current?.scrollTop ?? 0;
+    const savedMainScroll = mainScrollRef?.current?.scrollTop ?? 0;
+    selectQR(qr);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (rightPanelScrollRef.current) {
@@ -1552,7 +1556,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
-        {/* Floor Plan View - 항상 최상단 표시 */}
+        {/* Floor Plan View - 패널 상세 아래 표시 (order-2) */}
+        <div className="order-2">
         <FloorPlanView
           inspections={filteredInspections}
           onSelectInspection={(inspection) => {
@@ -1566,7 +1571,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             if (id) {
               const matchingQR = qrCodeMap.get(id);
               if (matchingQR) {
-                setSelectedQR(matchingQR);
+                selectQR(matchingQR);
+                // 패널 상세 섹션으로 스크롤
+                setTimeout(() => {
+                  panelDetailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
               } else {
                 setSelectedQR(null);
                 const inspection = inspections.find(i => i.panelNo === id);
@@ -1607,9 +1616,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           showDetailPanel={openDetailPanelForMapping}
           startInEditMode={openDetailPanelForMapping}
         />
-        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 */}
+        </div>
+        {/* 패널 미선택 & 폼 미표시 시 안내 메시지 (order-1) */}
         {!selectedQR && !showForm ? (
-          <div className="h-full flex items-center justify-center text-slate-500">
+          <div className="order-1 h-full flex items-center justify-center text-slate-500">
             <div className="text-center">
               <div className="p-4 bg-slate-100 rounded-full inline-block mb-4">
                 <QrCode size={48} className="text-slate-400" />
@@ -1635,7 +1645,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         ) : (
         <div
-          className="p-3 md:p-4 space-y-6"
+          className="order-1 p-3 md:p-4 space-y-6"
           style={{ overflow: isSelectFocused ? 'visible' : undefined, position: 'relative' }}
           onMouseDown={() => {
             savedMainScrollOnInteractionRef.current = mainScrollRef?.current?.scrollTop ?? 0;
@@ -1657,16 +1667,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               <ChevronLeft size={18} />
               목록으로
             </button>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <QrCode size={24} className="text-blue-600" />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                  <QrCode size={20} className="text-blue-600" />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-800">
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-xl font-bold text-slate-800 truncate">
                     {selectedQR ? `패널 상세 정보` : '패널 신규 등록'}
                   </h1>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-xs sm:text-sm text-slate-600 truncate">
                     {selectedQR ? `PNL NO. ${selectedQRId}` : 'Distribution Board 신규 등록'}
                   </p>
                 </div>
@@ -1679,9 +1689,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     setSelectedQR(null);
                     setIsEditing(false);
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1 shadow-md hover:shadow-lg shrink-0 text-xs w-16 text-center leading-tight"
                 >
-                  <QrCode size={20} />
+                  <QrCode size={14} />
                   패널 신규 등록
                 </button>
               ) : (
@@ -1692,9 +1702,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     setIsEditing(false);
                     resetForm();
                   }}
-                  className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                  className="bg-slate-600 hover:bg-slate-700 text-white px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-1 sm:gap-2 shadow-md hover:shadow-lg shrink-0 text-sm whitespace-nowrap"
                 >
-                  <X size={20} />
+                  <X size={16} />
                   닫기
                 </button>
               )}
@@ -1819,46 +1829,49 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               </div>
 
               {/* 공칭 단면적 - Key-in with SQ unit */}
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  공칭 단면적
-                </label>
-                <div className="flex">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={qrData.nominalCrossSection}
-                    onChange={(e) => handleInputChange('nominalCrossSection', e.target.value)}
-                    placeholder="단면적 입력"
-                    onFocus={restoreMainScrollOnFocus}
-                    className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  />
-                  <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
-                    SQ
-                  </span>
+              <div className="grid grid-cols-2 gap-3">
+                {/* 공칭 단면적 */}
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    공칭 단면적
+                  </label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={qrData.nominalCrossSection}
+                      onChange={(e) => handleInputChange('nominalCrossSection', e.target.value)}
+                      placeholder="입력"
+                      onFocus={restoreMainScrollOnFocus}
+                      className="flex-1 min-w-0 rounded-l-lg border-slate-300 border px-2 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                    <span className="bg-slate-200 border border-l-0 border-slate-300 px-2 py-2.5 rounded-r-lg text-slate-600 font-medium text-sm whitespace-nowrap">
+                      SQ
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              {/* 차단기 용량 - Key-in with A unit */}
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  차단기 용량
-                </label>
-                <div className="flex">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={qrData.breakerCapacity}
-                    onChange={(e) => handleInputChange('breakerCapacity', e.target.value)}
-                    placeholder="차단기 용량 입력"
-                    onFocus={restoreMainScrollOnFocus}
-                    className="flex-1 rounded-l-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  />
-                  <span className="bg-slate-200 border border-l-0 border-slate-300 px-4 py-2.5 rounded-r-lg text-slate-600 font-medium">
-                    A
-                  </span>
+                {/* 차단기 용량 */}
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    차단기 용량
+                  </label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={qrData.breakerCapacity}
+                      onChange={(e) => handleInputChange('breakerCapacity', e.target.value)}
+                      placeholder="입력"
+                      onFocus={restoreMainScrollOnFocus}
+                      className="flex-1 min-w-0 rounded-l-lg border-slate-300 border px-2 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                    <span className="bg-slate-200 border border-l-0 border-slate-300 px-2 py-2.5 rounded-r-lg text-slate-600 font-medium text-sm whitespace-nowrap">
+                      A
+                    </span>
+                  </div>
                 </div>
               </div>
 
