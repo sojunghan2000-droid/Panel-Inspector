@@ -110,6 +110,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const zoomContainerRef = useRef<HTMLDivElement>(null);
+  const zoomInnerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
@@ -330,7 +331,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     const container = zoomContainerRef.current;
     if (!container) return;
 
-    const rect = container.getBoundingClientRect();
+    // 줌 origin은 inner(transform) div 기준으로 계산 — 패딩 영역에서도 올바르게 동작
+    const inner = zoomInnerRef.current;
+    const rect = inner ? inner.getBoundingClientRect() : container.getBoundingClientRect();
     const originX = ((e.clientX - rect.left) / rect.width) * 100;
     const originY = ((e.clientY - rect.top) / rect.height) * 100;
 
@@ -825,9 +828,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         {/* 층별 현황판 */}
         <div className="flex-1 min-w-[200px]">
           <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">층별 현황</div>
-          <div className="grid grid-cols-4 gap-x-4 gap-y-1 text-xs">
+          <div className="grid grid-cols-4 gap-x-2 gap-y-1 text-[10px] sm:text-xs">
             {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
-              <div key={floor} className="flex justify-between gap-1">
+              <div key={floor} className="flex justify-between gap-0.5 whitespace-nowrap">
                 <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
                 <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
                   {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
@@ -861,7 +864,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div ref={zoomContainerRef} className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6 overflow-hidden">
+      <div ref={zoomContainerRef} className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] p-6 overflow-hidden">
 
         {/* Floor Plan Image or Empty Message */}
         {!floorImagePath ? (
@@ -877,6 +880,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           </div>
         ) : (
         <div
+          ref={zoomInnerRef}
           className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none"
           onClick={handleImageClick}
           style={{

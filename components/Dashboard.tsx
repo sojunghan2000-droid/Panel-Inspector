@@ -7,7 +7,6 @@ import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
 import { generateReport, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
 import { savePhoto, dataURLToBlob, saveReport } from '../services/indexedDBService';
 
 interface DashboardProps {
