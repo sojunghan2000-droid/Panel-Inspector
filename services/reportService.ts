@@ -1,9 +1,6 @@
 import { InspectionRecord, ReportHistory } from '../types';
-import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { getThermalImage, blobToDataURL } from './indexedDBService';
-
-const STORAGE_KEY = 'safetyguard_reports';
 
 // Create report object (no storage)
 export const createReportFromRecord = (record: InspectionRecord, htmlContent: string): ReportHistory => ({
@@ -14,84 +11,6 @@ export const createReportFromRecord = (record: InspectionRecord, htmlContent: st
   status: record.status,
   htmlContent: htmlContent
 });
-
-// Save report to localStorage (legacy; use onReportSaved for in-memory)
-const saveReportToStorage = (report: ReportHistory): void => {
-  const reports: ReportHistory[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  reports.unshift(report);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
-};
-
-// ID에서 "1st"를 "F1"으로 변경하는 함수
-const migrateIdFloor = (id: string): string => {
-  if (id && typeof id === 'string') {
-    if (id.includes('-1st-')) {
-      return id.replace(/-1st-/g, '-F1-');
-    }
-    if (id.startsWith('DB-1st-')) {
-      return id.replace(/^DB-1st-/, 'DB-F1-');
-    }
-  }
-  return id;
-};
-
-// Reports 데이터 마이그레이션
-const migrateReports = (reports: ReportHistory[]): ReportHistory[] => {
-  return reports.map(report => {
-    const migrated: ReportHistory = { ...report };
-    
-    if (migrated.boardId) {
-      migrated.boardId = migrateIdFloor(migrated.boardId);
-    }
-    
-    if (migrated.reportId && migrated.reportId.includes('1st')) {
-      migrated.reportId = migrateIdFloor(migrated.reportId);
-    }
-    
-    if (migrated.htmlContent && migrated.htmlContent.includes('1st')) {
-      migrated.htmlContent = migrated.htmlContent.replace(/DB-1st-/g, 'DB-F1-');
-    }
-    
-    return migrated;
-  });
-};
-
-// Get all saved reports
-export const getSavedReports = (): ReportHistory[] => {
-  const reports = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  const migrated = migrateReports(reports);
-  
-  if (JSON.stringify(reports) !== JSON.stringify(migrated)) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-    } catch (e) {
-      console.error('Failed to save migrated reports to localStorage:', e);
-    }
-  }
-  
-  return migrated;
-};
-
-// Get report by ID
-export const getReportById = (id: string): ReportHistory | null => {
-  const reports = getSavedReports();
-  return reports.find(r => r.id === id) || null;
-};
-
-// Delete report (in-memory: pass options; otherwise localStorage)
-export const deleteReport = (
-  id: string,
-  options?: { reports: ReportHistory[]; setReports: (reports: ReportHistory[]) => void }
-): void => {
-  if (options) {
-    const filtered = options.reports.filter(r => r.id !== id);
-    options.setReports(filtered);
-    return;
-  }
-  const reports = getSavedReports();
-  const filtered = reports.filter(r => r.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-};
 
 /**
  * 이미지 URL을 Base64로 변환하는 헬퍼 함수 (ExcelJS용 - 브라우저 환경)
