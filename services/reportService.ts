@@ -192,7 +192,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     }
   };
 
-  const yellowFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFF00' } };
   const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE3F2FD' } };
   const titleFill  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8F5E9' } };
 
@@ -307,7 +306,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     row.height = 20;
     row.alignment = { horizontal: 'center', vertical: 'middle' };
     if (r === dataStartRow) {
-      row.fill = yellowFill;
       row.font = { bold: true };
     }
     applyBorderToRow(r);
@@ -351,7 +349,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   const applySummaryLabelStyle = (rowNum: number, label: string) => {
     worksheet.getCell(rowNum, 1).value = label;
     const row = worksheet.getRow(rowNum);
-    row.fill = yellowFill;
     row.font = { bold: true };
     row.height = 20;
     worksheet.mergeCells(`A${rowNum}:M${rowNum}`);
@@ -365,7 +362,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   ['N', 'O', 'P'].forEach(col => {
     const cell = worksheet.getCell(`${col}${r0}`);
     cell.value = { formula: `SUM(${col}${dataStartRow}:${col}${dataEndRow})`, result: 0 };
-    cell.fill = yellowFill;
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
 
@@ -373,7 +369,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   applySummaryLabelStyle(r1, summaryLabels[1]);
   worksheet.mergeCells(`N${r1}:V${r1}`);
   worksheet.getCell(`N${r1}`).value = { formula: `N${r0}+O${r0}+P${r0}`, result: 0 };
-  worksheet.getCell(`N${r1}`).fill = yellowFill;
   worksheet.getCell(`N${r1}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r2: 상별 부하 분담 [%]
@@ -382,7 +377,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   ['N', 'O', 'P'].forEach(col => {
     const cell = worksheet.getCell(`${col}${r2}`);
     cell.value = { formula: `IF(N${r1}=0,0,${col}${r0}/N${r1})`, result: 0 };
-    cell.fill = yellowFill;
     cell.numFmt = '0.0%';
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
@@ -394,7 +388,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     formula: `(SUMIF(I${dataStartRow}:I${dataEndRow},"2P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"2P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"2P",P${dataStartRow}:P${dataEndRow}))/(1.732*380*0.9)`,
     result: 0
   };
-  worksheet.getCell(`N${r3}`).fill = yellowFill;
   worksheet.getCell(`N${r3}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r4: 3상 B (형식 "3P" 또는 "4P")
@@ -404,21 +397,18 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     formula: `(SUMIF(I${dataStartRow}:I${dataEndRow},"3P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",N${dataStartRow}:N${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"3P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",O${dataStartRow}:O${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"3P",P${dataStartRow}:P${dataEndRow})+SUMIF(I${dataStartRow}:I${dataEndRow},"4P",P${dataStartRow}:P${dataEndRow}))/(1.732*380*0.9)`,
     result: 0
   };
-  worksheet.getCell(`N${r4}`).fill = yellowFill;
   worksheet.getCell(`N${r4}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r5: 수용율(%) — 기본 100%, 직접 수정 가능
   applySummaryLabelStyle(r5, summaryLabels[5]);
   worksheet.mergeCells(`N${r5}:V${r5}`);
   worksheet.getCell(`N${r5}`).value = 100;
-  worksheet.getCell(`N${r5}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } };
   worksheet.getCell(`N${r5}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r6: 수용부하(VA) — G열(차단기용량) × 수용율
   applySummaryLabelStyle(r6, summaryLabels[6]);
   worksheet.mergeCells(`N${r6}:V${r6}`);
   worksheet.getCell(`N${r6}`).value = { formula: `G${dataStartRow}*N${r5}/100`, result: 0 };
-  worksheet.getCell(`N${r6}`).fill = yellowFill;
   worksheet.getCell(`N${r6}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r7: 전류(A) — K/L/M열(L1/L2/L3) MAX
@@ -428,7 +418,6 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     formula: `MAX(K${dataStartRow},L${dataStartRow},M${dataStartRow})`,
     result: 0
   };
-  worksheet.getCell(`N${r7}`).fill = yellowFill;
   worksheet.getCell(`N${r7}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // ── 열화상 이미지 삽입 (R:S 열, 데이터 전체 행 span) ──────────
