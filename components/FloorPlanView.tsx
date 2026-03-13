@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
-import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ChevronLeft } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ChevronLeft, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 
 interface FloorPlanViewProps {
@@ -106,6 +106,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [internalSelectedFloor, setInternalSelectedFloor] = useState<string>('F1');
+  // 줌 기능 상태
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
+  const zoomContainerRef = useRef<HTMLDivElement>(null);
+  const lastTouchDistanceRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
   const prevSelectedInspectionIdRef = useRef<string | null>(null);
@@ -318,6 +323,57 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       };
     }
   }, [selectedInspection, onSelectionChange]);
+
+  // 줌: 마우스 휠 핸들러
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const container = zoomContainerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const originX = ((e.clientX - rect.left) / rect.width) * 100;
+    const originY = ((e.clientY - rect.top) / rect.height) * 100;
+
+    setZoomOrigin({ x: originX, y: originY });
+    setZoomLevel(prev => {
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      return Math.max(1, Math.min(5, +(prev + delta).toFixed(1)));
+    });
+  }, []);
+
+  // 줌: 모바일 핀치 줌 핸들러
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (lastTouchDistanceRef.current !== null) {
+        const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+        setZoomLevel(prev => Math.max(1, Math.min(5, +(prev + delta).toFixed(1))));
+      }
+      lastTouchDistanceRef.current = distance;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchDistanceRef.current = null;
+  }, []);
+
+  // 줌: 이벤트 리스너 등록
+  useEffect(() => {
+    const el = zoomContainerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [handleWheel, handleTouchMove, handleTouchEnd]);
 
   // 드래그 핸들러
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -718,9 +774,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         <button
           onClick={() => {
             setSelectedInspection(null);
-            onSelectionChange?.(null);
+            setIsEditingInspectionPosition(false);
           }}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 px-4 pt-3 text-sm font-medium"
+          className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors flex items-center gap-2"
         >
           <ChevronLeft size={16} />
           전체 보기
@@ -805,7 +861,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6">
+      <div ref={zoomContainerRef} className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] pl-8 pt-6 overflow-hidden">
 
         {/* Floor Plan Image or Empty Message */}
         {!floorImagePath ? (
@@ -823,6 +879,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         <div
           className="relative w-full h-full min-h-[40vh] md:min-h-[600px] cursor-crosshair touch-none"
           onClick={handleImageClick}
+          style={{
+            transform: `scale(${zoomLevel})`,
+            transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+            transition: 'transform 0.15s ease-out',
+          }}
         >
           {/* Floor Plan Image - 낮은 해상도, 최하위 z-index */}
           <img
@@ -1205,13 +1266,23 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                 setSelectedInspection(null);
                 setIsEditingInspectionPosition(false);
               }}
-              className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors"
+              className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors flex items-center gap-2"
             >
               확인
             </button>
           </div>
         )}
 
+        {/* 줌 리셋 버튼 */}
+        {zoomLevel > 1 && (
+          <button
+            onClick={() => { setZoomLevel(1); setZoomOrigin({ x: 50, y: 50 }); }}
+            className="absolute bottom-3 right-3 z-20 bg-white/90 hover:bg-white rounded-lg px-3 py-1.5 shadow-md text-xs font-medium text-slate-600 border border-slate-200 flex items-center gap-1.5"
+          >
+            <ZoomOut size={14} />
+            줌 리셋 ({zoomLevel}x)
+          </button>
+        )}
       </div>
     </div>
   );
