@@ -167,6 +167,9 @@ const App: React.FC = () => {
   const [showScanner, setShowScanner] = useState(false);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
   const [editingReport, setEditingReport] = useState<ReportHistory | null>(null);
+  // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
+  const editingReportRef = useRef<ReportHistory | null>(null);
+  useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
@@ -1137,20 +1140,24 @@ const App: React.FC = () => {
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
                     onReportGenerated={async (report) => {
-                      // editingReport 기반으로 state 관리 (App.tsx에서 단일 처리)
-                      const snap = editingReport; // 클로저 캡처
+                      // ref로 최신 editingReport 읽기 (stale closure 완전 방지)
+                      const snap = editingReportRef.current;
+
+                      console.log('[onReportGenerated] snap:', snap?.boardId, snap?.status, '| newReport.id:', report.id);
 
                       setReports(prev => {
                         if (snap?.status === 'Complete') {
                           // Complete 펜버튼 수정 → 기존 보고서 유지 + 신규 행 추가
+                          console.log('[onReportGenerated] → Complete: 신규 행 추가');
                           return [report, ...prev];
                         } else if (snap && snap.status !== 'Complete') {
                           // Non-Complete 펜버튼 수정 → 기존 ID 항목 교체
+                          console.log('[onReportGenerated] → Non-Complete: 기존 교체');
                           const replaced = prev.map(r => r.id === snap.id ? report : r);
-                          // 교체된 항목이 없으면 앞에 추가
                           return replaced.some(r => r.id === report.id) ? replaced : [report, ...prev];
                         } else {
                           // 일반 저장 → boardId 기준으로 기존 교체 (중복 방지)
+                          console.log('[onReportGenerated] → 일반 저장: boardId 교체');
                           return [report, ...prev.filter(r => r.boardId !== report.boardId)];
                         }
                       });
@@ -1166,6 +1173,7 @@ const App: React.FC = () => {
                       if (session && isConfigured) pushReport(report).catch(console.error);
 
                       // editingReport 초기화
+                      editingReportRef.current = null;
                       setEditingReport(null);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
@@ -1183,7 +1191,8 @@ const App: React.FC = () => {
                   inspections={inspections}
                   onEditReport={(boardId, report) => {
                     // Inspection 페이지로 이동하면서 해당 패널 선택
-                    // Complete/Non-Complete 모두 editingReport에 전달 (handleSave에서 분기 처리)
+                    // ref 즉시 업데이트 (setState는 비동기라 stale 가능)
+                    editingReportRef.current = report;
                     setEditingReport(report);
                     setSelectedInspectionId(boardId);
                     setCurrentPage('dashboard');
