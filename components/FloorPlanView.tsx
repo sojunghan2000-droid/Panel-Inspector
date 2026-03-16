@@ -1119,10 +1119,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               >
                 {/* panelNo 라벨 (점 위쪽) */}
                 <div
-                  className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                  className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-1 sm:px-2 py-0 sm:py-0.5 text-[7px] sm:text-[10px] font-semibold text-white shadow-sm"
                   style={{
                     bottom: '100%',
-                    marginBottom: '4px',
+                    marginBottom: '3px',
                     backgroundColor: trColor,
                   }}
                 >
