@@ -305,7 +305,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
           <button
             onClick={handlePrintAllReports}
             disabled={approvedReports.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               approvedReports.length > 0
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -313,7 +313,8 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={approvedReports.length > 0 ? `${approvedReports.length}개 승인된 보고서 출력` : '승인된 보고서가 없습니다'}
           >
             <Printer size={18} />
-            <span>보고서 출력 ({approvedReports.length})</span>
+            <span className="hidden sm:inline">보고서 출력 ({approvedReports.length})</span>
+            <span className="sm:hidden">{approvedReports.length}</span>
           </button>
         </div>
 
@@ -343,13 +344,14 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 다운로드` : '보고서를 선택하세요'}
           >
             <Download size={16} />
-            <span>{isBulkDownloading ? '다운로드 중...' : `선택 다운로드 (${selectedIds.size}개)`}</span>
+            <span className="hidden sm:inline">{isBulkDownloading ? '다운로드 중...' : `선택 다운로드 (${selectedIds.size}개)`}</span>
+            {selectedIds.size > 0 && <span className="sm:hidden">{selectedIds.size}</span>}
           </button>
 
           {/* 엑셀 가져오기 버튼 */}
           <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-colors">
             <FileUp size={16} />
-            <span>엑셀 가져오기</span>
+            <span className="hidden sm:inline">엑셀 가져오기</span>
             <input
               type="file"
               accept=".xlsx,.xls"
@@ -371,7 +373,8 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 삭제` : '보고서를 선택하세요'}
           >
             <Trash size={16} />
-            <span>선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+            <span className="hidden sm:inline">선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+            {selectedIds.size > 0 && <span className="sm:hidden">{selectedIds.size}</span>}
           </button>
 
           {/* Search */}
