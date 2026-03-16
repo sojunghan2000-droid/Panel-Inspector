@@ -3,7 +3,7 @@ import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistor
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
-import { ScanLine, Search, FileSpreadsheet, FileUp, RotateCcw, Trash2 } from 'lucide-react';
+import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2 } from 'lucide-react';
 import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
@@ -1204,8 +1204,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 className="shrink-0 flex items-center gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
                 title="현재 상태 기록 (초기화 없음)"
               >
-                <RotateCcw size={13} />
-                현재 상태 기록
+                <BookmarkPlus size={13} />
+                <span className="hidden sm:inline">현재 상태 기록</span>
               </button>
             )}
             {/* 전체 초기화 버튼 */}
@@ -1215,8 +1215,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 className="shrink-0 flex items-center gap-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
                 title="전체 Inspection 미점검 초기화"
               >
-                <RotateCcw size={13} />
-                전체 초기화
+                <RefreshCw size={13} />
+                <span className="hidden sm:inline">전체 초기화</span>
               </button>
             )}
           </div>
@@ -1231,7 +1231,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       onClick={() => setHistoryModal({ mode: 'snapshot', groupId: `${new Date().getMonth() + 1}월 검사` })}
                       className="flex items-center gap-2 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
                     >
-                      <RotateCcw size={14} />
+                      <BookmarkPlus size={14} />
                       현재 상태 기록하기
                     </button>
                   )}
