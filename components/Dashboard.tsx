@@ -3,7 +3,7 @@ import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistor
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
-import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2 } from 'lucide-react';
+import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
 import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
@@ -23,6 +23,7 @@ interface DashboardProps {
   onResetAllInspections?: (groupId: string) => Promise<void>;
   onSnapshotInspections?: (groupId: string) => Promise<void>;
   onDeleteInspectionHistory?: (id: string) => Promise<void>;
+  onRenameInspectionHistory?: (id: string, newGroupId: string) => Promise<void>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -39,6 +40,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onResetAllInspections,
   onSnapshotInspections,
   onDeleteInspectionHistory,
+  onRenameInspectionHistory,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
@@ -46,6 +48,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Inspection History 기록 모달 상태
   const [historyModal, setHistoryModal] = useState<{ mode: 'snapshot' | 'reset'; groupId: string } | null>(null);
+  // Inspection History 이름 편집 상태
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+  const [editingHistoryName, setEditingHistoryName] = useState<string>('');
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -1246,18 +1251,76 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div key={entry.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                       {/* 그룹 헤더 */}
                       <div className="flex items-center justify-between px-3 py-2.5 bg-slate-700 text-white">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm">{entry.groupId}</span>
-                          <span className="text-xs text-slate-300">{dateStr}</span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {editingHistoryId === entry.id ? (
+                            /* 인라인 편집 모드 */
+                            <input
+                              type="text"
+                              value={editingHistoryName}
+                              onChange={e => setEditingHistoryName(e.target.value)}
+                              onKeyDown={async e => {
+                                if (e.key === 'Enter' && editingHistoryName.trim()) {
+                                  await onRenameInspectionHistory?.(entry.id, editingHistoryName.trim());
+                                  setEditingHistoryId(null);
+                                }
+                                if (e.key === 'Escape') setEditingHistoryId(null);
+                              }}
+                              autoFocus
+                              className="flex-1 min-w-0 bg-slate-600 text-white text-sm font-bold rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          ) : (
+                            <>
+                              <span className="font-bold text-sm truncate">{entry.groupId}</span>
+                              <span className="text-xs text-slate-300 whitespace-nowrap">{dateStr}</span>
+                            </>
+                          )}
                         </div>
-                        {onDeleteInspectionHistory && (
-                          <button
-                            onClick={() => onDeleteInspectionHistory(entry.id)}
-                            className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {editingHistoryId === entry.id ? (
+                            /* 확인/취소 버튼 */
+                            <>
+                              <button
+                                onClick={async () => {
+                                  if (editingHistoryName.trim()) {
+                                    await onRenameInspectionHistory?.(entry.id, editingHistoryName.trim());
+                                  }
+                                  setEditingHistoryId(null);
+                                }}
+                                className="p-1 hover:bg-slate-600 rounded text-emerald-400 hover:text-emerald-300 transition-colors"
+                              >
+                                <Check size={13} />
+                              </button>
+                              <button
+                                onClick={() => setEditingHistoryId(null)}
+                                className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-white transition-colors"
+                              >
+                                <X size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            /* 편집/삭제 버튼 */
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditingHistoryId(entry.id);
+                                  setEditingHistoryName(entry.groupId);
+                                }}
+                                className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-blue-300 transition-colors"
+                                title="이름 수정"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              {onDeleteInspectionHistory && (
+                                <button
+                                  onClick={() => onDeleteInspectionHistory(entry.id)}
+                                  className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                       {/* Dashboard Overview 스타일 통계 4칸 */}
                       <div className="grid grid-cols-2 gap-2 p-2">

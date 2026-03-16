@@ -610,6 +610,16 @@ const App: React.FC = () => {
   }, [session]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
+  // Inspection History 항목 이름 변경
+  const handleRenameInspectionHistory = useCallback(async (id: string, newGroupId: string) => {
+    setInspectionHistory(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, groupId: newGroupId } : e);
+      const target = updated.find(e => e.id === id);
+      if (target) saveInspectionHistory(target).catch(console.error);
+      return updated;
+    });
+  }, []);
+
   // 마지막 Inspection History 항목의 통계를 현재 상태로 업데이트
   const handleSnapshotInspections = useCallback(async (_groupId: string) => {
     const total = inspections.length;
@@ -1243,6 +1253,7 @@ const App: React.FC = () => {
                     inspectionHistory={inspectionHistory}
                     onResetAllInspections={handleResetAllInspections}
                     onSnapshotInspections={handleSnapshotInspections}
+                    onRenameInspectionHistory={handleRenameInspectionHistory}
                     onDeleteInspectionHistory={async (id) => {
                       await deleteInspectionHistory(id);
                       setInspectionHistory(prev => prev.filter(e => e.id !== id));
