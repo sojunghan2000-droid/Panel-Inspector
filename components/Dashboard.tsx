@@ -34,6 +34,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
+  const [isInspectionHistoryCollapsed, setIsInspectionHistoryCollapsed] = useState(true);
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -1098,12 +1099,69 @@ const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
 
+        {/* Inspection History - Collapsible */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 shrink-0 overflow-hidden">
+          <button
+            onClick={() => setIsInspectionHistoryCollapsed(!isInspectionHistoryCollapsed)}
+            className="w-full p-4 md:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          >
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Inspection History</h3>
+            <svg
+              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isInspectionHistoryCollapsed ? '' : 'rotate-180'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {!isInspectionHistoryCollapsed && (
+            <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-2">
+              {reports.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-3">보고서가 없습니다.</p>
+              ) : (
+                [...reports]
+                  .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+                  .map(report => {
+                    const statusColor =
+                      report.status === 'Complete' ? 'bg-green-100 text-green-700' :
+                      report.status === 'In Progress' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-slate-100 text-slate-500';
+                    const statusLabel =
+                      report.status === 'Complete' ? '양호' :
+                      report.status === 'In Progress' ? '점검 중' : '미점검';
+                    const date = new Date(report.generatedAt);
+                    const dateStr = date.toLocaleString('ko-KR', {
+                      month: '2-digit', day: '2-digit',
+                      hour: '2-digit', minute: '2-digit', hour12: false
+                    });
+                    return (
+                      <div
+                        key={report.id}
+                        className="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer text-sm"
+                        onClick={() => handleSelectId(report.boardId)}
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-slate-700 truncate">{report.boardId}</span>
+                          <span className="text-xs text-slate-400">{dateStr}</span>
+                        </div>
+                        <span className={`ml-2 shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          )}
+        </div>
+
         {/* List Component */}
         <div className="flex-1 min-h-0">
-          <BoardList 
-            items={inspections} 
-            selectedId={selectedId} 
-            onSelect={handleSelectId} 
+          <BoardList
+            items={inspections}
+            selectedId={selectedId}
+            onSelect={handleSelectId}
           />
         </div>
       </div>
