@@ -44,6 +44,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
   const [isInspectionHistoryCollapsed, setIsInspectionHistoryCollapsed] = useState(true);
 
+  // Inspection History 기록 모달 상태
+  const [historyModal, setHistoryModal] = useState<{ mode: 'snapshot' | 'reset'; groupId: string } | null>(null);
+
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
     if (selectedInspectionId !== undefined) {
@@ -1032,6 +1035,77 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-full min-h-0">
+
+      {/* Inspection History 기록 모달 */}
+      {historyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            {/* 모달 헤더 */}
+            <div className={`px-5 py-4 ${historyModal.mode === 'reset' ? 'bg-orange-600' : 'bg-blue-600'} text-white`}>
+              <h3 className="font-bold text-base">
+                {historyModal.mode === 'reset' ? '전체 초기화' : '현재 상태 기록'}
+              </h3>
+              <p className="text-xs mt-0.5 opacity-80">
+                {historyModal.mode === 'reset'
+                  ? '통계를 저장하고 모든 패널을 미점검으로 초기화합니다.'
+                  : '현재 검사 상태를 이력으로 저장합니다. (초기화 없음)'}
+              </p>
+            </div>
+            {/* 모달 본문 */}
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">그룹 ID</label>
+                <input
+                  type="text"
+                  value={historyModal.groupId}
+                  onChange={e => setHistoryModal(prev => prev ? { ...prev, groupId: e.target.value } : null)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && historyModal.groupId.trim()) {
+                      const gid = historyModal.groupId.trim();
+                      setHistoryModal(null);
+                      if (historyModal.mode === 'snapshot') await onSnapshotInspections?.(gid);
+                      else await onResetAllInspections?.(gid);
+                    }
+                    if (e.key === 'Escape') setHistoryModal(null);
+                  }}
+                  placeholder="예: 3월 검사"
+                  autoFocus
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+              {historyModal.mode === 'reset' && (
+                <div className="flex items-start gap-2 bg-orange-50 rounded-lg px-3 py-2 border border-orange-200">
+                  <svg className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  <p className="text-xs text-orange-700">모든 패널 상태가 <b>미점검</b>으로 변경됩니다. 기존 Reports는 유지됩니다.</p>
+                </div>
+              )}
+            </div>
+            {/* 모달 버튼 */}
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                onClick={() => setHistoryModal(null)}
+                className="flex-1 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const gid = historyModal.groupId.trim();
+                  if (!gid) return;
+                  setHistoryModal(null);
+                  if (historyModal.mode === 'snapshot') await onSnapshotInspections?.(gid);
+                  else await onResetAllInspections?.(gid);
+                }}
+                disabled={!historyModal.groupId.trim()}
+                className={`flex-1 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-40 ${historyModal.mode === 'reset' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {historyModal.mode === 'reset' ? '초기화 실행' : '기록 저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Panel: Stats & List */}
       <div className={`
         ${selectedId ? 'hidden lg:flex' : 'flex'} 
@@ -1126,15 +1200,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* 현재 상태 기록 버튼 (초기화 없음) */}
             {onSnapshotInspections && (
               <button
-                onClick={async () => {
-                  const defaultId = `${new Date().getMonth() + 1}월 검사`;
-                  const groupId = window.prompt(
-                    `현재 상태를 기록합니다 (초기화 없음).\n그룹 ID를 입력하세요:`,
-                    defaultId
-                  );
-                  if (!groupId || !groupId.trim()) return;
-                  await onSnapshotInspections(groupId.trim());
-                }}
+                onClick={() => setHistoryModal({ mode: 'snapshot', groupId: `${new Date().getMonth() + 1}월 검사` })}
                 className="shrink-0 flex items-center gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
                 title="현재 상태 기록 (초기화 없음)"
               >
@@ -1145,15 +1211,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* 전체 초기화 버튼 */}
             {onResetAllInspections && (
               <button
-                onClick={async () => {
-                  const groupId = window.prompt(
-                    `전체 Inspection을 미점검으로 초기화합니다.\n그룹 ID를 입력하세요 (예: 3월 검사):`,
-                    `${new Date().getMonth() + 1}월 검사`
-                  );
-                  if (!groupId || !groupId.trim()) return;
-                  if (!window.confirm(`"${groupId.trim()}" 으로 초기화하시겠습니까?\n\n현재 통계가 저장되고, 모든 패널 상태가 미점검으로 변경됩니다.\n(기존 Reports는 유지됩니다.)`)) return;
-                  await onResetAllInspections(groupId.trim());
-                }}
+                onClick={() => setHistoryModal({ mode: 'reset', groupId: `${new Date().getMonth() + 1}월 검사` })}
                 className="shrink-0 flex items-center gap-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
                 title="전체 Inspection 미점검 초기화"
               >
@@ -1170,12 +1228,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <p className="text-sm text-slate-400">점검 기록이 없습니다.</p>
                   {onSnapshotInspections && (
                     <button
-                      onClick={async () => {
-                        const defaultId = `${new Date().getMonth() + 1}월 검사`;
-                        const groupId = window.prompt('현재 상태를 기록합니다.\n그룹 ID를 입력하세요:', defaultId);
-                        if (!groupId || !groupId.trim()) return;
-                        await onSnapshotInspections(groupId.trim());
-                      }}
+                      onClick={() => setHistoryModal({ mode: 'snapshot', groupId: `${new Date().getMonth() + 1}월 검사` })}
                       className="flex items-center gap-2 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
                     >
                       <RotateCcw size={14} />
@@ -1199,11 +1252,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         {onDeleteInspectionHistory && (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`"${entry.groupId}" 이력을 삭제하시겠습니까?`)) {
-                                onDeleteInspectionHistory(entry.id);
-                              }
-                            }}
+                            onClick={() => onDeleteInspectionHistory(entry.id)}
                             className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-red-400 transition-colors"
                           >
                             <Trash2 size={13} />
