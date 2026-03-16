@@ -1043,12 +1043,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* 모달 헤더 */}
             <div className={`px-5 py-4 ${historyModal.mode === 'reset' ? 'bg-orange-600' : 'bg-blue-600'} text-white`}>
               <h3 className="font-bold text-base">
-                {historyModal.mode === 'reset' ? '전체 초기화' : '현재 상태 기록'}
+                {historyModal.mode === 'reset' ? '전체 초기화' : '업데이트'}
               </h3>
               <p className="text-xs mt-0.5 opacity-80">
                 {historyModal.mode === 'reset'
                   ? '통계를 저장하고 모든 패널을 미점검으로 초기화합니다.'
-                  : '현재 검사 상태를 이력으로 저장합니다. (초기화 없음)'}
+                  : '마지막 검사 기록의 현황을 현재 상태로 업데이트합니다.'}
               </p>
             </div>
             {/* 모달 본문 */}
@@ -1197,15 +1197,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {/* 현재 상태 기록 버튼 (초기화 없음) */}
+            {/* 업데이트 버튼 (마지막 기록 통계 갱신) */}
             {onSnapshotInspections && (
               <button
-                onClick={() => setHistoryModal({ mode: 'snapshot', groupId: `${new Date().getMonth() + 1}월 검사` })}
+                onClick={() => onSnapshotInspections('')}
                 className="shrink-0 flex items-center gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
-                title="현재 상태 기록 (초기화 없음)"
+                title="마지막 검사 기록 현황 업데이트"
               >
                 <BookmarkPlus size={13} />
-                <span className="hidden sm:inline">현재 상태 기록</span>
+                <span className="hidden sm:inline">업데이트</span>
               </button>
             )}
             {/* 전체 초기화 버튼 */}
@@ -1226,13 +1226,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                 /* 빈 상태: 바로 기록 CTA */
                 <div className="flex flex-col items-center gap-3 py-4">
                   <p className="text-sm text-slate-400">점검 기록이 없습니다.</p>
-                  {onSnapshotInspections && (
+                  {onResetAllInspections && (
                     <button
-                      onClick={() => setHistoryModal({ mode: 'snapshot', groupId: `${new Date().getMonth() + 1}월 검사` })}
-                      className="flex items-center gap-2 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                      onClick={() => setHistoryModal({ mode: 'reset', groupId: `${new Date().getMonth() + 1}월 검사` })}
+                      className="flex items-center gap-2 text-sm bg-orange-600 text-white hover:bg-orange-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
                     >
-                      <BookmarkPlus size={14} />
-                      현재 상태 기록하기
+                      <RefreshCw size={14} />
+                      첫 기록 시작하기
                     </button>
                   )}
                 </div>
