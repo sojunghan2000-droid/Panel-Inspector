@@ -89,6 +89,9 @@ export interface ReportHistory {
   status: InspectionRecord['status'];
   htmlContent: string;
   isGenerated?: boolean; // true = Generate 버튼으로 생성됨, false = Save 시 자동 저장
+  htmlUrl?: string; // Storage URL (HTML 파일이 reports 버킷에 저장된 경우)
+  htmlSizeBytes?: number; // 저장된 HTML 파일 크기 (바이트)
+  migratedToStorage?: boolean; // Storage 마이그레이션 완료 여부
 }
 
 export interface QRCodeData {

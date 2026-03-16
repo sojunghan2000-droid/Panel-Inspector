@@ -137,6 +137,11 @@ export async function pushAllQRCodes(codes: QRCodeData[]): Promise<void> {
 /**
  * 보고서를 Supabase에 push
  */
+/**
+ * 보고서를 Supabase로 push (Storage 마이그레이션 지원)
+ * - report.htmlContent가 있으면 Storage에 업로드
+ * - 업로드 후 DB에는 메타데이터만 저장
+ */
 export async function pushReport(report: ReportHistory): Promise<void> {
   if (!navigator.onLine) {
     addToOfflineQueue({ type: 'report', key: report.reportId, timestamp: new Date().toISOString() });
@@ -144,7 +149,9 @@ export async function pushReport(report: ReportHistory): Promise<void> {
   }
 
   try {
-    await upsertReport(report);
+    // htmlContent 분리: Storage 업로드용으로 전달, DB에는 메타데이터만 저장
+    const htmlContent = report.htmlContent;
+    await upsertReport(report, htmlContent);
   } catch (err) {
     console.error('[syncService] pushReport 오류:', err);
     addToOfflineQueue({ type: 'report', key: report.reportId, timestamp: new Date().toISOString() });

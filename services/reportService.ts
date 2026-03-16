@@ -1,6 +1,7 @@
 import { InspectionRecord, ReportHistory } from '../types';
 import ExcelJS from 'exceljs';
 import { getThermalImage, blobToDataURL } from './indexedDBService';
+import { fetchReportHtml } from './supabaseService';
 
 // Create report object (no storage)
 export const createReportFromRecord = (record: InspectionRecord, htmlContent: string): ReportHistory => ({
@@ -73,7 +74,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('점검 보고서');
 
-  // 22개 열 너비 설정 (A-V)
+  // 24개 열 너비 설정 (A-X): W,X 추가 - 검사 사진
   worksheet.columns = [
     { width: 10 },  // A: PNL NO.
     { width: 18 },  // B: PJT명
@@ -97,6 +98,8 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     { width: 14 },  // T: 접지
     { width: 10 },  // U: 상태
     { width: 18 },  // V: 비고
+    { width: 18 },  // W: 검사 사진
+    { width: 18 },  // X: 검사 사진(span)
   ];
 
   const thinBorder = {
@@ -105,7 +108,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     bottom: { style: 'thin' as const },
     right: { style: 'thin' as const }
   };
-  const applyBorderToRow = (rowNum: number, colCount: number = 22) => {
+  const applyBorderToRow = (rowNum: number, colCount: number = 24) => {
     for (let c = 1; c <= colCount; c++) {
       worksheet.getCell(rowNum, c).border = thinBorder;
     }
@@ -115,7 +118,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   const titleFill  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8F5E9' } };
 
   // ── Row 1: 타이틀 ──────────────────────────────────────────────
-  worksheet.addRow(new Array(22).fill(''));
+  worksheet.addRow(new Array(24).fill(''));
   worksheet.mergeCells('A1:U1');
   worksheet.getCell('A1').value = '공사용 가설 분전반';
   worksheet.getCell('V1').value = '가설 전기 점검';
@@ -124,11 +127,11 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   titleRow.font = { bold: true, size: 14 };
   titleRow.fill = titleFill;
   titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
-  applyBorderToRow(1);
+  applyBorderToRow(1, 24);
 
   // ── Rows 2-3: 헤더 2행 ────────────────────────────────────────
-  worksheet.addRow(new Array(22).fill(''));
-  worksheet.addRow(new Array(22).fill(''));
+  worksheet.addRow(new Array(24).fill(''));
+  worksheet.addRow(new Array(24).fill(''));
 
   // Row 2 헤더 셀 값
   const hdr2Values: Record<string, string> = {
@@ -136,7 +139,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     E2: '차단기\nNo.', F2: '구분\n(1차,2차)', G2: '차단기\n용량[A]',
     H2: '부하명\n(고정,이동X)', I2: '형식', J2: '종류\n(MCCB,ELB)',
     K2: '전류 (A)\n(후크메가)', N2: '부하 용량[W]',
-    R2: '열화상\n측정', T2: '접지\n(외관)', U2: '상태', V2: '비고'
+    R2: '열화상\n측정', T2: '접지\n(외관)', U2: '상태', V2: '비고', W2: '검사\n사진'
   };
   Object.entries(hdr2Values).forEach(([addr, val]) => {
     worksheet.getCell(addr).value = val;
@@ -152,7 +155,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   });
 
   // Row 2 병합 (rowspan 2)
-  ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'T', 'U', 'V'].forEach(col => {
+  ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'T', 'U', 'V', 'W'].forEach(col => {
     worksheet.mergeCells(`${col}2:${col}3`);
   });
   worksheet.mergeCells('K2:M2'); // 전류 colspan 3
@@ -187,7 +190,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     record.currentL1 || 0, record.currentL2 || 0, record.currentL3 || 0,
     0, 0, 0, 0,
     '', '',
-    groundingText, statusText, ''
+    groundingText, statusText, '', '', ''  // V, W, X (W-X: 검사 사진 span)
   ]);
 
   // No.1~: 2차 차단기
@@ -202,7 +205,7 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
       breaker.loadCapacityR || 0, breaker.loadCapacityS || 0,
       breaker.loadCapacityT || 0, breaker.loadCapacityN || 0,
       '', '',
-      groundingText, statusText, ''
+      groundingText, statusText, '', '', ''  // V, W, X (W-X: 검사 사진 span)
     ]);
   });
 
@@ -373,6 +376,27 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
     }
   } else {
     console.log('열화상 이미지 없음:', record.panelNo);
+  }
+
+  // ── 검사 사진 삽입 (W:X 열, 데이터 전체 행 span) ────────────────
+  if (record.photoUrl) {
+    try {
+      const photoData = await imageUrlToBase64(record.photoUrl);
+      if (photoData) {
+        const photoImageId = workbook.addImage({
+          base64: photoData.base64,
+          extension: photoData.extension,
+        });
+        // W:X 열에 데이터 행 전체 span으로 삽입 (열화상 옆)
+        worksheet.addImage(photoImageId, `W${dataStartRow}:X${dataEndRow}`);
+        console.log('[generateExcelReport] 검사 사진 삽입 완료:', record.photoUrl);
+      }
+    } catch (error) {
+      console.warn('[generateExcelReport] 검사 사진 삽입 오류 (폴백):', error);
+      // 검사 사진 삽입 실패 시: 무시하고 계속 진행
+    }
+  } else {
+    console.log('[generateExcelReport] 검사 사진 없음:', record.panelNo);
   }
 
   // ── 파일 다운로드 ─────────────────────────────────────────────
@@ -757,12 +781,24 @@ export const generateReport = (
   }
 };
 
-// View report in new window
-export const viewReport = (report: ReportHistory): void => {
-  const viewWindow = window.open('', '_blank');
-  if (viewWindow) {
-    viewWindow.document.write(report.htmlContent);
-    viewWindow.document.close();
+/**
+ * 보고서를 새 창에서 표시 (Storage/DB fallback 로직)
+ * - html_url 존재: Storage에서 fetch
+ * - html_url 없음: DB에서 html_content 로드
+ */
+export const viewReport = async (report: ReportHistory): Promise<void> => {
+  try {
+    // fetchReportHtml을 사용하여 Storage 우선 로드, 실패 시 DB fallback
+    const htmlContent = await fetchReportHtml(report.id);
+
+    const viewWindow = window.open('', '_blank');
+    if (viewWindow) {
+      viewWindow.document.write(htmlContent);
+      viewWindow.document.close();
+    }
+  } catch (error) {
+    console.error('[viewReport] 보고서 로드 실패:', error);
+    alert('보고서를 표시할 수 없습니다. 나중에 다시 시도하세요.');
   }
 };
 
