@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ReportHistory, InspectionRecord } from '../types';
 import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
+import { fetchReportHtml } from '../services/supabaseService';
 import { parseReportsExcel } from '../services/reportImportService';
 import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp } from 'lucide-react';
 
@@ -20,6 +21,22 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  // 선택된 보고서의 HTML 미리보기 (fetchReportHtml로 Storage/DB fallback)
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedReport) {
+      setPreviewHtml('');
+      return;
+    }
+    setPreviewLoading(true);
+    fetchReportHtml(selectedReport.id)
+      .then(html => setPreviewHtml(html))
+      .catch(() => setPreviewHtml('<p style="padding:20px;color:#666;font-family:sans-serif">보고서를 불러올 수 없습니다.</p>'))
+      .finally(() => setPreviewLoading(false));
+  }, [selectedReport?.id]);
 
   // Natural sort for PNL NO.
   const naturalSort = (a: string, b: string) => {
@@ -439,13 +456,19 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
           </button>
           {selectedReport ? (
             <div className="flex-1 min-h-0">
-              {/* HTML 보고서 렌더링 */}
-              <iframe
-                srcDoc={selectedReport.htmlContent}
-                className="w-full h-full border-0"
-                title={selectedReport.reportId}
-                sandbox="allow-same-origin"
-              />
+              {/* HTML 보고서 렌더링 (Storage/DB fallback) */}
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                </div>
+              ) : (
+                <iframe
+                  srcDoc={previewHtml}
+                  className="w-full h-full border-0"
+                  title={selectedReport.reportId}
+                  sandbox="allow-same-origin"
+                />
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6">

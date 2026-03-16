@@ -119,10 +119,10 @@ const Dashboard: React.FC<DashboardProps> = ({
       // 저장 후 currentFormData도 업데이트하여 화면이 사라지지 않도록
       setCurrentFormData(finalRecord);
 
-      // Report 자동 저장 (Generate 상태 = false)
+      // Report 자동 저장 (수정 저장 시 신규 Report로 Reports 목록에 반영)
       const simpleHtml = `<html><body><h1>Inspection Report: ${finalRecord.panelNo}</h1><p>Status: ${finalRecord.status}</p><p>Last Inspection: ${finalRecord.lastInspectionDate}</p></body></html>`;
       const report = createReportFromRecord(finalRecord, simpleHtml);
-      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = false;
+      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
 
       // 상위 컴포넌트에도 알림
