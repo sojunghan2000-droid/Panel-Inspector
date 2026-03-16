@@ -1020,7 +1020,7 @@ const App: React.FC = () => {
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors text-sm font-medium"
             >
               <ScanLine size={16} />
-              <span>QR Scan</span>
+              <span className="hidden sm:inline">QR Scan</span>
             </button>
 
             {/* 더보기 메뉴 버튼 - 항상 표시 */}
