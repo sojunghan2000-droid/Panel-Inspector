@@ -153,6 +153,11 @@ export async function upsertQRCodes(codes: QRCodeData[]): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteQRCodeFromSupabase(id: string): Promise<void> {
+  const { error } = await supabase.from('qr_codes').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
   const { data, error } = await supabase.from('qr_codes').select('*');
   if (error) throw error;

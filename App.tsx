@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, LogOut } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
@@ -18,7 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase } from './services/supabaseService';
+import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -148,15 +148,28 @@ const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [qrCodes, setQrCodesState] = useState<QRCodeData[]>([]);
 
-  // QR Codes 변경 시 IndexedDB에도 저장
+  // QR Codes 변경 시 IndexedDB + Supabase에 저장 (삭제 포함)
   const setQrCodes = useCallback(async (newQrCodes: QRCodeData[] | ((prev: QRCodeData[]) => QRCodeData[])) => {
     setQrCodesState(prev => {
       const updatedQrCodes = typeof newQrCodes === 'function' ? newQrCodes(prev) : newQrCodes;
-      // 비동기로 IndexedDB에 저장
+
+      // 삭제된 QR ID 감지
+      const prevIds = new Set(prev.map(qr => qr.id));
+      const newIds = new Set(updatedQrCodes.map(qr => qr.id));
+      const deletedIds = [...prevIds].filter(id => !newIds.has(id as string)) as string[];
+
+      // 삭제된 항목: IndexedDB + Supabase에서 제거
+      deletedIds.forEach((id: string) => {
+        deleteQRCodeFromIDB(id).catch(console.error);
+        if (session && isConfigured) {
+          deleteQRCodeFromSupabase(id).catch(console.error);
+        }
+      });
+
+      // 나머지 저장
       saveAllQRCodes(updatedQrCodes).catch(error => {
         console.error('QR Codes IndexedDB 저장 오류:', error);
       });
-      // Supabase push (fire-and-forget)
       if (session && isConfigured) {
         pushAllQRCodes(updatedQrCodes).catch(console.error);
       }
