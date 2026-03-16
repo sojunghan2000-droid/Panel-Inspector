@@ -263,10 +263,23 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   };
 
   const filteredReports = reports
-    .filter(report =>
-      report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter(report => {
+      const q = searchTerm.toLowerCase();
+      if (!q) return true;
+      if (report.boardId.toLowerCase().includes(q)) return true;
+      if (report.reportId.toLowerCase().includes(q)) return true;
+      // 소속 점검 그룹 ID 검색
+      const reportTime = new Date(report.generatedAt).getTime();
+      const group = inspectionHistory.length > 0
+        ? [...inspectionHistory].sort(
+            (a, b) =>
+              Math.abs(new Date(a.createdAt).getTime() - reportTime) -
+              Math.abs(new Date(b.createdAt).getTime() - reportTime)
+          )[0]
+        : null;
+      if (group && group.groupId.toLowerCase().includes(q)) return true;
+      return false;
+    })
     .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
     // boardId 중복 제거 제거: Complete 펜버튼 수정 시 신규 Report가 별도 행으로 표시되어야 함
     // App.tsx의 onReportGenerated에서 중복 제어 (일반 저장은 교체, Complete 재발행은 추가)
@@ -366,7 +379,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="Search by PNL NO. or Report ID..."
+              placeholder="Search by PNL NO., Report ID, or 검사 ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
