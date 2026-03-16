@@ -1397,10 +1397,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
         {/* 위젯 선택 시 하단 안내 바 (일반 마커 클릭 = 위치 이동 모드) */}
         {selectedInspection && !startInEditMode && mode !== 'dashboard' && !readOnly && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-3 text-sm font-medium animate-fade-in">
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin size={14} />
-              <strong>{selectedInspection.panelNo}</strong> 선택됨 — 도면을 클릭하면 위치가 이동됩니다
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 text-xs sm:text-sm font-medium animate-fade-in max-w-[90vw]">
+            <span className="inline-flex items-center gap-1.5 min-w-0">
+              <MapPin size={14} className="shrink-0" />
+              <strong className="shrink-0">{selectedInspection.panelNo}</strong>
+              <span className="hidden sm:inline truncate">선택됨 — 도면을 클릭하면 위치가 이동됩니다</span>
+              <span className="sm:hidden">위치 이동 중</span>
             </span>
             <button
               onClick={() => {
