@@ -253,10 +253,9 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
       report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-    .filter((report, index, self) =>
-      index === self.findIndex(r => r.boardId === report.boardId)
-    );
+    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+    // boardId 중복 제거 제거: Complete 펜버튼 수정 시 신규 Report가 별도 행으로 표시되어야 함
+    // App.tsx의 onReportGenerated에서 중복 제어 (일반 저장은 교체, Complete 재발행은 추가)
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
