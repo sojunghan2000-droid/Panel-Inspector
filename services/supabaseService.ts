@@ -52,6 +52,7 @@ function inspectionToRow(r: InspectionRecord, photoUrl?: string, thermalUrl?: st
     thermal_image: thermalForDb,
     load_summary: r.loadSummary ?? null,
     updated_at: r.updatedAt ?? new Date().toISOString(),
+    acceptance_rate: r.acceptanceRate ?? 100,
   };
 }
 
@@ -103,6 +104,7 @@ function rowToInspection(row: Record<string, unknown>): InspectionRecord {
         } : undefined),
     loadSummary: (row.load_summary as InspectionRecord['loadSummary']) ?? undefined,
     updatedAt: (row.updated_at as string) ?? undefined,
+    acceptanceRate: (row.acceptance_rate as number) ?? 100,
   };
 }
 
@@ -215,6 +217,7 @@ export async function upsertReport(r: ReportHistory, htmlContent?: string): Prom
     html_size_bytes: htmlSizeBytes,
     migrated_to_storage: migratedToStorage,
     is_generated: r.isGenerated ?? false,
+    inspection_group_id: r.inspectionGroupId ?? null,
   }, { onConflict: 'id' });
   if (error) throw error;
 }
@@ -223,7 +226,7 @@ export async function fetchAllReports(): Promise<ReportHistory[]> {
   // 최적화: html_content 제외한 메타데이터만 조회 (네트워크 데이터 95% 절감)
   const { data, error } = await supabase
     .from('reports')
-    .select('id,report_id,board_id,status,is_generated,html_url,html_size_bytes,migrated_to_storage,generated_at')
+    .select('id,report_id,board_id,status,is_generated,html_url,html_size_bytes,migrated_to_storage,generated_at,inspection_group_id')
     .order('generated_at', { ascending: false });
   if (error) throw error;
   return (data as Record<string, unknown>[]).map(row => ({
@@ -237,6 +240,7 @@ export async function fetchAllReports(): Promise<ReportHistory[]> {
     htmlUrl: (row.html_url as string) ?? undefined,
     htmlSizeBytes: (row.html_size_bytes as number) ?? undefined,
     migratedToStorage: (row.migrated_to_storage as boolean) ?? false,
+    inspectionGroupId: (row.inspection_group_id as string) ?? undefined,
   }));
 }
 
