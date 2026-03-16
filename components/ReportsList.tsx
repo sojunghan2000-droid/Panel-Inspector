@@ -438,10 +438,14 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                             <span>{formatDate(report.generatedAt)}</span>
                           </div>
                           {(() => {
+                            if (inspectionHistory.length === 0) return null;
                             const reportTime = new Date(report.generatedAt).getTime();
-                            const group = [...inspectionHistory]
-                              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                              .find(e => new Date(e.createdAt).getTime() <= reportTime);
+                            // 시간 차이가 가장 작은 그룹 선택 (before/after 무관)
+                            const group = [...inspectionHistory].sort(
+                              (a, b) =>
+                                Math.abs(new Date(a.createdAt).getTime() - reportTime) -
+                                Math.abs(new Date(b.createdAt).getTime() - reportTime)
+                            )[0];
                             if (!group) return null;
                             return (
                               <span className="flex items-center gap-0.5 text-indigo-500 font-medium whitespace-nowrap">
