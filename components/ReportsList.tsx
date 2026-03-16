@@ -3,7 +3,7 @@ import { ReportHistory, InspectionRecord } from '../types';
 import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
 import { fetchReportHtml } from '../services/supabaseService';
 import { parseReportsExcel } from '../services/reportImportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp } from 'lucide-react';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
@@ -226,6 +226,18 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     }
   };
 
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`선택한 ${selectedIds.size}개 보고서를 삭제하시겠습니까?`)) return;
+    for (const id of selectedIds) {
+      onDeleteReport(id);
+    }
+    if (selectedReport && selectedIds.has(selectedReport.id)) {
+      setSelectedReport(null);
+    }
+    setSelectedIds(new Set());
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Complete':
@@ -331,6 +343,21 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
               ref={importFileRef}
             />
           </label>
+
+          {/* 선택 삭제 버튼 */}
+          <button
+            onClick={handleBulkDelete}
+            disabled={selectedIds.size === 0}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              selectedIds.size > 0
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+            title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 삭제` : '보고서를 선택하세요'}
+          >
+            <Trash size={16} />
+            <span>선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+          </button>
 
           {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
