@@ -129,8 +129,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       const detailedHtml = generateReportHtml(finalRecord);
 
       let report: ReportHistory;
-      if (editingReport && editingReport.status !== 'Complete') {
-        // Non-Complete 보고서 수정: 기존 ID/reportId 유지, 날짜·HTML만 갱신
+      if (editingReport && editingReport.status !== 'Complete' && editingReport.boardId === selectedId) {
+        // Non-Complete 보고서 수정: 기존 ID/reportId 유지, 날짜·HTML만 갱신 (패널 일치 확인)
         report = {
           ...editingReport,
           generatedAt: new Date().toISOString(),
