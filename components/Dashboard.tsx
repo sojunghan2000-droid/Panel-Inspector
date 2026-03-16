@@ -21,6 +21,7 @@ interface DashboardProps {
   reports?: ReportHistory[];
   inspectionHistory?: InspectionHistoryEntry[];
   onResetAllInspections?: (groupId: string) => Promise<void>;
+  onSnapshotInspections?: (groupId: string) => Promise<void>;
   onDeleteInspectionHistory?: (id: string) => Promise<void>;
 }
 
@@ -36,6 +37,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   reports = [],
   inspectionHistory = [],
   onResetAllInspections,
+  onSnapshotInspections,
   onDeleteInspectionHistory,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1121,6 +1123,25 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
+            {/* 현재 상태 기록 버튼 (초기화 없음) */}
+            {onSnapshotInspections && (
+              <button
+                onClick={async () => {
+                  const defaultId = `${new Date().getMonth() + 1}월 검사`;
+                  const groupId = window.prompt(
+                    `현재 상태를 기록합니다 (초기화 없음).\n그룹 ID를 입력하세요:`,
+                    defaultId
+                  );
+                  if (!groupId || !groupId.trim()) return;
+                  await onSnapshotInspections(groupId.trim());
+                }}
+                className="shrink-0 flex items-center gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
+                title="현재 상태 기록 (초기화 없음)"
+              >
+                <RotateCcw size={13} />
+                현재 상태 기록
+              </button>
+            )}
             {/* 전체 초기화 버튼 */}
             {onResetAllInspections && (
               <button

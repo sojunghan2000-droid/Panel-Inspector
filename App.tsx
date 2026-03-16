@@ -610,6 +610,27 @@ const App: React.FC = () => {
   }, [session]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
+  // 현재 상태 스냅샷만 저장 (초기화 없음)
+  const handleSnapshotInspections = useCallback(async (groupId: string) => {
+    const now = new Date().toISOString();
+    const total = inspections.length;
+    const complete = inspections.filter(i => i.status === 'Complete').length;
+    const inProgress = inspections.filter(i => i.status === 'In Progress').length;
+    const pending = inspections.filter(i => i.status === 'Pending').length;
+    const completionRate = total > 0 ? Math.round((complete / total) * 100) : 0;
+    const groundFaultCount = inspections.filter(i => i.grounding === '불량').length;
+
+    const entry: InspectionHistoryEntry = {
+      id: `ih-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      groupId,
+      createdAt: now,
+      stats: { total, complete, inProgress, pending, completionRate, groundFaultCount },
+    };
+
+    await saveInspectionHistory(entry);
+    setInspectionHistory(prev => [entry, ...prev]);
+  }, [inspections]);
+
   // 전체 Inspection 초기화 → Inspection History 스냅샷 저장
   const handleResetAllInspections = useCallback(async (groupId: string) => {
     const now = new Date().toISOString();
@@ -1223,6 +1244,7 @@ const App: React.FC = () => {
                     reports={reports}
                     inspectionHistory={inspectionHistory}
                     onResetAllInspections={handleResetAllInspections}
+                    onSnapshotInspections={handleSnapshotInspections}
                     onDeleteInspectionHistory={async (id) => {
                       await deleteInspectionHistory(id);
                       setInspectionHistory(prev => prev.filter(e => e.id !== id));
