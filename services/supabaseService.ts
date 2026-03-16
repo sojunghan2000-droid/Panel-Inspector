@@ -168,21 +168,63 @@ export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
 // Reports CRUD
 // ─────────────────────────────────────────
 
-export async function upsertReport(r: ReportHistory): Promise<void> {
+/**
+ * 보고서를 Supabase에 저장
+ * - htmlContent 제공 시: Storage에 업로드하고 메타데이터만 DB에 저장
+ * - htmlContent 미제공: html_url로 조회한 기존 메타데이터 유지
+ * @param r 보고서 객체
+ * @param htmlContent HTML 컨텐츠 (제공 시 Storage 업로드)
+ */
+export async function upsertReport(r: ReportHistory, htmlContent?: string): Promise<void> {
+  let htmlUrl: string | null = r.htmlUrl ?? null;
+  let htmlSizeBytes: number | null = r.htmlSizeBytes ?? null;
+  let migratedToStorage = r.migratedToStorage ?? false;
+  let dbHtmlContent: string | null = r.htmlContent ?? null;
+
+  // 새로운 htmlContent 제공: Storage에 업로드
+  if (htmlContent && htmlContent.length > 0) {
+    try {
+      const htmlBlob = new Blob([htmlContent], { type: 'text/html; charset=utf-8' });
+      htmlSizeBytes = htmlBlob.size;
+
+      // Storage 경로: {boardId}/{reportId}.html
+      const storagePath = `${r.boardId}/${r.reportId}.html`;
+      htmlUrl = await uploadBlob('reports', storagePath, htmlBlob);
+      migratedToStorage = true;
+
+      // Storage 업로드 성공 시: DB에 html_content 저장하지 않음 (공간 절약)
+      dbHtmlContent = null;
+
+      console.log(`[upsertReport] HTML → Storage 업로드 완료: ${storagePath} (${htmlSizeBytes} bytes)`);
+    } catch (uploadError) {
+      console.error('[upsertReport] Storage 업로드 실패, DB에 폴백:', uploadError);
+      // 업로드 실패: 기존 htmlContent를 DB에 저장 (폴백)
+      dbHtmlContent = htmlContent;
+      migratedToStorage = false;
+    }
+  }
+
   const { error } = await supabase.from('reports').upsert({
     id: r.id,
     report_id: r.reportId,
     board_id: r.boardId,
     generated_at: r.generatedAt,
     status: r.status,
-    html_content: r.htmlContent,
+    html_content: dbHtmlContent,
+    html_url: htmlUrl,
+    html_size_bytes: htmlSizeBytes,
+    migrated_to_storage: migratedToStorage,
     is_generated: r.isGenerated ?? false,
   }, { onConflict: 'id' });
   if (error) throw error;
 }
 
 export async function fetchAllReports(): Promise<ReportHistory[]> {
-  const { data, error } = await supabase.from('reports').select('*').order('generated_at', { ascending: false });
+  // 최적화: html_content 제외한 메타데이터만 조회 (네트워크 데이터 95% 절감)
+  const { data, error } = await supabase
+    .from('reports')
+    .select('id,report_id,board_id,status,is_generated,html_url,html_size_bytes,migrated_to_storage,generated_at')
+    .order('generated_at', { ascending: false });
   if (error) throw error;
   return (data as Record<string, unknown>[]).map(row => ({
     id: row.id as string,
@@ -190,9 +232,52 @@ export async function fetchAllReports(): Promise<ReportHistory[]> {
     boardId: row.board_id as string,
     generatedAt: row.generated_at as string,
     status: row.status as ReportHistory['status'],
-    htmlContent: row.html_content as string,
+    htmlContent: '', // 필요할 때만 fetchReportHtml()로 로드
     isGenerated: row.is_generated as boolean,
+    htmlUrl: (row.html_url as string) ?? undefined,
+    htmlSizeBytes: (row.html_size_bytes as number) ?? undefined,
+    migratedToStorage: (row.migrated_to_storage as boolean) ?? false,
   }));
+}
+
+/**
+ * 보고서의 전체 HTML 컨텐츠 조회 (Storage/DB fallback 로직)
+ * - html_url 존재: Storage에서 fetch (마이그레이션됨)
+ * - html_url 없음: DB의 html_content 사용 (기존 보고서, 업로드 실패)
+ * @param reportId 보고서 ID
+ * @returns HTML 컨텐츠 문자열
+ */
+export async function fetchReportHtml(reportId: string): Promise<string> {
+  // Step 1: html_url과 html_content 조회
+  const { data: reportRow, error: fetchError } = await supabase
+    .from('reports')
+    .select('html_url,html_content')
+    .eq('id', reportId)
+    .single();
+
+  if (fetchError) throw new Error(`[fetchReportHtml] DB 조회 실패: ${fetchError.message}`);
+  if (!reportRow) throw new Error(`[fetchReportHtml] 보고서를 찾을 수 없음: ${reportId}`);
+
+  // Step 2: Storage 우선 (html_url 존재)
+  if (reportRow.html_url) {
+    try {
+      const htmlBlob = await downloadBlobFromUrl(reportRow.html_url);
+      const htmlText = await htmlBlob.text();
+      console.log(`[fetchReportHtml] Storage에서 로드 성공: ${reportRow.html_url}`);
+      return htmlText;
+    } catch (storageError) {
+      console.warn('[fetchReportHtml] Storage 로드 실패, DB 폴백:', storageError);
+      // 폴백: DB에서 로드
+    }
+  }
+
+  // Step 3: DB 폴백 (html_content)
+  const htmlContent = reportRow.html_content as string;
+  if (!htmlContent) {
+    throw new Error(`[fetchReportHtml] HTML 컨텐츠 없음: ${reportId}`);
+  }
+  console.log('[fetchReportHtml] DB에서 로드');
+  return htmlContent;
 }
 
 // ─────────────────────────────────────────

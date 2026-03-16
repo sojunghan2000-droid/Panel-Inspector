@@ -184,8 +184,12 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     }
   };
 
-  const handleViewReport = (report: ReportHistory) => {
-    viewReport(report);
+  const handleViewReport = async (report: ReportHistory) => {
+    try {
+      await viewReport(report);
+    } catch (error) {
+      console.error('보고서 열기 실패:', error);
+    }
   };
 
   const handleExportExcel = (report: ReportHistory, e: React.MouseEvent) => {
