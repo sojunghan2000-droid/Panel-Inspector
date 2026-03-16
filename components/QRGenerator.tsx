@@ -1485,56 +1485,56 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     // 패널 클릭 시 FloorPlanView 위젯으로 스크롤
                     scrollToFloorPlanWidget(inspection.panelNo);
                   }}
-                  className={`p-4 cursor-pointer transition-colors hover:bg-slate-50 ${
+                  className={`px-3 py-2 cursor-pointer transition-colors hover:bg-slate-50 ${
                     isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <MapPin size={14} className={inspection.tr === 'A' ? 'text-blue-600' : inspection.tr === 'B' ? 'text-orange-500' : 'text-slate-400'} />
-                        <span className="font-semibold text-slate-800">
-                          {migrateIdFloor(inspection.panelNo)}
+                  <div className="flex items-center justify-between gap-1 min-w-0">
+                    {/* 왼쪽: 핀 + 패널번호 + 배지들 + 날짜 한 줄 */}
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                      <MapPin size={12} className={`shrink-0 ${inspection.tr === 'A' ? 'text-blue-600' : inspection.tr === 'B' ? 'text-orange-500' : 'text-slate-400'}`} />
+                      <span className="font-semibold text-xs text-slate-800 shrink-0">
+                        {migrateIdFloor(inspection.panelNo)}
+                      </span>
+                      {inspection.nominalCrossSection && (
+                        <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded shrink-0">{inspection.nominalCrossSection}</span>
+                      )}
+                      {inspection.floor && <span className="text-[10px] text-slate-400 shrink-0">{inspection.floor}</span>}
+                      {inspection.tr && (
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${inspection.tr === 'A' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {TR_DISPLAY_LABELS[inspection.tr] || inspection.tr}
                         </span>
-                        {inspection.nominalCrossSection && (
-                          <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{inspection.nominalCrossSection}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        {inspection.floor && <span>{inspection.floor}</span>}
-                        {inspection.tr && <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${inspection.tr === 'A' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{TR_DISPLAY_LABELS[inspection.tr] || inspection.tr}</span>}
-                        {inspection.notes && <span className="text-slate-400">({inspection.notes})</span>}
-                      </div>
+                      )}
                       {matchingQR && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
-                          <Calendar size={12} />
-                          <span>{formatDate(matchingQR.createdAt)}</span>
-                        </div>
+                        <span className="flex items-center gap-0.5 text-[10px] text-slate-400 truncate min-w-0">
+                          <Calendar size={10} className="shrink-0" />
+                          <span className="truncate">{formatDate(matchingQR.createdAt)}</span>
+                        </span>
                       )}
                     </div>
+                    {/* 오른쪽: 버튼 */}
                     {matchingQR && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5 shrink-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleEditQR(matchingQR, e);
-                            // 수정 버튼 클릭 시 패널 상세 정보로 스크롤
                             scrollToPanelDetail();
                           }}
-                          className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                          className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                           title="Edit QR code"
                         >
-                          <Edit2 size={16} />
+                          <Edit2 size={13} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteQR(matchingQR.id, e);
                           }}
-                          className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
+                          className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
                           title="Delete QR code"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     )}
