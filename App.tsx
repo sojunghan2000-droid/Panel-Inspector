@@ -1167,8 +1167,8 @@ const App: React.FC = () => {
                   inspections={inspections}
                   onEditReport={(boardId, report) => {
                     // Inspection 페이지로 이동하면서 해당 패널 선택
-                    // Complete 보고서는 신규 발행, 그 외는 해당 보고서 수정
-                    setEditingReport(report.status === 'Complete' ? null : report);
+                    // Complete/Non-Complete 모두 editingReport에 전달 (handleSave에서 분기 처리)
+                    setEditingReport(report);
                     setSelectedInspectionId(boardId);
                     setCurrentPage('dashboard');
                   }}

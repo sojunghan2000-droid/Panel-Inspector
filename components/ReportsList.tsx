@@ -58,12 +58,20 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
 
   // 승인된 Report만 필터링 (isGenerated === true), boardId 중복 제거 (최신만), PNL NO. 순 정렬
   const approvedReports = useMemo(() => {
-    return reports
+    const sorted = reports
       .filter(r => (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true)
-      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-      .filter((report, index, self) =>
-        index === self.findIndex(r => r.boardId === report.boardId)
-      )
+      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+
+    // Complete 보고서: 모두 표시 (신규 발행 이력)
+    // Non-Complete 보고서: boardId별 최신 1개만 표시
+    const seen = new Set<string>();
+    return sorted
+      .filter(report => {
+        if (report.status === 'Complete') return true;
+        if (seen.has(report.boardId)) return false;
+        seen.add(report.boardId);
+        return true;
+      })
       .sort((a, b) => naturalSort(a.boardId, b.boardId));
   }, [reports]);
 

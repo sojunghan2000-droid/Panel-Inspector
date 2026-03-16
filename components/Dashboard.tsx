@@ -129,19 +129,38 @@ const Dashboard: React.FC<DashboardProps> = ({
       const detailedHtml = generateReportHtml(finalRecord);
 
       let report: ReportHistory;
-      if (editingReport && editingReport.status !== 'Complete' && editingReport.boardId === selectedId) {
-        // Non-Complete 보고서 수정: 기존 ID/reportId 유지, 날짜·HTML만 갱신 (패널 일치 확인)
-        report = {
-          ...editingReport,
-          generatedAt: new Date().toISOString(),
-          status: finalRecord.status,
-          htmlContent: detailedHtml,
-        };
-        // 수정 완료 후 editingReport 초기화
+      if (editingReport && editingReport.boardId === selectedId) {
+        // Reports 펜 버튼에서 진입한 경우
+        if (editingReport.status === 'Complete') {
+          // Complete 보고서 수정 → 신규 Report 발행 (새 ID, 새 날짜)
+          report = createReportFromRecord(finalRecord, detailedHtml);
+        } else {
+          // Non-Complete 보고서 수정 → 기존 Report 업데이트 (ID 유지)
+          report = {
+            ...editingReport,
+            generatedAt: new Date().toISOString(),
+            status: finalRecord.status,
+            htmlContent: detailedHtml,
+          };
+        }
         if (onEditingReportClear) onEditingReportClear();
       } else {
-        // Complete 보고서 또는 신규 저장: 새 Report 생성
-        report = createReportFromRecord(finalRecord, detailedHtml);
+        // 일반 Dashboard 저장 → 기존 Report 업데이트 또는 신규 생성
+        const existingReport = (reports || []).find(
+          r => r.boardId === selectedId && (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true
+        );
+        if (existingReport) {
+          // 기존 Report 업데이트 (ID 유지, 날짜·HTML·상태 갱신)
+          report = {
+            ...existingReport,
+            generatedAt: new Date().toISOString(),
+            status: finalRecord.status,
+            htmlContent: detailedHtml,
+          };
+        } else {
+          // 최초 저장 → 신규 Report 생성
+          report = createReportFromRecord(finalRecord, detailedHtml);
+        }
       }
       (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
