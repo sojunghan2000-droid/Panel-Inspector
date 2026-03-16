@@ -19,6 +19,10 @@ interface DashboardProps {
   onReportsUpdate?: (reports: ReportHistory[]) => void;
   qrCodes?: QRCodeData[];
   reports?: ReportHistory[];
+  /** Reports에서 수정 버튼 클릭 시 전달되는 기존 보고서 (non-Complete만) */
+  editingReport?: ReportHistory | null;
+  /** 수정 완료 후 editingReport 초기화 콜백 */
+  onEditingReportClear?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -30,7 +34,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   onReportGenerated,
   onReportsUpdate,
   qrCodes = [],
-  reports = []
+  reports = [],
+  editingReport,
+  onEditingReportClear
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
@@ -121,7 +127,22 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       // Report 자동 저장 - generateReportHtml로 상세 HTML 생성 (새 창 열기 없음)
       const detailedHtml = generateReportHtml(finalRecord);
-      const report = createReportFromRecord(finalRecord, detailedHtml);
+
+      let report: ReportHistory;
+      if (editingReport && editingReport.status !== 'Complete') {
+        // Non-Complete 보고서 수정: 기존 ID/reportId 유지, 날짜·HTML만 갱신
+        report = {
+          ...editingReport,
+          generatedAt: new Date().toISOString(),
+          status: finalRecord.status,
+          htmlContent: detailedHtml,
+        };
+        // 수정 완료 후 editingReport 초기화
+        if (onEditingReportClear) onEditingReportClear();
+      } else {
+        // Complete 보고서 또는 신규 저장: 새 Report 생성
+        report = createReportFromRecord(finalRecord, detailedHtml);
+      }
       (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
 

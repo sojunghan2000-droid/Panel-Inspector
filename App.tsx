@@ -166,6 +166,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
+  const [editingReport, setEditingReport] = useState<ReportHistory | null>(null);
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
@@ -1129,20 +1130,31 @@ const App: React.FC = () => {
                 />
               ) : currentPage === 'dashboard' ? (
                 <ErrorBoundary>
-                  <Dashboard 
+                  <Dashboard
                     inspections={inspections}
                     onUpdateInspections={updateInspections}
                     onScan={() => setShowScanner(true)}
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
                     onReportGenerated={async (report) => {
-                      setReports(prev => [report, ...prev]);
+                      // Non-Complete 수정 시 기존 보고서 교체, Complete 시 신규 추가
+                      setReports(prev => {
+                        const idx = prev.findIndex(r => r.id === report.id);
+                        if (idx >= 0) {
+                          const next = [...prev];
+                          next[idx] = report;
+                          return next;
+                        }
+                        return [report, ...prev];
+                      });
                       await saveReport(report); // IndexedDB에도 저장
                       if (session && isConfigured) pushReport(report).catch(console.error);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
                     reports={reports}
+                    editingReport={editingReport}
+                    onEditingReportClear={() => setEditingReport(null)}
                   />
                 </ErrorBoundary>
               ) : currentPage === 'reports' ? (
@@ -1153,8 +1165,10 @@ const App: React.FC = () => {
                     await deleteReportFromDB(id); // IndexedDB에서도 삭제
                   }}
                   inspections={inspections}
-                  onEditReport={(boardId) => {
+                  onEditReport={(boardId, report) => {
                     // Inspection 페이지로 이동하면서 해당 패널 선택
+                    // Complete 보고서는 신규 발행, 그 외는 해당 보고서 수정
+                    setEditingReport(report.status === 'Complete' ? null : report);
                     setSelectedInspectionId(boardId);
                     setCurrentPage('dashboard');
                   }}

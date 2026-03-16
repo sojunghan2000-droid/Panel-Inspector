@@ -10,7 +10,7 @@ interface ReportsListProps {
   onDeleteReport: (id: string) => void;
   inspections: InspectionRecord[];
   /** Report 수정 버튼 클릭 시 호출 - Inspection 페이지로 이동 */
-  onEditReport?: (boardId: string) => void;
+  onEditReport?: (boardId: string, report: ReportHistory) => void;
   /** 엑셀 Import 후 Reports 반영 콜백 */
   onReportsImported?: (reports: ReportHistory[]) => void;
 }
@@ -194,10 +194,10 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   };
 
   // Edit 버튼 클릭 핸들러
-  const handleEditReport = (boardId: string, e: React.MouseEvent) => {
+  const handleEditReport = (report: ReportHistory, e: React.MouseEvent) => {
     e.stopPropagation();
     if (onEditReport) {
-      onEditReport(boardId);
+      onEditReport(report.boardId, report);
     }
   };
 
@@ -411,7 +411,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                       </span>
                       {/* Edit 버튼 - Inspection으로 이동 */}
                       <button
-                        onClick={(e) => handleEditReport(report.boardId, e)}
+                        onClick={(e) => handleEditReport(report, e)}
                         className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                         title="Inspection에서 수정"
                       >
