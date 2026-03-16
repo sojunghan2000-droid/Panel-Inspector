@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
-import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ChevronLeft, ZoomOut } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 import { pushFloorPlan } from '../services/syncService';
 import { upsertFloorPlanUrl, fetchAllFloorPlanUrls } from '../services/supabaseService';
@@ -904,18 +904,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      {selectedInspectionId && (
-        <button
-          onClick={() => {
-            setSelectedInspection(null);
-            setIsEditingInspectionPosition(false);
-          }}
-          className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors flex items-center gap-2"
-        >
-          <ChevronLeft size={16} />
-          전체 보기
-        </button>
-      )}
       <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
@@ -1424,6 +1412,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               확인
             </button>
           </div>
+        )}
+
+        {/* 전체 보기 버튼 (좌하단) */}
+        {selectedInspectionId && (
+          <button
+            onClick={() => {
+              setSelectedInspection(null);
+              setIsEditingInspectionPosition(false);
+            }}
+            className="absolute bottom-3 left-3 z-20 bg-white/90 hover:bg-white rounded-lg px-3 py-1.5 shadow-md text-xs font-medium text-slate-600 border border-slate-200 flex items-center gap-1.5"
+          >
+            전체 보기
+          </button>
         )}
 
         {/* 줌 리셋 버튼 */}
