@@ -1163,9 +1163,26 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
           {!isInspectionHistoryCollapsed && (
-            <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-2">
+            <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-3">
               {inspectionHistory.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-3">초기화 이력이 없습니다.</p>
+                /* 빈 상태: 바로 기록 CTA */
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <p className="text-sm text-slate-400">점검 기록이 없습니다.</p>
+                  {onSnapshotInspections && (
+                    <button
+                      onClick={async () => {
+                        const defaultId = `${new Date().getMonth() + 1}월 검사`;
+                        const groupId = window.prompt('현재 상태를 기록합니다.\n그룹 ID를 입력하세요:', defaultId);
+                        if (!groupId || !groupId.trim()) return;
+                        await onSnapshotInspections(groupId.trim());
+                      }}
+                      className="flex items-center gap-2 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                    >
+                      <RotateCcw size={14} />
+                      현재 상태 기록하기
+                    </button>
+                  )}
+                </div>
               ) : (
                 inspectionHistory.map(entry => {
                   const dateStr = new Date(entry.createdAt).toLocaleString('ko-KR', {
@@ -1173,12 +1190,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                     hour: '2-digit', minute: '2-digit', hour12: false
                   });
                   return (
-                    <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                    <div key={entry.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                       {/* 그룹 헤더 */}
-                      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-100">
-                        <div>
-                          <span className="font-bold text-slate-700 text-sm">{entry.groupId}</span>
-                          <span className="ml-2 text-xs text-slate-400">{dateStr}</span>
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-slate-700 text-white">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm">{entry.groupId}</span>
+                          <span className="text-xs text-slate-300">{dateStr}</span>
                         </div>
                         {onDeleteInspectionHistory && (
                           <button
@@ -1187,32 +1204,56 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 onDeleteInspectionHistory(entry.id);
                               }
                             }}
-                            className="p-1 hover:bg-red-50 rounded text-slate-300 hover:text-red-500 transition-colors"
+                            className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-red-400 transition-colors"
                           >
                             <Trash2 size={13} />
                           </button>
                         )}
                       </div>
-                      {/* 통계 */}
-                      <div className="grid grid-cols-3 gap-x-2 gap-y-1 px-3 py-2 text-xs">
-                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
-                          <span className="text-slate-400">검사 완료율</span>
-                          <span className="font-bold text-emerald-600 text-sm">{entry.stats.completionRate}%</span>
+                      {/* Dashboard Overview 스타일 통계 4칸 */}
+                      <div className="grid grid-cols-2 gap-2 p-2">
+                        <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-100">
+                          <div>
+                            <p className="text-xs text-slate-500">검사 완료율</p>
+                            <p className="text-lg font-bold text-emerald-600">{entry.stats.completionRate}%</p>
+                          </div>
+                          <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          </div>
                         </div>
-                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
-                          <span className="text-slate-400">총 진행 건</span>
-                          <span className="font-bold text-blue-600 text-sm">{entry.stats.inProgress}</span>
+                        <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border border-blue-100">
+                          <div>
+                            <p className="text-xs text-slate-500">총 진행 건</p>
+                            <p className="text-lg font-bold text-blue-600">{entry.stats.inProgress}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          </div>
                         </div>
-                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
-                          <span className="text-slate-400">접지 불량</span>
-                          <span className="font-bold text-red-500 text-sm">{entry.stats.groundFaultCount}</span>
+                        <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2 border border-red-100">
+                          <div>
+                            <p className="text-xs text-slate-500">접지 불량 건</p>
+                            <p className="text-lg font-bold text-red-500">{entry.stats.groundFaultCount}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          </div>
                         </div>
-                        <div className="col-span-3 flex items-center justify-between px-1 pt-1 text-slate-500">
-                          <span>완료 <b className="text-emerald-600">{entry.stats.complete}</b></span>
-                          <span>점검 중 <b className="text-blue-600">{entry.stats.inProgress}</b></span>
-                          <span>미점검 <b className="text-slate-600">{entry.stats.pending}</b></span>
-                          <span>전체 <b className="text-slate-800">{entry.stats.total}</b></span>
+                        <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                          <div>
+                            <p className="text-xs text-slate-500">전체 패널</p>
+                            <p className="text-lg font-bold text-slate-700">{entry.stats.total}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                          </div>
                         </div>
+                      </div>
+                      {/* 세부 수치 바 */}
+                      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+                        <span>완료 <b className="text-emerald-600">{entry.stats.complete}</b></span>
+                        <span>점검 중 <b className="text-blue-600">{entry.stats.inProgress}</b></span>
+                        <span>미점검 <b className="text-slate-500">{entry.stats.pending}</b></span>
                       </div>
                     </div>
                   );
