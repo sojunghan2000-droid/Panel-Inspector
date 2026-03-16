@@ -192,8 +192,8 @@ export async function upsertReport(r: ReportHistory, htmlContent?: string): Prom
       htmlUrl = await uploadBlob('reports', storagePath, htmlBlob);
       migratedToStorage = true;
 
-      // Storage 업로드 성공 시: DB에 html_content 저장하지 않음 (공간 절약)
-      dbHtmlContent = null;
+      // Storage 업로드 성공 시: DB html_content는 빈 문자열 (NOT NULL 제약 대응)
+      dbHtmlContent = '';
 
       console.log(`[upsertReport] HTML → Storage 업로드 완료: ${storagePath} (${htmlSizeBytes} bytes)`);
     } catch (uploadError) {
