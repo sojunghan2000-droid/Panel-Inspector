@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ReportHistory, InspectionRecord } from '../types';
+import { ReportHistory, InspectionRecord, InspectionHistoryEntry } from '../types';
 import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
 import { fetchReportHtml } from '../services/supabaseService';
 import { parseReportsExcel } from '../services/reportImportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash } from 'lucide-react';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash, Tag } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
@@ -13,9 +13,11 @@ interface ReportsListProps {
   onEditReport?: (boardId: string, report: ReportHistory) => void;
   /** 엑셀 Import 후 Reports 반영 콜백 */
   onReportsImported?: (reports: ReportHistory[]) => void;
+  /** Inspection History 그룹 목록 (날짜 옆 그룹 ID 표시용) */
+  inspectionHistory?: InspectionHistoryEntry[];
 }
 
-const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport, onReportsImported }) => {
+const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport, onReportsImported, inspectionHistory = [] }) => {
   const [selectedReport, setSelectedReport] = useState<ReportHistory | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -261,23 +263,36 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   };
 
   const filteredReports = reports
-    .filter(report =>
-      report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter(report => {
+      const q = searchTerm.toLowerCase();
+      if (!q) return true;
+      if (report.boardId.toLowerCase().includes(q)) return true;
+      if (report.reportId.toLowerCase().includes(q)) return true;
+      // 소속 점검 그룹 ID 검색
+      const reportTime = new Date(report.generatedAt).getTime();
+      const group = inspectionHistory.length > 0
+        ? [...inspectionHistory].sort(
+            (a, b) =>
+              Math.abs(new Date(a.createdAt).getTime() - reportTime) -
+              Math.abs(new Date(b.createdAt).getTime() - reportTime)
+          )[0]
+        : null;
+      if (group && group.groupId.toLowerCase().includes(q)) return true;
+      return false;
+    })
     .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
     // boardId 중복 제거 제거: Complete 펜버튼 수정 시 신규 Report가 별도 행으로 표시되어야 함
     // App.tsx의 onReportGenerated에서 중복 제어 (일반 저장은 교체, Complete 재발행은 추가)
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // YYYY-MM-DD HH:mm 형식으로 한 줄에 표시
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}`;
   };
 
   return (
@@ -290,7 +305,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
           <button
             onClick={handlePrintAllReports}
             disabled={approvedReports.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               approvedReports.length > 0
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -298,7 +313,8 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={approvedReports.length > 0 ? `${approvedReports.length}개 승인된 보고서 출력` : '승인된 보고서가 없습니다'}
           >
             <Printer size={18} />
-            <span>보고서 출력 ({approvedReports.length})</span>
+            <span className="hidden sm:inline">보고서 출력 ({approvedReports.length})</span>
+            <span className="sm:hidden">{approvedReports.length}</span>
           </button>
         </div>
 
@@ -328,13 +344,14 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 다운로드` : '보고서를 선택하세요'}
           >
             <Download size={16} />
-            <span>{isBulkDownloading ? '다운로드 중...' : `선택 다운로드 (${selectedIds.size}개)`}</span>
+            <span className="hidden sm:inline">{isBulkDownloading ? '다운로드 중...' : `선택 다운로드 (${selectedIds.size}개)`}</span>
+            {selectedIds.size > 0 && <span className="sm:hidden">{selectedIds.size}</span>}
           </button>
 
           {/* 엑셀 가져오기 버튼 */}
           <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-colors">
             <FileUp size={16} />
-            <span>엑셀 가져오기</span>
+            <span className="hidden sm:inline">엑셀 가져오기</span>
             <input
               type="file"
               accept=".xlsx,.xls"
@@ -356,7 +373,8 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 삭제` : '보고서를 선택하세요'}
           >
             <Trash size={16} />
-            <span>선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+            <span className="hidden sm:inline">선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+            {selectedIds.size > 0 && <span className="sm:hidden">{selectedIds.size}</span>}
           </button>
 
           {/* Search */}
@@ -364,7 +382,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="Search by PNL NO. or Report ID..."
+              placeholder="Search by PNL NO., Report ID, or 검사 ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
@@ -395,12 +413,12 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                   key={report.id}
                   onClick={() => setSelectedReport(report)}
                   className={`
-                    p-4 cursor-pointer transition-colors hover:bg-slate-50
+                    p-2 sm:p-3 cursor-pointer transition-colors hover:bg-slate-50
                     ${selectedReport?.id === report.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}
                   `}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
+                  <div className="flex items-start justify-between gap-1 min-w-0">
+                    <div className="flex items-start gap-1.5 sm:gap-2 flex-1 min-w-0">
                       {/* 체크박스 - isGenerated인 항목만 표시 */}
                       {(report as ReportHistory & { isGenerated?: boolean }).isGenerated ? (
                         <input
@@ -416,54 +434,77 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                             });
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 mt-1 text-emerald-600 rounded border-slate-300 shrink-0"
+                          className="w-3.5 h-3.5 mt-1 text-emerald-600 rounded border-slate-300 shrink-0"
                         />
                       ) : (
-                        <div className="w-4 shrink-0" /> // 정렬용 빈 공간
+                        <div className="w-3.5 shrink-0" />
                       )}
-                      <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        {getStatusIcon(report.status)}
-                        <span className="font-semibold text-slate-800">{report.reportId}</span>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        {/* RPT 번호 */}
+                        <div className="flex items-center gap-1 mb-0.5 min-w-0">
+                          {getStatusIcon(report.status)}
+                          <span className="font-semibold text-xs sm:text-sm text-slate-800 truncate">{report.reportId}</span>
+                        </div>
+                        {/* PNL NO. */}
+                        <p className="text-xs text-slate-600 mb-0.5 truncate">PNL NO.: {report.boardId}</p>
+                        {/* 날짜 + 그룹 ID */}
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-500 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <Calendar size={10} />
+                            <span className="whitespace-nowrap">{formatDate(report.generatedAt)}</span>
+                          </div>
+                          {(() => {
+                            if (inspectionHistory.length === 0) return null;
+                            const reportTime = new Date(report.generatedAt).getTime();
+                            const group = [...inspectionHistory].sort(
+                              (a, b) =>
+                                Math.abs(new Date(a.createdAt).getTime() - reportTime) -
+                                Math.abs(new Date(b.createdAt).getTime() - reportTime)
+                            )[0];
+                            if (!group) return null;
+                            return (
+                              <span className="flex items-center gap-0.5 text-indigo-500 font-medium truncate">
+                                <Tag size={9} className="shrink-0" />
+                                <span className="truncate">{group.groupId}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-600 mb-2">PNL NO.: {report.boardId}</p>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Calendar size={12} />
-                        <span>{formatDate(report.generatedAt)}</span>
-                      </div>
-                      </div> {/* flex-1 inner */}
-                    </div> {/* flex items-start gap-3 */}
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(report.status)}`}>
+                    </div>
+                    {/* 우측: 상태 + 버튼 */}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(report.status)}`}>
                         {report.status}
                       </span>
-                      {/* Edit 버튼 - Inspection으로 이동 */}
-                      <button
-                        onClick={(e) => handleEditReport(report, e)}
-                        className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
-                        title="Inspection에서 수정"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => handleExportExcel(report, e)}
-                        disabled={!(report as ReportHistory & { isGenerated?: boolean }).isGenerated}
-                        className={`p-1.5 rounded transition-colors ${
-                          (report as ReportHistory & { isGenerated?: boolean }).isGenerated
-                            ? 'hover:bg-green-50 text-slate-400 hover:text-green-600'
-                            : 'text-slate-300 cursor-not-allowed'
-                        }`}
-                        title={(report as ReportHistory & { isGenerated?: boolean }).isGenerated ? "Excel로 다운로드" : "Report Generate 필요"}
-                      >
-                        <Download size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteReport(report.id, e)}
-                        className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
-                        title="Delete report"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => handleEditReport(report, e)}
+                          className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Inspection에서 수정"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => handleExportExcel(report, e)}
+                          disabled={!(report as ReportHistory & { isGenerated?: boolean }).isGenerated}
+                          className={`p-1 rounded transition-colors ${
+                            (report as ReportHistory & { isGenerated?: boolean }).isGenerated
+                              ? 'hover:bg-green-50 text-slate-400 hover:text-green-600'
+                              : 'text-slate-300 cursor-not-allowed'
+                          }`}
+                          title={(report as ReportHistory & { isGenerated?: boolean }).isGenerated ? "Excel로 다운로드" : "Report Generate 필요"}
+                        >
+                          <Download size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteReport(report.id, e)}
+                          className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-colors"
+                          title="Delete report"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

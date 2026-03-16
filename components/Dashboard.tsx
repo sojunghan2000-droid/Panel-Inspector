@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { InspectionRecord, StatData, QRCodeData, ReportHistory } from '../types';
+import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
-import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
+import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2, Pencil, Check, X, Lock, LockOpen } from 'lucide-react';
 import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,12 @@ interface DashboardProps {
   onReportsUpdate?: (reports: ReportHistory[]) => void;
   qrCodes?: QRCodeData[];
   reports?: ReportHistory[];
+  inspectionHistory?: InspectionHistoryEntry[];
+  onResetAllInspections?: (groupId: string) => Promise<void>;
+  onSnapshotInspections?: (groupId: string) => Promise<void>;
+  onDeleteInspectionHistory?: (id: string) => Promise<void>;
+  onRenameInspectionHistory?: (id: string, newGroupId: string) => Promise<void>;
+  onUnlockInspectionHistory?: (id: string) => Promise<void>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -31,9 +37,24 @@ const Dashboard: React.FC<DashboardProps> = ({
   onReportsUpdate,
   qrCodes = [],
   reports = [],
+  inspectionHistory = [],
+  onResetAllInspections,
+  onSnapshotInspections,
+  onDeleteInspectionHistory,
+  onRenameInspectionHistory,
+  onUnlockInspectionHistory,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
+  const [isInspectionHistoryCollapsed, setIsInspectionHistoryCollapsed] = useState(true);
+
+  // Inspection History 기록 모달 상태
+  const [historyModal, setHistoryModal] = useState<{ mode: 'snapshot' | 'reset'; groupId: string } | null>(null);
+  // Inspection History 이름 편집 상태
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+  const [editingHistoryName, setEditingHistoryName] = useState<string>('');
+  // 잠금 해제 모달
+  const [unlockModal, setUnlockModal] = useState<{ entryId: string; password: string; error: boolean } | null>(null);
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -1023,6 +1044,128 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-full min-h-0">
+
+      {/* Inspection History 기록 모달 */}
+      {historyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            {/* 모달 헤더 */}
+            <div className={`px-5 py-4 ${historyModal.mode === 'reset' ? 'bg-orange-600' : 'bg-blue-600'} text-white`}>
+              <h3 className="font-bold text-base">
+                {historyModal.mode === 'reset' ? '전체 초기화' : '업데이트'}
+              </h3>
+              <p className="text-xs mt-0.5 opacity-80">
+                {historyModal.mode === 'reset'
+                  ? '통계를 저장하고 모든 패널을 미점검으로 초기화합니다.'
+                  : '마지막 검사 기록의 현황을 현재 상태로 업데이트합니다.'}
+              </p>
+            </div>
+            {/* 모달 본문 */}
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">그룹 ID</label>
+                <input
+                  type="text"
+                  value={historyModal.groupId}
+                  onChange={e => setHistoryModal(prev => prev ? { ...prev, groupId: e.target.value } : null)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && historyModal.groupId.trim()) {
+                      const gid = historyModal.groupId.trim();
+                      setHistoryModal(null);
+                      if (historyModal.mode === 'snapshot') await onSnapshotInspections?.(gid);
+                      else await onResetAllInspections?.(gid);
+                    }
+                    if (e.key === 'Escape') setHistoryModal(null);
+                  }}
+                  placeholder="예: 3월 검사"
+                  autoFocus
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+              {historyModal.mode === 'reset' && (
+                <div className="flex items-start gap-2 bg-orange-50 rounded-lg px-3 py-2 border border-orange-200">
+                  <svg className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  <p className="text-xs text-orange-700">모든 패널 상태가 <b>미점검</b>으로 변경됩니다. 기존 Reports는 유지됩니다.</p>
+                </div>
+              )}
+            </div>
+            {/* 모달 버튼 */}
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                onClick={() => setHistoryModal(null)}
+                className="flex-1 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const gid = historyModal.groupId.trim();
+                  if (!gid) return;
+                  setHistoryModal(null);
+                  if (historyModal.mode === 'snapshot') await onSnapshotInspections?.(gid);
+                  else await onResetAllInspections?.(gid);
+                }}
+                disabled={!historyModal.groupId.trim()}
+                className={`flex-1 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-40 ${historyModal.mode === 'reset' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {historyModal.mode === 'reset' ? '초기화 실행' : '기록 저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 잠금 해제 모달 */}
+      {unlockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden">
+            <div className="px-5 py-4 bg-slate-700 text-white flex items-center gap-2">
+              <LockOpen size={16} />
+              <h3 className="font-bold text-base">잠금 해제</h3>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-slate-600">비밀번호를 입력하세요.</p>
+              <input
+                type="password"
+                value={unlockModal.password}
+                onChange={e => setUnlockModal(prev => prev ? { ...prev, password: e.target.value, error: false } : null)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter') {
+                    if (unlockModal.password === 'secc') {
+                      await onUnlockInspectionHistory?.(unlockModal.entryId);
+                      setUnlockModal(null);
+                    } else {
+                      setUnlockModal(prev => prev ? { ...prev, error: true } : null);
+                    }
+                  }
+                  if (e.key === 'Escape') setUnlockModal(null);
+                }}
+                autoFocus
+                placeholder="비밀번호"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700 focus:ring-2 focus:ring-slate-500 focus:border-transparent outline-none text-sm"
+              />
+              {unlockModal.error && (
+                <p className="text-xs text-red-500">비밀번호가 올바르지 않습니다.</p>
+              )}
+            </div>
+            <div className="flex gap-2 px-5 pb-5">
+              <button onClick={() => setUnlockModal(null)} className="flex-1 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">취소</button>
+              <button
+                onClick={async () => {
+                  if (unlockModal.password === 'secc') {
+                    await onUnlockInspectionHistory?.(unlockModal.entryId);
+                    setUnlockModal(null);
+                  } else {
+                    setUnlockModal(prev => prev ? { ...prev, error: true } : null);
+                  }
+                }}
+                className="flex-1 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+              >확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Panel: Stats & List */}
       <div className={`
         ${selectedId ? 'hidden lg:flex' : 'flex'} 
@@ -1098,12 +1241,215 @@ const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
 
+        {/* Inspection History - Collapsible */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 shrink-0 overflow-hidden">
+          {/* 헤더: 타이틀 + 전체 초기화 버튼 + 토글 */}
+          <div className="flex items-center px-4 md:px-5 py-3 gap-2">
+            <button
+              onClick={() => setIsInspectionHistoryCollapsed(!isInspectionHistoryCollapsed)}
+              className="flex-1 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-lg py-1 px-1"
+            >
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Inspection History</h3>
+              <svg
+                className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isInspectionHistoryCollapsed ? '' : 'rotate-180'}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {/* 업데이트 버튼 (마지막 기록 통계 갱신 — 잠긴 항목이면 비활성) */}
+            {onSnapshotInspections && (() => {
+              const isLocked = inspectionHistory.length > 0 && inspectionHistory[0].locked;
+              return (
+                <button
+                  onClick={() => !isLocked && onSnapshotInspections('')}
+                  disabled={isLocked}
+                  className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium ${isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                  title={isLocked ? '잠긴 기록은 업데이트할 수 없습니다' : '마지막 검사 기록 현황 업데이트'}
+                >
+                  {isLocked ? <Lock size={13} /> : <BookmarkPlus size={13} />}
+                  <span className="hidden sm:inline">{isLocked ? '잠금' : '업데이트'}</span>
+                </button>
+              );
+            })()}
+            {/* 전체 초기화 버튼 */}
+            {onResetAllInspections && (
+              <button
+                onClick={() => setHistoryModal({ mode: 'reset', groupId: `${new Date().getMonth() + 1}월 검사` })}
+                className="shrink-0 flex items-center gap-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
+                title="전체 Inspection 미점검 초기화"
+              >
+                <RefreshCw size={13} />
+                <span className="hidden sm:inline">전체 초기화</span>
+              </button>
+            )}
+          </div>
+          {!isInspectionHistoryCollapsed && (
+            <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-3">
+              {inspectionHistory.length === 0 ? (
+                /* 빈 상태: 바로 기록 CTA */
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <p className="text-sm text-slate-400">점검 기록이 없습니다.</p>
+                  {onResetAllInspections && (
+                    <button
+                      onClick={() => setHistoryModal({ mode: 'reset', groupId: `${new Date().getMonth() + 1}월 검사` })}
+                      className="flex items-center gap-2 text-sm bg-orange-600 text-white hover:bg-orange-700 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                    >
+                      <RefreshCw size={14} />
+                      첫 기록 시작하기
+                    </button>
+                  )}
+                </div>
+              ) : (
+                inspectionHistory.map(entry => {
+                  const dateStr = new Date(entry.createdAt).toLocaleString('ko-KR', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                  });
+                  return (
+                    <div key={entry.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                      {/* 그룹 헤더 */}
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-slate-700 text-white">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {editingHistoryId === entry.id ? (
+                            /* 인라인 편집 모드 */
+                            <input
+                              type="text"
+                              value={editingHistoryName}
+                              onChange={e => setEditingHistoryName(e.target.value)}
+                              onKeyDown={async e => {
+                                if (e.key === 'Enter' && editingHistoryName.trim()) {
+                                  await onRenameInspectionHistory?.(entry.id, editingHistoryName.trim());
+                                  setEditingHistoryId(null);
+                                }
+                                if (e.key === 'Escape') setEditingHistoryId(null);
+                              }}
+                              autoFocus
+                              className="flex-1 min-w-0 bg-slate-600 text-white text-sm font-bold rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          ) : (
+                            <>
+                              <span className="font-bold text-sm truncate">{entry.groupId}</span>
+                              <span className="text-xs text-slate-300 whitespace-nowrap">{dateStr}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {entry.locked ? (
+                            /* 잠금 상태 — 잠금 해제 버튼만 표시 */
+                            <button
+                              onClick={() => setUnlockModal({ entryId: entry.id, password: '', error: false })}
+                              className="flex items-center gap-1 p-1 px-2 hover:bg-slate-600 rounded text-amber-400 hover:text-amber-300 transition-colors text-xs font-medium"
+                              title="잠금 해제"
+                            >
+                              <Lock size={12} />
+                              <span>잠금 해제</span>
+                            </button>
+                          ) : editingHistoryId === entry.id ? (
+                            /* 이름 편집 중 — 확인/취소 */
+                            <>
+                              <button
+                                onClick={async () => {
+                                  if (editingHistoryName.trim()) {
+                                    await onRenameInspectionHistory?.(entry.id, editingHistoryName.trim());
+                                  }
+                                  setEditingHistoryId(null);
+                                }}
+                                className="p-1 hover:bg-slate-600 rounded text-emerald-400 hover:text-emerald-300 transition-colors"
+                              >
+                                <Check size={13} />
+                              </button>
+                              <button
+                                onClick={() => setEditingHistoryId(null)}
+                                className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-white transition-colors"
+                              >
+                                <X size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            /* 기본 — 편집/삭제 버튼 */
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditingHistoryId(entry.id);
+                                  setEditingHistoryName(entry.groupId);
+                                }}
+                                className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-blue-300 transition-colors"
+                                title="이름 수정"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              {onDeleteInspectionHistory && (
+                                <button
+                                  onClick={() => onDeleteInspectionHistory(entry.id)}
+                                  className="p-1 hover:bg-slate-600 rounded text-slate-400 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {/* Dashboard Overview 스타일 통계 4칸 */}
+                      <div className="grid grid-cols-2 gap-2 p-2">
+                        <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-100">
+                          <div>
+                            <p className="text-xs text-slate-500">검사 완료율</p>
+                            <p className="text-lg font-bold text-emerald-600">{entry.stats.completionRate}%</p>
+                          </div>
+                          <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border border-blue-100">
+                          <div>
+                            <p className="text-xs text-slate-500">총 진행 건</p>
+                            <p className="text-lg font-bold text-blue-600">{entry.stats.inProgress}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2 border border-red-100">
+                          <div>
+                            <p className="text-xs text-slate-500">접지 불량 건</p>
+                            <p className="text-lg font-bold text-red-500">{entry.stats.groundFaultCount}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                          <div>
+                            <p className="text-xs text-slate-500">전체 패널</p>
+                            <p className="text-lg font-bold text-slate-700">{entry.stats.total}</p>
+                          </div>
+                          <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                          </div>
+                        </div>
+                      </div>
+                      {/* 세부 수치 바 */}
+                      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+                        <span>완료 <b className="text-emerald-600">{entry.stats.complete}</b></span>
+                        <span>점검 중 <b className="text-blue-600">{entry.stats.inProgress}</b></span>
+                        <span>미점검 <b className="text-slate-500">{entry.stats.pending}</b></span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
         {/* List Component */}
         <div className="flex-1 min-h-0">
-          <BoardList 
-            items={inspections} 
-            selectedId={selectedId} 
-            onSelect={handleSelectId} 
+          <BoardList
+            items={inspections}
+            selectedId={selectedId}
+            onSelect={handleSelectId}
           />
         </div>
       </div>

@@ -1,7 +1,7 @@
 //의미없는 주석
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { InspectionRecord, QRCodeData, ReportHistory } from './types';
+import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from './types';
 import Dashboard from './components/Dashboard';
 import DashboardOverview from './components/DashboardOverview';
 import ReportsList from './components/ReportsList';
@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, LogOut } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
@@ -18,7 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase } from './services/supabaseService';
+import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -148,15 +148,28 @@ const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [qrCodes, setQrCodesState] = useState<QRCodeData[]>([]);
 
-  // QR Codes 변경 시 IndexedDB에도 저장
+  // QR Codes 변경 시 IndexedDB + Supabase에 저장 (삭제 포함)
   const setQrCodes = useCallback(async (newQrCodes: QRCodeData[] | ((prev: QRCodeData[]) => QRCodeData[])) => {
     setQrCodesState(prev => {
       const updatedQrCodes = typeof newQrCodes === 'function' ? newQrCodes(prev) : newQrCodes;
-      // 비동기로 IndexedDB에 저장
+
+      // 삭제된 QR ID 감지
+      const prevIds = new Set(prev.map(qr => qr.id));
+      const newIds = new Set(updatedQrCodes.map(qr => qr.id));
+      const deletedIds = [...prevIds].filter(id => !newIds.has(id as string)) as string[];
+
+      // 삭제된 항목: IndexedDB + Supabase에서 제거
+      deletedIds.forEach((id: string) => {
+        deleteQRCodeFromIDB(id).catch(console.error);
+        if (session && isConfigured) {
+          deleteQRCodeFromSupabase(id).catch(console.error);
+        }
+      });
+
+      // 나머지 저장
       saveAllQRCodes(updatedQrCodes).catch(error => {
         console.error('QR Codes IndexedDB 저장 오류:', error);
       });
-      // Supabase push (fire-and-forget)
       if (session && isConfigured) {
         pushAllQRCodes(updatedQrCodes).catch(console.error);
       }
@@ -174,6 +187,7 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
+  const [inspectionHistory, setInspectionHistory] = useState<InspectionHistoryEntry[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
@@ -370,7 +384,13 @@ const App: React.FC = () => {
           setReports(savedReports);
         }
 
-        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length || INITIAL_INSPECTIONS.length}개 패널, ${savedQRCodes.length || 65}개 QR 코드, ${savedReports.length}개 보고서`);
+        // 7. Inspection History 로드
+        const savedHistory = await getAllInspectionHistory();
+        if (savedHistory && savedHistory.length > 0) {
+          setInspectionHistory(savedHistory);
+        }
+
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length || INITIAL_INSPECTIONS.length}개 패널, ${savedQRCodes.length || 65}개 QR 코드, ${savedReports.length}개 보고서, ${savedHistory.length}개 점검 이력`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
         // 오류 발생 시 빈 배열로 시작 (Panel Master에서 등록 필요)
@@ -603,6 +623,88 @@ const App: React.FC = () => {
   }, [session]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
+  // Inspection History 항목 이름 변경
+  const handleRenameInspectionHistory = useCallback(async (id: string, newGroupId: string) => {
+    setInspectionHistory(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, groupId: newGroupId } : e);
+      const target = updated.find(e => e.id === id);
+      if (target) saveInspectionHistory(target).catch(console.error);
+      return updated;
+    });
+  }, []);
+
+  // 마지막 Inspection History 항목의 통계를 현재 상태로 업데이트 (잠긴 항목은 무시)
+  const handleSnapshotInspections = useCallback(async (_groupId: string) => {
+    const total = inspections.length;
+    const complete = inspections.filter(i => i.status === 'Complete').length;
+    const inProgress = inspections.filter(i => i.status === 'In Progress').length;
+    const pending = inspections.filter(i => i.status === 'Pending').length;
+    const completionRate = total > 0 ? Math.round((complete / total) * 100) : 0;
+    const groundFaultCount = inspections.filter(i => i.grounding === '불량').length;
+    const newStats = { total, complete, inProgress, pending, completionRate, groundFaultCount };
+
+    setInspectionHistory(prev => {
+      if (prev.length === 0 || prev[0].locked) return prev; // 잠긴 항목은 업데이트 안 함
+      const updated = { ...prev[0], stats: newStats };
+      saveInspectionHistory(updated).catch(console.error);
+      return [updated, ...prev.slice(1)];
+    });
+  }, [inspections]);
+
+  // Inspection History 항목 잠금 해제 (비밀번호 확인 후)
+  const handleUnlockInspectionHistory = useCallback(async (id: string) => {
+    setInspectionHistory(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, locked: false } : e);
+      const target = updated.find(e => e.id === id);
+      if (target) saveInspectionHistory(target).catch(console.error);
+      return updated;
+    });
+  }, []);
+
+  // 전체 Inspection 초기화 → Inspection History 스냅샷 저장
+  const handleResetAllInspections = useCallback(async (groupId: string) => {
+    const now = new Date().toISOString();
+    const total = inspections.length;
+    const complete = inspections.filter(i => i.status === 'Complete').length;
+    const inProgress = inspections.filter(i => i.status === 'In Progress').length;
+    const pending = inspections.filter(i => i.status === 'Pending').length;
+    const completionRate = total > 0 ? Math.round((complete / total) * 100) : 0;
+    const groundFaultCount = inspections.filter(i => i.grounding === '불량').length;
+
+    const entry: InspectionHistoryEntry = {
+      id: `ih-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      groupId,
+      createdAt: now,
+      stats: { total, complete, inProgress, pending, completionRate, groundFaultCount },
+    };
+
+    // 기존 최신 항목 잠금 처리
+    setInspectionHistory(prev => {
+      if (prev.length > 0 && !prev[0].locked) {
+        const locked = { ...prev[0], locked: true };
+        saveInspectionHistory(locked).catch(console.error);
+        return [locked, ...prev.slice(1)];
+      }
+      return prev;
+    });
+
+    // IndexedDB에 스냅샷 저장
+    await saveInspectionHistory(entry);
+    setInspectionHistory(prev => [entry, ...prev]);
+
+    // 모든 Inspection status → Pending (Reports는 유지)
+    const resetInspections = inspections.map(i => ({ ...i, status: 'Pending' as const, updatedAt: now }));
+    setInspections(resetInspections);
+    for (const insp of resetInspections) {
+      await saveInspection(insp);
+    }
+    if (session && isConfigured) {
+      import('./services/supabaseService').then(({ upsertInspections }) => {
+        upsertInspections(resetInspections).catch(console.error);
+      });
+    }
+  }, [inspections, session]);
+
   const handleReportsImported = useCallback(async (importedReports: ReportHistory[]) => {
     setReports(prev => {
       // reportId 기준 Map으로 병합
@@ -918,7 +1020,7 @@ const App: React.FC = () => {
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors text-sm font-medium"
             >
               <ScanLine size={16} />
-              <span>QR Scan</span>
+              <span className="hidden sm:inline">QR Scan</span>
             </button>
 
             {/* 더보기 메뉴 버튼 - 항상 표시 */}
@@ -1180,11 +1282,21 @@ const App: React.FC = () => {
                     onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
                     reports={reports}
+                    inspectionHistory={inspectionHistory}
+                    onResetAllInspections={handleResetAllInspections}
+                    onSnapshotInspections={handleSnapshotInspections}
+                    onRenameInspectionHistory={handleRenameInspectionHistory}
+                    onUnlockInspectionHistory={handleUnlockInspectionHistory}
+                    onDeleteInspectionHistory={async (id) => {
+                      await deleteInspectionHistory(id);
+                      setInspectionHistory(prev => prev.filter(e => e.id !== id));
+                    }}
                   />
                 </ErrorBoundary>
               ) : currentPage === 'reports' ? (
                 <ReportsList
                   reports={reports}
+                  inspectionHistory={inspectionHistory}
                   onDeleteReport={async (id) => {
                     setReports(prev => prev.filter(r => r.id !== id));
                     await deleteReportFromDB(id); // IndexedDB 삭제

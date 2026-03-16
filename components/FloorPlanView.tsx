@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { InspectionRecord, QRCodeData } from '../types';
-import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ChevronLeft, ZoomOut } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
+import { pushFloorPlan } from '../services/syncService';
+import { upsertFloorPlanUrl, fetchAllFloorPlanUrls } from '../services/supabaseService';
 
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
@@ -133,14 +135,40 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   // prop으로 전달된 층수가 있으면 사용, 없으면 내부 상태 사용
   const selectedFloor = propSelectedFloor ?? internalSelectedFloor;
 
-  // IndexedDB에서 배경 이미지 로드 (8개 층 전체)
+  // IndexedDB에서 배경 이미지 로드 (없으면 Supabase Storage fallback)
   useEffect(() => {
     const loadAllFloorPlanImages = async () => {
       try {
+        // Supabase Storage URL 목록 먼저 조회 (fallback용)
+        let storageUrls: Record<string, string> = {};
+        try {
+          const urlList = await fetchAllFloorPlanUrls();
+          urlList.forEach(({ floor, url }) => { storageUrls[floor] = url; });
+        } catch {
+          // Supabase 연결 실패 시 IndexedDB만 사용
+        }
+
         const images: Record<string, string | null> = {};
         for (const floor of ALL_FLOORS) {
+          // 1순위: IndexedDB
           const img = await getFloorPlanImageAsDataURL(floor);
-          images[floor] = img;
+          if (img) {
+            images[floor] = img;
+          } else if (storageUrls[floor]) {
+            // 2순위: Supabase Storage URL → fetch → IndexedDB에도 저장
+            try {
+              const res = await fetch(storageUrls[floor]);
+              const blob = await res.blob();
+              await saveFloorPlanImage(floor, blob);
+              const dataUrl = URL.createObjectURL(blob);
+              images[floor] = dataUrl;
+              console.log(`[FloorPlan] ${floor} Supabase Storage에서 복원`);
+            } catch {
+              images[floor] = null;
+            }
+          } else {
+            images[floor] = null;
+          }
         }
         setFloorPlanImages(images);
       } catch (error) {
@@ -168,6 +196,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
         // state 업데이트
         setFloorPlanImages(prev => ({ ...prev, [selectedFloor]: dataUrl }));
+
+        // Supabase Storage에 백그라운드 업로드
+        pushFloorPlan(selectedFloor, blob)
+          .then(url => upsertFloorPlanUrl(selectedFloor, url))
+          .then(() => console.log(`[FloorPlan] ${selectedFloor} Supabase Storage 업로드 완료`))
+          .catch(err => console.warn(`[FloorPlan] ${selectedFloor} Supabase 업로드 실패 (로컬 저장은 완료):`, err));
 
         alert(`${selectedFloor} 층 배경 이미지가 저장되었습니다.`);
       };
@@ -870,18 +904,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      {selectedInspectionId && (
-        <button
-          onClick={() => {
-            setSelectedInspection(null);
-            setIsEditingInspectionPosition(false);
-          }}
-          className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors flex items-center gap-2"
-        >
-          <ChevronLeft size={16} />
-          전체 보기
-        </button>
-      )}
       <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
@@ -1097,10 +1119,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               >
                 {/* panelNo 라벨 (점 위쪽) */}
                 <div
-                  className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                  className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-1 sm:px-2 py-0 sm:py-0.5 text-[7px] sm:text-[10px] font-semibold text-white shadow-sm"
                   style={{
                     bottom: '100%',
-                    marginBottom: '4px',
+                    marginBottom: '3px',
                     backgroundColor: trColor,
                   }}
                 >
@@ -1375,10 +1397,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
         {/* 위젯 선택 시 하단 안내 바 (일반 마커 클릭 = 위치 이동 모드) */}
         {selectedInspection && !startInEditMode && mode !== 'dashboard' && !readOnly && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-3 text-sm font-medium animate-fade-in">
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin size={14} />
-              <strong>{selectedInspection.panelNo}</strong> 선택됨 — 도면을 클릭하면 위치가 이동됩니다
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 text-xs sm:text-sm font-medium animate-fade-in max-w-[90vw]">
+            <span className="inline-flex items-center gap-1.5 min-w-0">
+              <MapPin size={14} className="shrink-0" />
+              <strong className="shrink-0">{selectedInspection.panelNo}</strong>
+              <span className="hidden sm:inline truncate">선택됨 — 도면을 클릭하면 위치가 이동됩니다</span>
+              <span className="sm:hidden">위치 이동 중</span>
             </span>
             <button
               onClick={() => {
@@ -1390,6 +1414,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               확인
             </button>
           </div>
+        )}
+
+        {/* 전체 보기 버튼 (좌하단) */}
+        {selectedInspectionId && (
+          <button
+            onClick={() => {
+              setSelectedInspection(null);
+              setIsEditingInspectionPosition(false);
+            }}
+            className="absolute bottom-3 left-3 z-20 bg-white/90 hover:bg-white rounded-lg px-3 py-1.5 shadow-md text-xs font-medium text-slate-600 border border-slate-200 flex items-center gap-1.5"
+          >
+            전체 보기
+          </button>
         )}
 
         {/* 줌 리셋 버튼 */}

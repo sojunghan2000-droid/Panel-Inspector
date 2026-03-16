@@ -93,6 +93,22 @@ export interface ReportHistory {
   htmlUrl?: string; // Storage URL (HTML 파일이 reports 버킷에 저장된 경우)
   htmlSizeBytes?: number; // 저장된 HTML 파일 크기 (바이트)
   migratedToStorage?: boolean; // Storage 마이그레이션 완료 여부
+  inspectionGroupId?: string; // 소속 점검 그룹 ID (예: "3월 검사")
+}
+
+export interface InspectionHistoryEntry {
+  id: string;             // 고유 ID (timestamp 기반)
+  groupId: string;        // 사용자 정의 그룹명 (예: "3월 검사")
+  createdAt: string;      // 초기화 시점 ISO string
+  locked?: boolean;       // 잠금 여부 (잠금 시 업데이트/이름수정/삭제 불가)
+  stats: {
+    total: number;
+    complete: number;
+    inProgress: number;
+    pending: number;
+    completionRate: number;   // 완료율 (%) = complete / total * 100
+    groundFaultCount: number; // 접지 불량 건수 (grounding === '불량')
+  };
 }
 
 export interface QRCodeData {

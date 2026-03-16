@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
 
 interface InspectionsDB extends DBSchema {
   inspections: {
@@ -36,6 +36,10 @@ interface InspectionsDB extends DBSchema {
     value: ReportHistory;
     indexes: { 'by-boardId': string };
   };
+  inspectionHistory: {
+    key: string; // id
+    value: InspectionHistoryEntry;
+  };
 }
 
 let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
@@ -44,13 +48,14 @@ let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
  * IndexedDB 초기화
  * 버전 2: qrCodes, floorPlanImages 저장소 추가
  * 버전 3: reports 저장소 추가
+ * 버전 4: inspectionHistory 저장소 추가
  */
 export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
   if (dbInstance) {
     return dbInstance;
   }
 
-  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 3, {
+  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 4, {
     upgrade(db, oldVersion, newVersion) {
       // Inspections 저장소
       if (!db.objectStoreNames.contains('inspections')) {
@@ -91,6 +96,11 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
           keyPath: 'id',
         });
         reportStore.createIndex('by-boardId', 'boardId', { unique: false });
+      }
+
+      // Inspection History 저장소 (버전 4에서 추가)
+      if (!db.objectStoreNames.contains('inspectionHistory')) {
+        db.createObjectStore('inspectionHistory', { keyPath: 'id' });
       }
     },
   });
@@ -449,4 +459,31 @@ export const deleteReport = async (id: string): Promise<void> => {
 export const clearAllReports = async (): Promise<void> => {
   const db = await initIndexedDB();
   await db.clear('reports');
+};
+
+// ─── Inspection History ──────────────────────────────────────────────────────
+
+/**
+ * InspectionHistoryEntry 저장
+ */
+export const saveInspectionHistory = async (entry: InspectionHistoryEntry): Promise<void> => {
+  const db = await initIndexedDB();
+  await db.put('inspectionHistory', entry);
+};
+
+/**
+ * 모든 InspectionHistoryEntry 조회 (최신순)
+ */
+export const getAllInspectionHistory = async (): Promise<InspectionHistoryEntry[]> => {
+  const db = await initIndexedDB();
+  const all = await db.getAll('inspectionHistory');
+  return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+/**
+ * InspectionHistoryEntry 삭제
+ */
+export const deleteInspectionHistory = async (id: string): Promise<void> => {
+  const db = await initIndexedDB();
+  await db.delete('inspectionHistory', id);
 };
