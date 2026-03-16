@@ -273,13 +273,13 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // YYYY-MM-DD HH:mm 형식으로 한 줄에 표시
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}`;
   };
 
   return (
@@ -423,31 +423,34 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                       ) : (
                         <div className="w-4 shrink-0" /> // 정렬용 빈 공간
                       )}
-                      <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        {getStatusIcon(report.status)}
-                        <span className="font-semibold text-slate-800">{report.reportId}</span>
-                      </div>
-                      <p className="text-sm text-slate-600 mb-2">PNL NO.: {report.boardId}</p>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Calendar size={12} />
-                        <span>{formatDate(report.generatedAt)}</span>
-                      </div>
-                      {/* 소속 점검 그룹 ID 표시 */}
-                      {(() => {
-                        const reportTime = new Date(report.generatedAt).getTime();
-                        // report 생성 시점 이전에 가장 가까운 그룹 찾기
-                        const group = [...inspectionHistory]
-                          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                          .find(e => new Date(e.createdAt).getTime() <= reportTime);
-                        if (!group) return null;
-                        return (
-                          <div className="flex items-center gap-1 text-xs text-indigo-500 mt-0.5">
-                            <Tag size={10} />
-                            <span>{group.groupId}</span>
+                      <div className="flex-1 min-w-0">
+                        {/* RPT 번호 — 한 줄 */}
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          {getStatusIcon(report.status)}
+                          <span className="font-semibold text-slate-800 truncate whitespace-nowrap">{report.reportId}</span>
+                        </div>
+                        {/* PNL NO. */}
+                        <p className="text-sm text-slate-600 mb-1 truncate">PNL NO.: {report.boardId}</p>
+                        {/* 날짜 + 그룹 ID — 한 줄 */}
+                        <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            <Calendar size={11} />
+                            <span>{formatDate(report.generatedAt)}</span>
                           </div>
-                        );
-                      })()}
+                          {(() => {
+                            const reportTime = new Date(report.generatedAt).getTime();
+                            const group = [...inspectionHistory]
+                              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                              .find(e => new Date(e.createdAt).getTime() <= reportTime);
+                            if (!group) return null;
+                            return (
+                              <span className="flex items-center gap-0.5 text-indigo-500 font-medium whitespace-nowrap">
+                                <Tag size={10} />
+                                {group.groupId}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div> {/* flex-1 inner */}
                     </div> {/* flex items-start gap-3 */}
                     <div className="flex items-center gap-2">
