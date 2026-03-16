@@ -18,6 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
+import { deleteReport as deleteReportFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -1186,7 +1187,10 @@ const App: React.FC = () => {
                   reports={reports}
                   onDeleteReport={async (id) => {
                     setReports(prev => prev.filter(r => r.id !== id));
-                    await deleteReportFromDB(id); // IndexedDB에서도 삭제
+                    await deleteReportFromDB(id); // IndexedDB 삭제
+                    if (session && isConfigured) {
+                      deleteReportFromSupabase(id).catch(console.error); // Supabase DB + Storage 삭제
+                    }
                   }}
                   inspections={inspections}
                   onEditReport={(boardId, report) => {

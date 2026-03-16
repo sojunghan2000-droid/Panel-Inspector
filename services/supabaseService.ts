@@ -315,6 +315,38 @@ export async function fetchAllFloorPlanUrls(): Promise<{ floor: string; url: str
 // ─────────────────────────────────────────
 
 /**
+ * 보고서를 Supabase DB + Storage에서 삭제
+ * - reports 테이블 행 삭제
+ * - html_url이 있으면 Storage 파일도 삭제 (best-effort)
+ */
+export async function deleteReport(reportId: string): Promise<void> {
+  // 1. html_url 조회 (Storage 파일 삭제용)
+  const { data: row } = await supabase
+    .from('reports')
+    .select('html_url')
+    .eq('id', reportId)
+    .single();
+
+  // 2. DB 행 삭제
+  const { error } = await supabase.from('reports').delete().eq('id', reportId);
+  if (error) throw error;
+
+  // 3. Storage 파일 삭제 (실패해도 무시 — orphan 파일 허용)
+  if (row?.html_url) {
+    try {
+      const urlStr = row.html_url as string;
+      const match = urlStr.match(/\/object\/(?:public|sign)\/reports\/(.+)/);
+      const storagePath = match ? match[1].split('?')[0] : null;
+      if (storagePath) {
+        await supabase.storage.from('reports').remove([storagePath]);
+      }
+    } catch {
+      // Storage 삭제 실패는 무시
+    }
+  }
+}
+
+/**
  * Blob을 Supabase Storage에 업로드하고 공개 URL 반환
  */
 export async function uploadBlob(bucket: string, path: string, blob: Blob): Promise<string> {
