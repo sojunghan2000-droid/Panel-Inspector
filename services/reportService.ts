@@ -415,15 +415,12 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   window.URL.revokeObjectURL(url);
 };
 
-export const generateReport = (
-  record: InspectionRecord,
-  onReportSaved?: (report: ReportHistory) => void
-): void => {
-  // In Progress 상태는 리포트 생성하지 않음
-  if (record.status === 'In Progress') {
-    return;
-  }
-
+/**
+ * 보고서 HTML 컨텐츠만 생성 (새 창 열기 없음, 엑셀 생성 없음)
+ * - Dashboard.handleSave()에서 조용히 저장할 때 사용
+ * - generateReport()에서도 내부적으로 호출
+ */
+export const generateReportHtml = (record: InspectionRecord): string => {
   const reportDate = new Date().toLocaleString('ko-KR', {
     year: 'numeric',
     month: '2-digit',
@@ -432,21 +429,15 @@ export const generateReport = (
     minute: '2-digit'
   });
 
-  // Excel 파일 생성 (async 처리)
-  generateExcelReport(record).catch((error) => {
-    console.error('Excel 생성 오류:', error);
-    alert('Excel 파일 생성 중 오류가 발생했습니다.');
-  });
-
   // HTML Report용 사전 계산 변수
-  // 1차 메인 차단기: record 최상위 필드 사용
   const mainCapacity = Number(record.breakerCapacity) || 0;
   const mainCurrent = Math.max(
     record.currentL1 || 0,
     record.currentL2 || 0,
     record.currentL3 || 0
   );
-  const acceptedLoad = mainCapacity * (100 / 100); // 기본 수용율 100%
+  // 수용율 적용 (record.acceptanceRate 우선, 없으면 100%)
+  const acceptedLoad = mainCapacity * ((record.acceptanceRate ?? 100) / 100);
 
   // 상별 부하 합계: record.breakers[] (2차 차단기)에서만 합산
   const rSum = (record.breakers || []).reduce((s, b) => s + (b.loadCapacityR || 0), 0);
@@ -765,6 +756,27 @@ export const generateReport = (
 </body>
 </html>
   `;
+
+  return htmlContent;
+};
+
+export const generateReport = (
+  record: InspectionRecord,
+  onReportSaved?: (report: ReportHistory) => void
+): void => {
+  // In Progress 상태는 리포트 생성하지 않음
+  if (record.status === 'In Progress') {
+    return;
+  }
+
+  // Excel 파일 생성 (async 처리)
+  generateExcelReport(record).catch((error) => {
+    console.error('Excel 생성 오류:', error);
+    alert('Excel 파일 생성 중 오류가 발생했습니다.');
+  });
+
+  // HTML 생성 (generateReportHtml에서 분리된 로직 재사용)
+  const htmlContent = generateReportHtml(record);
 
   const newReport = createReportFromRecord(record, htmlContent);
   // Generate 버튼으로 생성된 Report는 isGenerated = true

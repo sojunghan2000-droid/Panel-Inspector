@@ -4,7 +4,7 @@ import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
 import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
-import { generateReport, createReportFromRecord } from '../services/reportService';
+import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
 import { savePhoto, dataURLToBlob, saveReport } from '../services/indexedDBService';
@@ -119,9 +119,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       // 저장 후 currentFormData도 업데이트하여 화면이 사라지지 않도록
       setCurrentFormData(finalRecord);
 
-      // Report 자동 저장 (수정 저장 시 신규 Report로 Reports 목록에 반영)
-      const simpleHtml = `<html><body><h1>Inspection Report: ${finalRecord.panelNo}</h1><p>Status: ${finalRecord.status}</p><p>Last Inspection: ${finalRecord.lastInspectionDate}</p></body></html>`;
-      const report = createReportFromRecord(finalRecord, simpleHtml);
+      // Report 자동 저장 - generateReportHtml로 상세 HTML 생성 (새 창 열기 없음)
+      const detailedHtml = generateReportHtml(finalRecord);
+      const report = createReportFromRecord(finalRecord, detailedHtml);
       (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
 
