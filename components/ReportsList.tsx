@@ -445,7 +445,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                         {/* PNL NO. */}
                         <p className="text-sm text-slate-600 mb-1 truncate">PNL NO.: {report.boardId}</p>
                         {/* 날짜 + 그룹 ID — 한 줄 */}
-                        <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 overflow-hidden">
                           <div className="flex items-center gap-1 whitespace-nowrap">
                             <Calendar size={11} />
                             <span>{formatDate(report.generatedAt)}</span>
