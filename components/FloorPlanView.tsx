@@ -109,6 +109,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   // 줌 기능 상태
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
+  // 클릭 후 포커스 상태 (클릭해야 스크롤 줌 활성화)
+  const [isZoomFocused, setIsZoomFocused] = useState(false);
   // 팬(이동) 기능 상태
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const isPanningRef = useRef(false);
@@ -331,8 +333,24 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   }, [selectedInspection, onSelectionChange]);
 
-  // 줌: 마우스 휠 핸들러
+  // 도면 외부 클릭 시 줌 포커스 해제
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const el = zoomContainerRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setIsZoomFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // 줌: 마우스 휠 핸들러 (포커스 상태일 때만 동작)
+  const isZoomFocusedRef = useRef(false);
+  useEffect(() => { isZoomFocusedRef.current = isZoomFocused; }, [isZoomFocused]);
+
   const handleWheel = useCallback((e: WheelEvent) => {
+    if (!isZoomFocusedRef.current) return; // 클릭 전에는 스크롤 패스스루
     e.preventDefault();
     const container = zoomContainerRef.current;
     if (!container) return;
@@ -943,7 +961,24 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         </div>
       </div>
 
-      <div ref={zoomContainerRef} className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] p-6 overflow-hidden">
+      <div
+        ref={zoomContainerRef}
+        className="relative bg-slate-100 min-h-[40vh] md:min-h-[600px] p-6 overflow-hidden"
+        onClick={() => setIsZoomFocused(true)}
+      >
+        {/* 포커스 전 오버레이 힌트 */}
+        {!isZoomFocused && (
+          <div className="absolute inset-0 z-50 pointer-events-none flex items-end justify-center pb-4">
+            <div className="bg-black/50 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 9V5h4M19 9V5h-4M5 15v4h4M19 15v4h-4"/></svg>
+              클릭 후 스크롤로 확대/축소
+            </div>
+          </div>
+        )}
+        {/* 포커스 활성 표시 테두리 */}
+        {isZoomFocused && (
+          <div className="absolute inset-0 z-50 pointer-events-none ring-2 ring-blue-400 ring-inset rounded" />
+        )}
 
         {/* Floor Plan Image or Empty Message */}
         {!floorImagePath ? (

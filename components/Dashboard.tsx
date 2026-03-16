@@ -4,7 +4,7 @@ import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
 import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
-import { generateReport, createReportFromRecord } from '../services/reportService';
+import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
 import { savePhoto, dataURLToBlob, saveReport } from '../services/indexedDBService';
@@ -30,7 +30,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onReportGenerated,
   onReportsUpdate,
   qrCodes = [],
-  reports = []
+  reports = [],
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
@@ -90,6 +90,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Electron 환경 확인
   const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
 
+  // useRef로 최신 selectedId 보장 (stale closure 방지)
+  const selectedIdRef = useRef<string | null>(selectedId);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
   /**
    * PNL NO 저장 로직: 항상 직전 1개만 유지 (덮어쓰기)
    * - PNL NO당 저장 데이터는 1개
@@ -119,10 +123,12 @@ const Dashboard: React.FC<DashboardProps> = ({
       // 저장 후 currentFormData도 업데이트하여 화면이 사라지지 않도록
       setCurrentFormData(finalRecord);
 
-      // Report 자동 저장 (Generate 상태 = false)
-      const simpleHtml = `<html><body><h1>Inspection Report: ${finalRecord.panelNo}</h1><p>Status: ${finalRecord.status}</p><p>Last Inspection: ${finalRecord.lastInspectionDate}</p></body></html>`;
-      const report = createReportFromRecord(finalRecord, simpleHtml);
-      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = false;
+      // Report 자동 저장 - generateReportHtml로 상세 HTML 생성 (새 창 열기 없음)
+      const detailedHtml = generateReportHtml(finalRecord);
+
+      // Dashboard는 항상 새 Report를 생성 (ID 결정은 App.tsx의 onReportGenerated에서 처리)
+      const report = createReportFromRecord(finalRecord, detailedHtml);
+      (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
 
       // 상위 컴포넌트에도 알림

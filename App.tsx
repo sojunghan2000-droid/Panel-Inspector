@@ -18,6 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
+import { deleteReport as deleteReportFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -166,6 +167,10 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
+  const [editingReport, setEditingReport] = useState<ReportHistory | null>(null);
+  // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
+  const editingReportRef = useRef<ReportHistory | null>(null);
+  useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
@@ -1129,16 +1134,48 @@ const App: React.FC = () => {
                 />
               ) : currentPage === 'dashboard' ? (
                 <ErrorBoundary>
-                  <Dashboard 
+                  <Dashboard
                     inspections={inspections}
                     onUpdateInspections={updateInspections}
                     onScan={() => setShowScanner(true)}
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
                     onReportGenerated={async (report) => {
-                      setReports(prev => [report, ...prev]);
-                      await saveReport(report); // IndexedDB에도 저장
+                      // ref로 최신 editingReport 읽기 (stale closure 완전 방지)
+                      const snap = editingReportRef.current;
+
+                      console.log('[onReportGenerated] snap:', snap?.boardId, snap?.status, '| newReport.id:', report.id);
+
+                      setReports(prev => {
+                        if (snap?.status === 'Complete') {
+                          // Complete 펜버튼 수정 → 기존 보고서 유지 + 신규 행 추가
+                          console.log('[onReportGenerated] → Complete: 신규 행 추가');
+                          return [report, ...prev];
+                        } else if (snap && snap.status !== 'Complete') {
+                          // Non-Complete 펜버튼 수정 → 기존 ID 항목 교체
+                          console.log('[onReportGenerated] → Non-Complete: 기존 교체');
+                          const replaced = prev.map(r => r.id === snap.id ? report : r);
+                          return replaced.some(r => r.id === report.id) ? replaced : [report, ...prev];
+                        } else {
+                          // 일반 저장 → boardId 기준으로 기존 교체 (중복 방지)
+                          console.log('[onReportGenerated] → 일반 저장: boardId 교체');
+                          return [report, ...prev.filter(r => r.boardId !== report.boardId)];
+                        }
+                      });
+
+                      // IndexedDB: 기존 보고서 삭제 후 신규 저장 (Complete 펜버튼은 삭제 안 함)
+                      if (snap?.status !== 'Complete') {
+                        const oldId = snap?.id ?? reports.find(r => r.boardId === report.boardId)?.id;
+                        if (oldId && oldId !== report.id) {
+                          deleteReportFromDB(oldId).catch(console.error);
+                        }
+                      }
+                      await saveReport(report);
                       if (session && isConfigured) pushReport(report).catch(console.error);
+
+                      // editingReport 초기화
+                      editingReportRef.current = null;
+                      setEditingReport(null);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
@@ -1150,12 +1187,32 @@ const App: React.FC = () => {
                   reports={reports}
                   onDeleteReport={async (id) => {
                     setReports(prev => prev.filter(r => r.id !== id));
-                    await deleteReportFromDB(id); // IndexedDB에서도 삭제
+                    await deleteReportFromDB(id); // IndexedDB 삭제
+                    if (session && isConfigured) {
+                      deleteReportFromSupabase(id).catch(console.error); // Supabase DB + Storage 삭제
+                    }
                   }}
                   inspections={inspections}
-                  onEditReport={(boardId) => {
+                  onEditReport={(boardId, report) => {
                     // Inspection 페이지로 이동하면서 해당 패널 선택
+                    // ref 즉시 업데이트 (setState는 비동기라 stale 가능)
+                    editingReportRef.current = report;
+                    setEditingReport(report);
                     setSelectedInspectionId(boardId);
+
+                    // Complete 보고서 편집 시 → 상태 '미점검' 리셋 & 점검 조치 사항 템플릿 삽입
+                    if (report.status === 'Complete') {
+                      setInspections(prev => prev.map(insp =>
+                        insp.panelNo === boardId
+                          ? {
+                              ...insp,
+                              status: 'Pending',
+                              memo: '1. 수치 점검 (기존 내용 대비 수치 변경이 없다면)\n1. 사진 점검 (기존 내용 대비 사진 변경이 없다면)',
+                            }
+                          : insp
+                      ));
+                    }
+
                     setCurrentPage('dashboard');
                   }}
                   onReportsImported={handleReportsImported}

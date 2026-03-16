@@ -71,6 +71,7 @@ export interface InspectionRecord {
   thermalImage?: ThermalImageData; // 열화상 측정 데이터
   loadSummary?: LoadSummary; // 부하 합계 정보
   updatedAt?: string; // ISO 8601 - Supabase 동기화용 타임스탬프
+  acceptanceRate?: number; // 수용율 (%), 기본값 100
 }
 
 export type InspectionStatus = InspectionRecord['status'];

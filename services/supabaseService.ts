@@ -192,8 +192,8 @@ export async function upsertReport(r: ReportHistory, htmlContent?: string): Prom
       htmlUrl = await uploadBlob('reports', storagePath, htmlBlob);
       migratedToStorage = true;
 
-      // Storage 업로드 성공 시: DB에 html_content 저장하지 않음 (공간 절약)
-      dbHtmlContent = null;
+      // Storage 업로드 성공 시: DB html_content는 빈 문자열 (NOT NULL 제약 대응)
+      dbHtmlContent = '';
 
       console.log(`[upsertReport] HTML → Storage 업로드 완료: ${storagePath} (${htmlSizeBytes} bytes)`);
     } catch (uploadError) {
@@ -258,16 +258,25 @@ export async function fetchReportHtml(reportId: string): Promise<string> {
   if (fetchError) throw new Error(`[fetchReportHtml] DB 조회 실패: ${fetchError.message}`);
   if (!reportRow) throw new Error(`[fetchReportHtml] 보고서를 찾을 수 없음: ${reportId}`);
 
-  // Step 2: Storage 우선 (html_url 존재)
+  // Step 2: Storage 우선 (html_url 존재) — SDK download 사용 (버킷 공개 여부 무관)
   if (reportRow.html_url) {
     try {
-      const htmlBlob = await downloadBlobFromUrl(reportRow.html_url);
-      const htmlText = await htmlBlob.text();
-      console.log(`[fetchReportHtml] Storage에서 로드 성공: ${reportRow.html_url}`);
-      return htmlText;
+      // URL에서 스토리지 경로 추출: .../object/public/reports/{path} 또는 .../object/sign/reports/{path}
+      const urlStr = reportRow.html_url as string;
+      const match = urlStr.match(/\/object\/(?:public|sign)\/reports\/(.+)/);
+      const storagePath = match ? match[1].split('?')[0] : null;
+
+      if (storagePath) {
+        const { data, error: dlError } = await supabase.storage.from('reports').download(storagePath);
+        if (!dlError && data) {
+          const htmlText = await data.text();
+          console.log(`[fetchReportHtml] Storage SDK 로드 성공: ${storagePath}`);
+          return htmlText;
+        }
+        console.warn('[fetchReportHtml] Storage SDK 실패:', dlError?.message);
+      }
     } catch (storageError) {
       console.warn('[fetchReportHtml] Storage 로드 실패, DB 폴백:', storageError);
-      // 폴백: DB에서 로드
     }
   }
 
@@ -304,6 +313,38 @@ export async function fetchAllFloorPlanUrls(): Promise<{ floor: string; url: str
 // ─────────────────────────────────────────
 // Storage 헬퍼
 // ─────────────────────────────────────────
+
+/**
+ * 보고서를 Supabase DB + Storage에서 삭제
+ * - reports 테이블 행 삭제
+ * - html_url이 있으면 Storage 파일도 삭제 (best-effort)
+ */
+export async function deleteReport(reportId: string): Promise<void> {
+  // 1. html_url 조회 (Storage 파일 삭제용)
+  const { data: row } = await supabase
+    .from('reports')
+    .select('html_url')
+    .eq('id', reportId)
+    .single();
+
+  // 2. DB 행 삭제
+  const { error } = await supabase.from('reports').delete().eq('id', reportId);
+  if (error) throw error;
+
+  // 3. Storage 파일 삭제 (실패해도 무시 — orphan 파일 허용)
+  if (row?.html_url) {
+    try {
+      const urlStr = row.html_url as string;
+      const match = urlStr.match(/\/object\/(?:public|sign)\/reports\/(.+)/);
+      const storagePath = match ? match[1].split('?')[0] : null;
+      if (storagePath) {
+        await supabase.storage.from('reports').remove([storagePath]);
+      }
+    } catch {
+      // Storage 삭제 실패는 무시
+    }
+  }
+}
 
 /**
  * Blob을 Supabase Storage에 업로드하고 공개 URL 반환

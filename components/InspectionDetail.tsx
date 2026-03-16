@@ -29,7 +29,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [activeVoiceField, setActiveVoiceField] = useState<string | null>(null); // 현재 음성 입력 중인 필드
-  const [acceptanceRate, setAcceptanceRate] = useState(100); // 수용율(%), 기본값 100
+  // acceptanceRate는 formData.acceptanceRate로 관리 (저장 시 InspectionRecord에 포함)
   const recognitionRef = useRef<any>(null);
   const lastTranscriptRef = useRef<string>('');
   const processedResultsRef = useRef<Set<number>>(new Set());
@@ -470,7 +470,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
   const addBreaker = useCallback(() => {
     const newBreaker: BreakerInfo = {
       breakerNo: '0', // 기본값 0
-      category: '1차',
+      category: '2차',
       breakerCapacity: null,
       loadName: '',
       type: '1P', // 기본값 1P
@@ -678,7 +678,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
     .reduce((s, b) => s + (b.loadCapacityR || 0) + (b.loadCapacityS || 0) + (b.loadCapacityT || 0), 0);
   const threePhaseB = (threeLoad / (1.732 * 380 * 0.9)).toFixed(2);
   const mainCapacityNum = Number(formData.breakerCapacity) || 0;
-  const acceptedLoad = mainCapacityNum * (acceptanceRate / 100);
+  const acceptedLoad = mainCapacityNum * ((formData.acceptanceRate ?? 100) / 100);
   const mainCurrentMax = Math.max(
     formData.currentL1 || 0,
     formData.currentL2 || 0,
@@ -1293,8 +1293,8 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
               <label className="block text-xs font-medium text-slate-600 mb-1">수용율 (%)</label>
               <input
                 type="number"
-                value={acceptanceRate}
-                onChange={(e) => setAcceptanceRate(parseFloat(e.target.value) || 0)}
+                value={formData.acceptanceRate ?? 100}
+                onChange={(e) => setFormData(prev => ({ ...prev, acceptanceRate: parseFloat(e.target.value) || 0 }))}
                 className="w-full rounded border-slate-300 border px-2 py-1.5 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>

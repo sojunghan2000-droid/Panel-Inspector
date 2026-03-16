@@ -1,15 +1,16 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ReportHistory, InspectionRecord } from '../types';
 import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
+import { fetchReportHtml } from '../services/supabaseService';
 import { parseReportsExcel } from '../services/reportImportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp } from 'lucide-react';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
   onDeleteReport: (id: string) => void;
   inspections: InspectionRecord[];
   /** Report 수정 버튼 클릭 시 호출 - Inspection 페이지로 이동 */
-  onEditReport?: (boardId: string) => void;
+  onEditReport?: (boardId: string, report: ReportHistory) => void;
   /** 엑셀 Import 후 Reports 반영 콜백 */
   onReportsImported?: (reports: ReportHistory[]) => void;
 }
@@ -20,6 +21,22 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  // 선택된 보고서의 HTML 미리보기 (fetchReportHtml로 Storage/DB fallback)
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedReport) {
+      setPreviewHtml('');
+      return;
+    }
+    setPreviewLoading(true);
+    fetchReportHtml(selectedReport.id)
+      .then(html => setPreviewHtml(html))
+      .catch(() => setPreviewHtml('<p style="padding:20px;color:#666;font-family:sans-serif">보고서를 불러올 수 없습니다.</p>'))
+      .finally(() => setPreviewLoading(false));
+  }, [selectedReport?.id]);
 
   // Natural sort for PNL NO.
   const naturalSort = (a: string, b: string) => {
@@ -39,15 +56,17 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     return 0;
   };
 
-  // 승인된 Report만 필터링 (isGenerated === true), boardId 중복 제거 (최신만), PNL NO. 순 정렬
+  // 승인된 Report만 필터링 (isGenerated === true), PNL NO. 순 정렬
+  // 중복 제거는 App.tsx의 onReportGenerated에서 처리 (여기서는 단순 표시)
   const approvedReports = useMemo(() => {
     return reports
       .filter(r => (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true)
-      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-      .filter((report, index, self) =>
-        index === self.findIndex(r => r.boardId === report.boardId)
-      )
-      .sort((a, b) => naturalSort(a.boardId, b.boardId));
+      .sort((a, b) => {
+        const boardCmp = naturalSort(a.boardId, b.boardId);
+        if (boardCmp !== 0) return boardCmp;
+        // 같은 boardId면 최신순 (Complete 신규 발행 이력)
+        return new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime();
+      });
   }, [reports]);
 
   // 보고서 출력 핸들러
@@ -177,10 +196,10 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   };
 
   // Edit 버튼 클릭 핸들러
-  const handleEditReport = (boardId: string, e: React.MouseEvent) => {
+  const handleEditReport = (report: ReportHistory, e: React.MouseEvent) => {
     e.stopPropagation();
     if (onEditReport) {
-      onEditReport(boardId);
+      onEditReport(report.boardId, report);
     }
   };
 
@@ -205,6 +224,18 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
         setSelectedReport(null);
       }
     }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`선택한 ${selectedIds.size}개 보고서를 삭제하시겠습니까?`)) return;
+    for (const id of selectedIds) {
+      onDeleteReport(id);
+    }
+    if (selectedReport && selectedIds.has(selectedReport.id)) {
+      setSelectedReport(null);
+    }
+    setSelectedIds(new Set());
   };
 
   const getStatusIcon = (status: string) => {
@@ -234,10 +265,9 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
       report.boardId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.reportId.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-    .filter((report, index, self) =>
-      index === self.findIndex(r => r.boardId === report.boardId)
-    );
+    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+    // boardId 중복 제거 제거: Complete 펜버튼 수정 시 신규 Report가 별도 행으로 표시되어야 함
+    // App.tsx의 onReportGenerated에서 중복 제어 (일반 저장은 교체, Complete 재발행은 추가)
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -313,6 +343,21 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
               ref={importFileRef}
             />
           </label>
+
+          {/* 선택 삭제 버튼 */}
+          <button
+            onClick={handleBulkDelete}
+            disabled={selectedIds.size === 0}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              selectedIds.size > 0
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+            title={selectedIds.size > 0 ? `${selectedIds.size}개 선택된 보고서 삭제` : '보고서를 선택하세요'}
+          >
+            <Trash size={16} />
+            <span>선택 삭제{selectedIds.size > 0 ? ` (${selectedIds.size}개)` : ''}</span>
+          </button>
 
           {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
@@ -394,7 +439,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                       </span>
                       {/* Edit 버튼 - Inspection으로 이동 */}
                       <button
-                        onClick={(e) => handleEditReport(report.boardId, e)}
+                        onClick={(e) => handleEditReport(report, e)}
                         className="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                         title="Inspection에서 수정"
                       >
@@ -439,13 +484,19 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
           </button>
           {selectedReport ? (
             <div className="flex-1 min-h-0">
-              {/* HTML 보고서 렌더링 */}
-              <iframe
-                srcDoc={selectedReport.htmlContent}
-                className="w-full h-full border-0"
-                title={selectedReport.reportId}
-                sandbox="allow-same-origin"
-              />
+              {/* HTML 보고서 렌더링 (Storage/DB fallback) */}
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                </div>
+              ) : (
+                <iframe
+                  srcDoc={previewHtml}
+                  className="w-full h-full border-0"
+                  title={selectedReport.reportId}
+                  sandbox="allow-same-origin"
+                />
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6">
