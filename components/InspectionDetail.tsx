@@ -470,7 +470,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
   const addBreaker = useCallback(() => {
     const newBreaker: BreakerInfo = {
       breakerNo: '0', // 기본값 0
-      category: '1차',
+      category: '2차',
       breakerCapacity: null,
       loadName: '',
       type: '1P', // 기본값 1P

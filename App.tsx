@@ -1199,6 +1199,20 @@ const App: React.FC = () => {
                     editingReportRef.current = report;
                     setEditingReport(report);
                     setSelectedInspectionId(boardId);
+
+                    // Complete 보고서 편집 시 → 상태 '미점검' 리셋 & 점검 조치 사항 템플릿 삽입
+                    if (report.status === 'Complete') {
+                      setInspections(prev => prev.map(insp =>
+                        insp.panelNo === boardId
+                          ? {
+                              ...insp,
+                              status: 'Pending',
+                              memo: '1. 수치 점검 (기존 내용 대비 수치 변경이 없다면)\n1. 사진 점검 (기존 내용 대비 사진 변경이 없다면)',
+                            }
+                          : insp
+                      ));
+                    }
+
                     setCurrentPage('dashboard');
                   }}
                   onReportsImported={handleReportsImported}
