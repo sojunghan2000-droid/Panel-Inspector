@@ -1137,24 +1137,40 @@ const App: React.FC = () => {
                     selectedInspectionId={selectedInspectionId}
                     onSelectionChange={setSelectedInspectionId}
                     onReportGenerated={async (report) => {
-                      // Non-Complete 수정 시 기존 보고서 교체, Complete 시 신규 추가
+                      // editingReport 기반으로 state 관리 (App.tsx에서 단일 처리)
+                      const snap = editingReport; // 클로저 캡처
+
                       setReports(prev => {
-                        const idx = prev.findIndex(r => r.id === report.id);
-                        if (idx >= 0) {
-                          const next = [...prev];
-                          next[idx] = report;
-                          return next;
+                        if (snap?.status === 'Complete') {
+                          // Complete 펜버튼 수정 → 기존 보고서 유지 + 신규 행 추가
+                          return [report, ...prev];
+                        } else if (snap && snap.status !== 'Complete') {
+                          // Non-Complete 펜버튼 수정 → 기존 ID 항목 교체
+                          const replaced = prev.map(r => r.id === snap.id ? report : r);
+                          // 교체된 항목이 없으면 앞에 추가
+                          return replaced.some(r => r.id === report.id) ? replaced : [report, ...prev];
+                        } else {
+                          // 일반 저장 → boardId 기준으로 기존 교체 (중복 방지)
+                          return [report, ...prev.filter(r => r.boardId !== report.boardId)];
                         }
-                        return [report, ...prev];
                       });
-                      await saveReport(report); // IndexedDB에도 저장
+
+                      // IndexedDB: 기존 보고서 삭제 후 신규 저장 (Complete 펜버튼은 삭제 안 함)
+                      if (snap?.status !== 'Complete') {
+                        const oldId = snap?.id ?? reports.find(r => r.boardId === report.boardId)?.id;
+                        if (oldId && oldId !== report.id) {
+                          deleteReportFromDB(oldId).catch(console.error);
+                        }
+                      }
+                      await saveReport(report);
                       if (session && isConfigured) pushReport(report).catch(console.error);
+
+                      // editingReport 초기화
+                      setEditingReport(null);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
                     qrCodes={qrCodes}
                     reports={reports}
-                    editingReport={editingReport}
-                    onEditingReportClear={() => setEditingReport(null)}
                   />
                 </ErrorBoundary>
               ) : currentPage === 'reports' ? (

@@ -56,23 +56,17 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
     return 0;
   };
 
-  // 승인된 Report만 필터링 (isGenerated === true), boardId 중복 제거 (최신만), PNL NO. 순 정렬
+  // 승인된 Report만 필터링 (isGenerated === true), PNL NO. 순 정렬
+  // 중복 제거는 App.tsx의 onReportGenerated에서 처리 (여기서는 단순 표시)
   const approvedReports = useMemo(() => {
-    const sorted = reports
+    return reports
       .filter(r => (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true)
-      .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
-
-    // Complete 보고서: 모두 표시 (신규 발행 이력)
-    // Non-Complete 보고서: boardId별 최신 1개만 표시
-    const seen = new Set<string>();
-    return sorted
-      .filter(report => {
-        if (report.status === 'Complete') return true;
-        if (seen.has(report.boardId)) return false;
-        seen.add(report.boardId);
-        return true;
-      })
-      .sort((a, b) => naturalSort(a.boardId, b.boardId));
+      .sort((a, b) => {
+        const boardCmp = naturalSort(a.boardId, b.boardId);
+        if (boardCmp !== 0) return boardCmp;
+        // 같은 boardId면 최신순 (Complete 신규 발행 이력)
+        return new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime();
+      });
   }, [reports]);
 
   // 보고서 출력 핸들러

@@ -279,16 +279,17 @@ export async function pullAll(
       await upsertQRCodes(qrsToPush);
     }
 
-    // ── Reports ──
+    // ── Reports ── (id 기준 병합 - 같은 날 Complete 재발행 시 두 레코드 모두 유지)
     const remoteReports = await fetchAllReports();
     if (remoteReports.length > 0) {
-      const reportMap = new Map(localReports.map(r => [r.reportId, r]));
+      const reportMap = new Map(localReports.map(r => [r.id, r]));
       for (const remote of remoteReports) {
-        const local = reportMap.get(remote.reportId);
-        if (!local || new Date(remote.generatedAt) > new Date(local.generatedAt)) {
-          reportMap.set(remote.reportId, remote);
+        if (!reportMap.has(remote.id)) {
+          // 로컬에 없는 원격 보고서 → 추가
+          reportMap.set(remote.id, remote);
           await saveReport(remote);
         }
+        // 로컬에 있으면 로컬 우선 (이미 최신 상태)
       }
       const mergedReports = Array.from(reportMap.values())
         .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
@@ -296,8 +297,8 @@ export async function pullAll(
     }
 
     // ── 로컬에만 있는 report → Supabase push ──
-    const remoteReportIds = new Set(remoteReports.map(r => r.reportId));
-    const localOnlyReports = localReports.filter(r => !remoteReportIds.has(r.reportId));
+    const remoteIds = new Set(remoteReports.map(r => r.id));
+    const localOnlyReports = localReports.filter(r => !remoteIds.has(r.id));
     if (localOnlyReports.length > 0) {
       console.log(`[syncService] Reports 로컬→Supabase push: ${localOnlyReports.length}건`);
       for (const report of localOnlyReports) {
