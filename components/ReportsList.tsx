@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ReportHistory, InspectionRecord } from '../types';
+import { ReportHistory, InspectionRecord, InspectionHistoryEntry } from '../types';
 import { viewReport, exportReportToExcel, generateExcelReport } from '../services/reportService';
 import { fetchReportHtml } from '../services/supabaseService';
 import { parseReportsExcel } from '../services/reportImportService';
-import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash } from 'lucide-react';
+import { FileText, Trash2, Calendar, CheckCircle2, Clock, AlertCircle, Search, Download, Edit2, Printer, ChevronLeft, FileUp, Trash, Tag } from 'lucide-react';
 
 interface ReportsListProps {
   reports: ReportHistory[];
@@ -13,9 +13,11 @@ interface ReportsListProps {
   onEditReport?: (boardId: string, report: ReportHistory) => void;
   /** 엑셀 Import 후 Reports 반영 콜백 */
   onReportsImported?: (reports: ReportHistory[]) => void;
+  /** Inspection History 그룹 목록 (날짜 옆 그룹 ID 표시용) */
+  inspectionHistory?: InspectionHistoryEntry[];
 }
 
-const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport, onReportsImported }) => {
+const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, inspections, onEditReport, onReportsImported, inspectionHistory = [] }) => {
   const [selectedReport, setSelectedReport] = useState<ReportHistory | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -431,6 +433,21 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                         <Calendar size={12} />
                         <span>{formatDate(report.generatedAt)}</span>
                       </div>
+                      {/* 소속 점검 그룹 ID 표시 */}
+                      {(() => {
+                        const reportTime = new Date(report.generatedAt).getTime();
+                        // report 생성 시점 이전에 가장 가까운 그룹 찾기
+                        const group = [...inspectionHistory]
+                          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                          .find(e => new Date(e.createdAt).getTime() <= reportTime);
+                        if (!group) return null;
+                        return (
+                          <div className="flex items-center gap-1 text-xs text-indigo-500 mt-0.5">
+                            <Tag size={10} />
+                            <span>{group.groupId}</span>
+                          </div>
+                        );
+                      })()}
                       </div> {/* flex-1 inner */}
                     </div> {/* flex items-start gap-3 */}
                     <div className="flex items-center gap-2">

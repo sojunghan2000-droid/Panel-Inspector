@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { InspectionRecord, StatData, QRCodeData, ReportHistory } from '../types';
+import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
-import { ScanLine, Search, FileSpreadsheet, FileUp } from 'lucide-react';
+import { ScanLine, Search, FileSpreadsheet, FileUp, RotateCcw, Trash2 } from 'lucide-react';
 import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,9 @@ interface DashboardProps {
   onReportsUpdate?: (reports: ReportHistory[]) => void;
   qrCodes?: QRCodeData[];
   reports?: ReportHistory[];
+  inspectionHistory?: InspectionHistoryEntry[];
+  onResetAllInspections?: (groupId: string) => Promise<void>;
+  onDeleteInspectionHistory?: (id: string) => Promise<void>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -31,6 +34,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   onReportsUpdate,
   qrCodes = [],
   reports = [],
+  inspectionHistory = [],
+  onResetAllInspections,
+  onDeleteInspectionHistory,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
@@ -1101,56 +1107,95 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Inspection History - Collapsible */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 shrink-0 overflow-hidden">
-          <button
-            onClick={() => setIsInspectionHistoryCollapsed(!isInspectionHistoryCollapsed)}
-            className="w-full p-4 md:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
-          >
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Inspection History</h3>
-            <svg
-              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isInspectionHistoryCollapsed ? '' : 'rotate-180'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {/* 헤더: 타이틀 + 전체 초기화 버튼 + 토글 */}
+          <div className="flex items-center px-4 md:px-5 py-3 gap-2">
+            <button
+              onClick={() => setIsInspectionHistoryCollapsed(!isInspectionHistoryCollapsed)}
+              className="flex-1 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-lg py-1 px-1"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Inspection History</h3>
+              <svg
+                className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isInspectionHistoryCollapsed ? '' : 'rotate-180'}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {/* 전체 초기화 버튼 */}
+            {onResetAllInspections && (
+              <button
+                onClick={async () => {
+                  const groupId = window.prompt(
+                    `전체 Inspection을 미점검으로 초기화합니다.\n그룹 ID를 입력하세요 (예: 3월 검사):`,
+                    `${new Date().getMonth() + 1}월 검사`
+                  );
+                  if (!groupId || !groupId.trim()) return;
+                  if (!window.confirm(`"${groupId.trim()}" 으로 초기화하시겠습니까?\n\n현재 통계가 저장되고, 모든 패널 상태가 미점검으로 변경됩니다.\n(기존 Reports는 유지됩니다.)`)) return;
+                  await onResetAllInspections(groupId.trim());
+                }}
+                className="shrink-0 flex items-center gap-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
+                title="전체 Inspection 미점검 초기화"
+              >
+                <RotateCcw size={13} />
+                전체 초기화
+              </button>
+            )}
+          </div>
           {!isInspectionHistoryCollapsed && (
             <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-2">
-              {reports.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-3">보고서가 없습니다.</p>
+              {inspectionHistory.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-3">초기화 이력이 없습니다.</p>
               ) : (
-                [...reports]
-                  .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-                  .map(report => {
-                    const statusColor =
-                      report.status === 'Complete' ? 'bg-green-100 text-green-700' :
-                      report.status === 'In Progress' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-slate-100 text-slate-500';
-                    const statusLabel =
-                      report.status === 'Complete' ? '양호' :
-                      report.status === 'In Progress' ? '점검 중' : '미점검';
-                    const date = new Date(report.generatedAt);
-                    const dateStr = date.toLocaleString('ko-KR', {
-                      month: '2-digit', day: '2-digit',
-                      hour: '2-digit', minute: '2-digit', hour12: false
-                    });
-                    return (
-                      <div
-                        key={report.id}
-                        className="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer text-sm"
-                        onClick={() => handleSelectId(report.boardId)}
-                      >
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-slate-700 truncate">{report.boardId}</span>
-                          <span className="text-xs text-slate-400">{dateStr}</span>
+                inspectionHistory.map(entry => {
+                  const dateStr = new Date(entry.createdAt).toLocaleString('ko-KR', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                  });
+                  return (
+                    <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                      {/* 그룹 헤더 */}
+                      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-100">
+                        <div>
+                          <span className="font-bold text-slate-700 text-sm">{entry.groupId}</span>
+                          <span className="ml-2 text-xs text-slate-400">{dateStr}</span>
                         </div>
-                        <span className={`ml-2 shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
-                          {statusLabel}
-                        </span>
+                        {onDeleteInspectionHistory && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`"${entry.groupId}" 이력을 삭제하시겠습니까?`)) {
+                                onDeleteInspectionHistory(entry.id);
+                              }
+                            }}
+                            className="p-1 hover:bg-red-50 rounded text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
-                    );
-                  })
+                      {/* 통계 */}
+                      <div className="grid grid-cols-3 gap-x-2 gap-y-1 px-3 py-2 text-xs">
+                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
+                          <span className="text-slate-400">검사 완료율</span>
+                          <span className="font-bold text-emerald-600 text-sm">{entry.stats.completionRate}%</span>
+                        </div>
+                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
+                          <span className="text-slate-400">총 진행 건</span>
+                          <span className="font-bold text-blue-600 text-sm">{entry.stats.inProgress}</span>
+                        </div>
+                        <div className="flex flex-col items-center bg-white rounded-lg py-1.5 border border-slate-100">
+                          <span className="text-slate-400">접지 불량</span>
+                          <span className="font-bold text-red-500 text-sm">{entry.stats.groundFaultCount}</span>
+                        </div>
+                        <div className="col-span-3 flex items-center justify-between px-1 pt-1 text-slate-500">
+                          <span>완료 <b className="text-emerald-600">{entry.stats.complete}</b></span>
+                          <span>점검 중 <b className="text-blue-600">{entry.stats.inProgress}</b></span>
+                          <span>미점검 <b className="text-slate-600">{entry.stats.pending}</b></span>
+                          <span>전체 <b className="text-slate-800">{entry.stats.total}</b></span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
