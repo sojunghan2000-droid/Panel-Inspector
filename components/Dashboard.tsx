@@ -3,7 +3,7 @@ import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistor
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
-import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
+import { ScanLine, Search, FileSpreadsheet, FileUp, BookmarkPlus, RefreshCw, Trash2, Pencil, Check, X, Lock, LockOpen } from 'lucide-react';
 import { generateReport, generateReportHtml, createReportFromRecord } from '../services/reportService';
 import { exportToExcel } from '../services/excelService';
 import * as XLSX from 'xlsx';
@@ -24,6 +24,7 @@ interface DashboardProps {
   onSnapshotInspections?: (groupId: string) => Promise<void>;
   onDeleteInspectionHistory?: (id: string) => Promise<void>;
   onRenameInspectionHistory?: (id: string, newGroupId: string) => Promise<void>;
+  onUnlockInspectionHistory?: (id: string) => Promise<void>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -41,6 +42,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onSnapshotInspections,
   onDeleteInspectionHistory,
   onRenameInspectionHistory,
+  onUnlockInspectionHistory,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isInspectionStatusCollapsed, setIsInspectionStatusCollapsed] = useState(true);
@@ -51,6 +53,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Inspection History 이름 편집 상태
   const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
   const [editingHistoryName, setEditingHistoryName] = useState<string>('');
+  // 잠금 해제 모달
+  const [unlockModal, setUnlockModal] = useState<{ entryId: string; password: string; error: boolean } | null>(null);
 
   // Sync external selectedInspectionId with internal state
   useEffect(() => {
@@ -1111,6 +1115,57 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
+      {/* 잠금 해제 모달 */}
+      {unlockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden">
+            <div className="px-5 py-4 bg-slate-700 text-white flex items-center gap-2">
+              <LockOpen size={16} />
+              <h3 className="font-bold text-base">잠금 해제</h3>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-slate-600">비밀번호를 입력하세요.</p>
+              <input
+                type="password"
+                value={unlockModal.password}
+                onChange={e => setUnlockModal(prev => prev ? { ...prev, password: e.target.value, error: false } : null)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter') {
+                    if (unlockModal.password === 'secc') {
+                      await onUnlockInspectionHistory?.(unlockModal.entryId);
+                      setUnlockModal(null);
+                    } else {
+                      setUnlockModal(prev => prev ? { ...prev, error: true } : null);
+                    }
+                  }
+                  if (e.key === 'Escape') setUnlockModal(null);
+                }}
+                autoFocus
+                placeholder="비밀번호"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700 focus:ring-2 focus:ring-slate-500 focus:border-transparent outline-none text-sm"
+              />
+              {unlockModal.error && (
+                <p className="text-xs text-red-500">비밀번호가 올바르지 않습니다.</p>
+              )}
+            </div>
+            <div className="flex gap-2 px-5 pb-5">
+              <button onClick={() => setUnlockModal(null)} className="flex-1 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">취소</button>
+              <button
+                onClick={async () => {
+                  if (unlockModal.password === 'secc') {
+                    await onUnlockInspectionHistory?.(unlockModal.entryId);
+                    setUnlockModal(null);
+                  } else {
+                    setUnlockModal(prev => prev ? { ...prev, error: true } : null);
+                  }
+                }}
+                className="flex-1 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+              >확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Panel: Stats & List */}
       <div className={`
         ${selectedId ? 'hidden lg:flex' : 'flex'} 
@@ -1202,17 +1257,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {/* 업데이트 버튼 (마지막 기록 통계 갱신) */}
-            {onSnapshotInspections && (
-              <button
-                onClick={() => onSnapshotInspections('')}
-                className="shrink-0 flex items-center gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
-                title="마지막 검사 기록 현황 업데이트"
-              >
-                <BookmarkPlus size={13} />
-                <span className="hidden sm:inline">업데이트</span>
-              </button>
-            )}
+            {/* 업데이트 버튼 (마지막 기록 통계 갱신 — 잠긴 항목이면 비활성) */}
+            {onSnapshotInspections && (() => {
+              const isLocked = inspectionHistory.length > 0 && inspectionHistory[0].locked;
+              return (
+                <button
+                  onClick={() => !isLocked && onSnapshotInspections('')}
+                  disabled={isLocked}
+                  className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium ${isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                  title={isLocked ? '잠긴 기록은 업데이트할 수 없습니다' : '마지막 검사 기록 현황 업데이트'}
+                >
+                  {isLocked ? <Lock size={13} /> : <BookmarkPlus size={13} />}
+                  <span className="hidden sm:inline">{isLocked ? '잠금' : '업데이트'}</span>
+                </button>
+              );
+            })()}
             {/* 전체 초기화 버튼 */}
             {onResetAllInspections && (
               <button
@@ -1276,8 +1335,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0 ml-2">
-                          {editingHistoryId === entry.id ? (
-                            /* 확인/취소 버튼 */
+                          {entry.locked ? (
+                            /* 잠금 상태 — 잠금 해제 버튼만 표시 */
+                            <button
+                              onClick={() => setUnlockModal({ entryId: entry.id, password: '', error: false })}
+                              className="flex items-center gap-1 p-1 px-2 hover:bg-slate-600 rounded text-amber-400 hover:text-amber-300 transition-colors text-xs font-medium"
+                              title="잠금 해제"
+                            >
+                              <Lock size={12} />
+                              <span>잠금 해제</span>
+                            </button>
+                          ) : editingHistoryId === entry.id ? (
+                            /* 이름 편집 중 — 확인/취소 */
                             <>
                               <button
                                 onClick={async () => {
@@ -1298,7 +1367,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </button>
                             </>
                           ) : (
-                            /* 편집/삭제 버튼 */
+                            /* 기본 — 편집/삭제 버튼 */
                             <>
                               <button
                                 onClick={() => {

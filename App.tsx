@@ -620,7 +620,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // 마지막 Inspection History 항목의 통계를 현재 상태로 업데이트
+  // 마지막 Inspection History 항목의 통계를 현재 상태로 업데이트 (잠긴 항목은 무시)
   const handleSnapshotInspections = useCallback(async (_groupId: string) => {
     const total = inspections.length;
     const complete = inspections.filter(i => i.status === 'Complete').length;
@@ -631,13 +631,22 @@ const App: React.FC = () => {
     const newStats = { total, complete, inProgress, pending, completionRate, groundFaultCount };
 
     setInspectionHistory(prev => {
-      if (prev.length === 0) return prev;
-      // 가장 최근 항목(index 0) 업데이트
+      if (prev.length === 0 || prev[0].locked) return prev; // 잠긴 항목은 업데이트 안 함
       const updated = { ...prev[0], stats: newStats };
       saveInspectionHistory(updated).catch(console.error);
       return [updated, ...prev.slice(1)];
     });
   }, [inspections]);
+
+  // Inspection History 항목 잠금 해제 (비밀번호 확인 후)
+  const handleUnlockInspectionHistory = useCallback(async (id: string) => {
+    setInspectionHistory(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, locked: false } : e);
+      const target = updated.find(e => e.id === id);
+      if (target) saveInspectionHistory(target).catch(console.error);
+      return updated;
+    });
+  }, []);
 
   // 전체 Inspection 초기화 → Inspection History 스냅샷 저장
   const handleResetAllInspections = useCallback(async (groupId: string) => {
@@ -655,6 +664,16 @@ const App: React.FC = () => {
       createdAt: now,
       stats: { total, complete, inProgress, pending, completionRate, groundFaultCount },
     };
+
+    // 기존 최신 항목 잠금 처리
+    setInspectionHistory(prev => {
+      if (prev.length > 0 && !prev[0].locked) {
+        const locked = { ...prev[0], locked: true };
+        saveInspectionHistory(locked).catch(console.error);
+        return [locked, ...prev.slice(1)];
+      }
+      return prev;
+    });
 
     // IndexedDB에 스냅샷 저장
     await saveInspectionHistory(entry);
@@ -1254,6 +1273,7 @@ const App: React.FC = () => {
                     onResetAllInspections={handleResetAllInspections}
                     onSnapshotInspections={handleSnapshotInspections}
                     onRenameInspectionHistory={handleRenameInspectionHistory}
+                    onUnlockInspectionHistory={handleUnlockInspectionHistory}
                     onDeleteInspectionHistory={async (id) => {
                       await deleteInspectionHistory(id);
                       setInspectionHistory(prev => prev.filter(e => e.id !== id));

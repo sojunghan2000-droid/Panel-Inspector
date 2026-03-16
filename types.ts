@@ -100,6 +100,7 @@ export interface InspectionHistoryEntry {
   id: string;             // 고유 ID (timestamp 기반)
   groupId: string;        // 사용자 정의 그룹명 (예: "3월 검사")
   createdAt: string;      // 초기화 시점 ISO string
+  locked?: boolean;       // 잠금 여부 (잠금 시 업데이트/이름수정/삭제 불가)
   stats: {
     total: number;
     complete: number;
