@@ -96,6 +96,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Electron 환경 확인
   const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
 
+  // useRef로 최신 editingReport/selectedId 보장 (stale closure 방지)
+  const editingReportRef = useRef<ReportHistory | null | undefined>(editingReport);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
   /**
    * PNL NO 저장 로직: 항상 직전 1개만 유지 (덮어쓰기)
    * - PNL NO당 저장 데이터는 1개
@@ -128,16 +134,24 @@ const Dashboard: React.FC<DashboardProps> = ({
       // Report 자동 저장 - generateReportHtml로 상세 HTML 생성 (새 창 열기 없음)
       const detailedHtml = generateReportHtml(finalRecord);
 
+      // ref로 최신 값 읽기 (stale closure 방지)
+      const currentEditingReport = editingReportRef.current;
+      const currentSelectedId = selectedIdRef.current;
+
+      console.log('[handleSave] editingReport:', currentEditingReport?.boardId, '| selectedId:', currentSelectedId, '| status:', currentEditingReport?.status);
+
       let report: ReportHistory;
-      if (editingReport && editingReport.boardId === selectedId) {
+      if (currentEditingReport && currentEditingReport.boardId === currentSelectedId) {
         // Reports 펜 버튼에서 진입한 경우
-        if (editingReport.status === 'Complete') {
+        if (currentEditingReport.status === 'Complete') {
           // Complete 보고서 수정 → 신규 Report 발행 (새 ID, 새 날짜)
+          console.log('[handleSave] → 신규 Report 생성 (Complete 수정)');
           report = createReportFromRecord(finalRecord, detailedHtml);
         } else {
           // Non-Complete 보고서 수정 → 기존 Report 업데이트 (ID 유지)
+          console.log('[handleSave] → 기존 Report 업데이트 (Non-Complete 수정)');
           report = {
-            ...editingReport,
+            ...currentEditingReport,
             generatedAt: new Date().toISOString(),
             status: finalRecord.status,
             htmlContent: detailedHtml,
@@ -147,10 +161,10 @@ const Dashboard: React.FC<DashboardProps> = ({
       } else {
         // 일반 Dashboard 저장 → 기존 Report 업데이트 또는 신규 생성
         const existingReport = (reports || []).find(
-          r => r.boardId === selectedId && (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true
+          r => r.boardId === currentSelectedId && (r as ReportHistory & { isGenerated?: boolean }).isGenerated === true
         );
         if (existingReport) {
-          // 기존 Report 업데이트 (ID 유지, 날짜·HTML·상태 갱신)
+          console.log('[handleSave] → 기존 Report 업데이트 (일반 저장), id:', existingReport.id);
           report = {
             ...existingReport,
             generatedAt: new Date().toISOString(),
@@ -158,10 +172,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             htmlContent: detailedHtml,
           };
         } else {
-          // 최초 저장 → 신규 Report 생성
+          console.log('[handleSave] → 신규 Report 생성 (최초 저장)');
           report = createReportFromRecord(finalRecord, detailedHtml);
         }
       }
+
+      console.log('[handleSave] 최종 report.id:', report.id, '| isNew:', !currentEditingReport || currentEditingReport.status === 'Complete');
       (report as ReportHistory & { isGenerated?: boolean }).isGenerated = true;
       await saveReport(report);
 
