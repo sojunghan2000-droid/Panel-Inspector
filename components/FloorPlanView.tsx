@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { InspectionRecord, QRCodeData } from '../types';
 import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
-import { pushFloorPlan } from '../services/syncService';
-import { upsertFloorPlanUrl, fetchAllFloorPlanUrls } from '../services/supabaseService';
+import { pushFloorPlanImage } from '../services/syncService';
+import { fetchAllFloorPlanUrls } from '../services/supabaseService';
 
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
@@ -197,11 +197,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         // state 업데이트
         setFloorPlanImages(prev => ({ ...prev, [selectedFloor]: dataUrl }));
 
-        // Supabase Storage에 백그라운드 업로드
-        pushFloorPlan(selectedFloor, blob)
-          .then(url => upsertFloorPlanUrl(selectedFloor, url))
-          .then(() => console.log(`[FloorPlan] ${selectedFloor} Supabase Storage 업로드 완료`))
-          .catch(err => console.warn(`[FloorPlan] ${selectedFloor} Supabase 업로드 실패 (로컬 저장은 완료):`, err));
+        // Supabase Storage 업로드 + DB URL 저장 (오프라인 큐 보장)
+        pushFloorPlanImage(selectedFloor, blob)
+          .then(() => console.log(`[FloorPlan] ${selectedFloor} Supabase 업로드 완료`))
+          .catch(err => console.warn(`[FloorPlan] ${selectedFloor} Supabase 업로드 실패 → 오프라인 큐 저장됨:`, err));
 
         alert(`${selectedFloor} 층 배경 이미지가 저장되었습니다.`);
       };
