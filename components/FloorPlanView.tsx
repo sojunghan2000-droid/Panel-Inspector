@@ -1289,33 +1289,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                 </p>
               </div>
 
-              {/* Connected Loads */}
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Connected Loads</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { key: 'welder', label: 'Welder', connected: selectedInspection.loads.welder },
-                    { key: 'grinder', label: 'Grinder', connected: selectedInspection.loads.grinder },
-                    { key: 'light', label: 'Light', connected: selectedInspection.loads.light },
-                    { key: 'pump', label: 'Pump', connected: selectedInspection.loads.pump },
-                  ].map((load) => (
-                    <span
-                      key={load.key}
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        load.connected
-                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
-                      }`}
-                    >
-                      {load.label}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  Active: {getConnectedLoadsCount(selectedInspection.loads)} / 4
-                </p>
-              </div>
-
               {/* Position */}
               {selectedInspection.position && (
                 <div>
