@@ -117,6 +117,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [searchText, setSearchText] = useState('');
   /** true일 때만 FloorPlanView 상세 패널(모달) 표시 - "Dashboard에 위치 매핑" 클릭 시 true */
   const [openDetailPanelForMapping, setOpenDetailPanelForMapping] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMsg(msg);
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 2500);
+  };
   const rightPanelScrollRef = useRef<HTMLDivElement>(null);
   const panelDetailSectionRef = useRef<HTMLDivElement>(null);
   const savedMainScrollOnInteractionRef = useRef<number>(0);
@@ -759,7 +767,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   const handleUpdateQR = () => {
     if (!selectedQR || !qrData.location || !qrData.floor) {
-      alert('모든 필드를 입력해주세요.');
+      showToast('모든 필드를 입력해주세요.');
       return;
     }
 
@@ -853,7 +861,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       onUpdateInspections(updatedInspections);
     }
 
-    alert('QR 코드가 수정되었습니다.');
+    showToast('QR 코드가 수정되었습니다.');
 
     // FloorPlanView에서 변경된 층으로 자동 이동 + 마커 포커스
     // 같은 패널이 이미 선택된 경우에도 동작하도록 한번 초기화 후 재선택
@@ -869,16 +877,21 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   const handleDeleteQR = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm('이 QR 코드를 삭제하시겠습니까?')) {
-      const updated = qrCodes.filter(qr => qr.id !== id);
-      setQrCodes(updated);
-      if (selectedQR?.id === id) {
-        setSelectedQR(null);
-        setGeneratedQR(null);
-        setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' });
-        setIsEditing(false);
-      }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDeleteQR = () => {
+    if (!deleteConfirmId) return;
+    const updated = qrCodes.filter(qr => qr.id !== deleteConfirmId);
+    setQrCodes(updated);
+    if (selectedQR?.id === deleteConfirmId) {
+      setSelectedQR(null);
+      setGeneratedQR(null);
+      setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' });
+      setIsEditing(false);
     }
+    setDeleteConfirmId(null);
+    showToast('QR 코드가 삭제되었습니다.');
   };
 
   const handleMapToDashboard = () => {
@@ -950,7 +963,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
 
     if (!finalLocation || !finalFloor) {
-      alert('PNL NO., 층수를 모두 입력해주세요.');
+      showToast('PNL NO., 층수를 모두 입력해주세요.');
       return;
     }
 
@@ -1001,7 +1014,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           }
           finalLocation = String(nextLocationNum).padStart(3, '0');
           locationChanged = true;
-          alert(`같은 층수(${finalFloor})에 위치 번호 ${originalLocation}이(가) 이미 존재합니다.\n위치 번호가 ${finalLocation}로 자동 변경되었습니다.`);
+          showToast(`위치 번호 중복 → ${finalLocation}으로 자동 변경됐습니다.`);
         }
       }
     }
@@ -1058,7 +1071,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // 성공 메시지
     setShowForm(false);
     setTimeout(() => {
-      alert('QR 코드와 위치 정보가 저장되었습니다!');
+      showToast('QR 코드와 위치 정보가 저장되었습니다!');
     }, 100);
   };
 
@@ -1406,6 +1419,30 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-full min-h-0" style={{ overflow: isSelectFocused ? 'visible' : 'hidden' }}>
+      {/* 토스트 알림 */}
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg animate-fade-in">
+          {toastMsg}
+        </div>
+      )}
+      {/* 삭제 확인 모달 */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-72 flex flex-col gap-4">
+            <p className="text-sm text-slate-700 font-medium text-center">이 QR 코드를 삭제하시겠습니까?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              >취소</button>
+              <button
+                onClick={confirmDeleteQR}
+                className="flex-1 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 transition-colors"
+              >삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Left Panel: QR List - 모바일에서는 패널 미선택 시만 표시 */}
       <div className={`
         ${selectedQR || showForm ? 'hidden' : 'flex'}
