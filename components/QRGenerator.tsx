@@ -2001,7 +2001,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 }}
                 onClick={handleMapToDashboard}
                 onFocus={restoreMainScrollOnFocus}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                disabled={!selectedQR && !generatedQR}
+                title={(!selectedQR && !generatedQR) ? 'QR 코드를 먼저 선택하세요' : 'Dashboard 도면에서 위치 확인 및 수정'}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <MapPin size={18} />
                 Dashboard에 위치 매핑
