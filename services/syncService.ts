@@ -16,8 +16,10 @@ import {
   uploadBlob,
   deleteQRCodeFromSupabase,
   deleteInspectionFromSupabase,
+  upsertFloorPlanUrl,
+  fetchAllFloorPlanUrls,
 } from './supabaseService';
-import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB } from './indexedDBService';
+import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage } from './indexedDBService';
 import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
@@ -25,8 +27,8 @@ export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 const OFFLINE_QUEUE_KEY = 'panel-inspector-offline-queue';
 
 interface OfflineQueueItem {
-  type: 'inspection' | 'qrcodes' | 'report' | 'delete-qr' | 'delete-inspection';
-  key: string; // panelNo / qrId / 'all' / reportId
+  type: 'inspection' | 'qrcodes' | 'report' | 'delete-qr' | 'delete-inspection' | 'floor-plan';
+  key: string; // panelNo / qrId / 'all' / reportId / floor('F1'~'F6','B1','B2')
   timestamp: string;
 }
 
@@ -177,6 +179,29 @@ export async function pushDeleteInspection(panelNo: string): Promise<void> {
 }
 
 /**
+ * 도면 이미지를 Supabase Storage + DB에 push (오프라인 큐 지원)
+ * - Storage: floor-plans/{floor}.jpg 업로드
+ * - DB: floor_plan_images 테이블에 URL 저장
+ * - 실패 시 오프라인 큐 저장 → 네트워크 복귀 시 재시도
+ */
+export async function pushFloorPlanImage(floor: string, blob: Blob): Promise<void> {
+  if (!navigator.onLine) {
+    addToOfflineQueue({ type: 'floor-plan', key: floor, timestamp: new Date().toISOString() });
+    notifyStatus('offline');
+    return;
+  }
+  try {
+    const url = await uploadBlob('floor-plans', `${floor}.jpg`, blob);
+    await upsertFloorPlanUrl(floor, url);
+  } catch (err) {
+    console.error('[syncService] 도면 업로드 오류:', err);
+    addToOfflineQueue({ type: 'floor-plan', key: floor, timestamp: new Date().toISOString() });
+    notifyStatus('error', String(err));
+    throw err;
+  }
+}
+
+/**
  * 보고서를 Supabase로 push (Storage 마이그레이션 지원)
  * - report.htmlContent가 있으면 Storage에 업로드
  * - 업로드 후 DB에는 메타데이터만 저장
@@ -197,13 +222,6 @@ export async function pushReport(report: ReportHistory): Promise<void> {
   }
 }
 
-/**
- * 도면 이미지를 Supabase Storage에 push
- */
-export async function pushFloorPlan(floor: string, blob: Blob): Promise<string> {
-  const url = await uploadBlob('floor-plans', `${floor}.jpg`, blob);
-  return url;
-}
 
 // ─────────────────────────────────────────
 // Pull (Supabase → IDB, last-write-wins 병합)
@@ -360,6 +378,26 @@ export async function pullAll(
       }
     }
 
+    // ── Floor Plan Images — Supabase → IndexedDB 복원 ──
+    // 새 기기 접속 시 도면이 없으면 Supabase Storage에서 다운로드
+    try {
+      const remoteFloorPlans = await fetchAllFloorPlanUrls();
+      for (const { floor, url } of remoteFloorPlans) {
+        const existing = await getFloorPlanImage(floor);
+        if (!existing) {
+          const res = await fetch(url);
+          if (res.ok) {
+            const blob = await res.blob();
+            await saveFloorPlanImage(floor, blob);
+            console.log(`[syncService] 도면 복원: ${floor}`);
+          }
+        }
+      }
+    } catch (err) {
+      // 도면 복원 실패는 치명적이지 않으므로 다음 pullAll 때 재시도
+      console.warn('[syncService] 도면 복원 오류 (무시):', err);
+    }
+
     callbacks.onSyncStatusChange('success');
     notifyStatus('success');
   } catch (err) {
@@ -422,6 +460,16 @@ export async function flushOfflineQueue(
     const deleteInspectionItems = queue.filter(q => q.type === 'delete-inspection');
     for (const item of deleteInspectionItems) {
       await deleteInspectionFromSupabase(item.key);
+    }
+
+    // 도면 이미지 업로드 큐 처리 (IndexedDB에서 Blob 읽어 재업로드)
+    const floorPlanItems = queue.filter(q => q.type === 'floor-plan');
+    for (const item of floorPlanItems) {
+      const blob = await getFloorPlanImage(item.key);
+      if (blob) {
+        const url = await uploadBlob('floor-plans', `${item.key}.jpg`, blob);
+        await upsertFloorPlanUrl(item.key, url);
+      }
     }
 
     clearOfflineQueue();
