@@ -277,6 +277,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   }, [selectedInspectionId, inspections, selectedFloor]);
 
+  // startInEditMode가 true로 바뀔 때 selectedInspection을 강제 재설정
+  // (모달 닫힌 후 같은 패널로 재오픈 시 selectedInspection=null 문제 해결)
+  useEffect(() => {
+    if (startInEditMode && selectedInspectionId) {
+      const inspection = inspections.find(i => i.panelNo === selectedInspectionId);
+      if (inspection) {
+        setSelectedInspection(inspection);
+        setPanelPosition({ x: 0, y: 0 });
+        prevSelectedInspectionIdRef.current = selectedInspectionId;
+      }
+    }
+  }, [startInEditMode]);
+
   // startInEditMode일 때 상세 패널이 열리면 위치 수정 모드로 시작
   useEffect(() => {
     if (startInEditMode && selectedInspection && onUpdateInspections) {
