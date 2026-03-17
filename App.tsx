@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, LogOut } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB, deleteInspection } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
@@ -18,7 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
+import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase, deleteInspectionFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -632,6 +632,17 @@ const App: React.FC = () => {
       }
     }
   }, [session]);
+
+  const handleDeleteInspection = useCallback(async (panelNo: string) => {
+    setInspections(prev => prev.filter(i => i.panelNo !== panelNo));
+    deleteInspection(panelNo).catch(console.error);
+    if (session && isConfigured) {
+      deleteInspectionFromSupabase(panelNo).catch(console.error);
+    }
+    setQrCodes((prev: QRCodeData[]) => prev.filter((qr: QRCodeData) => {
+      try { return JSON.parse(qr.qrData).id !== panelNo; } catch { return true; }
+    }));
+  }, [session, isConfigured, setQrCodes]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
   // Inspection History 항목 이름 변경
@@ -1351,7 +1362,7 @@ const App: React.FC = () => {
                   onReportsImported={handleReportsImported}
                 />
               ) : (
-                <QRGenerator 
+                <QRGenerator
                   inspections={inspections}
                   qrCodes={qrCodes}
                   onQrCodesChange={setQrCodes}
@@ -1359,6 +1370,7 @@ const App: React.FC = () => {
                     setSelectedInspectionId(inspectionId);
                   }}
                   onUpdateInspections={updateInspections}
+                  onDeleteInspection={handleDeleteInspection}
                   mainScrollRef={mainScrollRef}
                 />
               )}

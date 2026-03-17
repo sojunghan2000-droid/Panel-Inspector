@@ -135,6 +135,11 @@ export async function fetchAllInspections(): Promise<InspectionRecord[]> {
   return (data as Record<string, unknown>[]).map(rowToInspection);
 }
 
+export async function deleteInspectionFromSupabase(panelNo: string): Promise<void> {
+  const { error } = await supabase.from('inspections').delete().eq('panel_no', panelNo);
+  if (error) throw error;
+}
+
 // ─────────────────────────────────────────
 // QR Codes CRUD
 // ─────────────────────────────────────────
