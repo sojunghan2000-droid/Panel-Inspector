@@ -343,9 +343,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // qrCodes를 의존성으로 쓰지 않고 ref를 통해 접근 (무한 루프 방지)
     const savedQRCodes: QRCodeData[] = qrCodesRef.current;
 
-    // 가드: QR 코드가 아직 로딩 중이면 자동생성 스킵 (타이밍 버그 방지)
-    // inspections 수만큼 QR이 이미 있으면 생성 불필요
-    if (savedQRCodes.length >= currentInspections.length) return;
+    // 가드: QR 코드가 하나라도 있으면 자동생성 스킵
+    // 초기 설정(0개)일 때만 자동생성 — 삭제 후 재생성 방지
+    if (savedQRCodes.length > 0) return;
 
     const existingQRIds = new Set<string>();
 
