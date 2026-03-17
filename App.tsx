@@ -578,6 +578,30 @@ const App: React.FC = () => {
     
     setInspections(uniqueInspections);
 
+    // QR 코드의 qrData에 embedded된 position도 최신 inspection position으로 동기화
+    setQrCodes((prevQrCodes: QRCodeData[]) =>
+      prevQrCodes.map((qr: QRCodeData) => {
+        try {
+          const qrData = JSON.parse(qr.qrData);
+          const matchingInspection = uniqueInspections.find(i => i.panelNo === qrData.id);
+          if (matchingInspection?.position) {
+            const updatedQrData = {
+              ...qrData,
+              position: {
+                ...qrData.position,
+                x: matchingInspection.position.x,
+                y: matchingInspection.position.y,
+              },
+            };
+            return { ...qr, qrData: JSON.stringify(updatedQrData) };
+          }
+        } catch {
+          // qrData 파싱 실패 시 원본 유지
+        }
+        return qr;
+      })
+    );
+
     // IndexedDB에 저장
     try {
       await Promise.all(
