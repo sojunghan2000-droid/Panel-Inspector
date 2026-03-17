@@ -931,10 +931,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
     
     // 상세 패널(모달) 표시 후 해당 마커 선택 → 위치 수정 가능
-    if (qrDataToUse.id && onSelectInspection) {
-      setOpenDetailPanelForMapping(true);
-      onSelectInspection(qrDataToUse.id);
+    if (!qrDataToUse.id) {
+      showToast('패널 ID를 찾을 수 없습니다. QR을 다시 선택해주세요.');
+      return;
     }
+    if (!onSelectInspection) {
+      showToast('위치 매핑 기능을 사용할 수 없습니다.');
+      return;
+    }
+    setOpenDetailPanelForMapping(true);
+    onSelectInspection(qrDataToUse.id);
     // 리렌더 후 스크롤 복원
     restoreScrollAfterAction();
   };
@@ -1989,12 +1995,12 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               </button>
 
               <button
-                onMouseDown={() => {
+                onMouseDown={(e) => {
+                  e.preventDefault(); // onFocus 스크롤 복원으로 인한 click 이벤트 방해 방지
                   savedMainScrollOnInteractionRef.current = mainScrollRef?.current?.scrollTop ?? 0;
                   savedRightScrollOnInteractionRef.current = rightPanelScrollRef.current?.scrollTop ?? 0;
+                  handleMapToDashboard();
                 }}
-                onClick={handleMapToDashboard}
-                onFocus={restoreMainScrollOnFocus}
                 disabled={!selectedQR && !generatedQR}
                 title={(!selectedQR && !generatedQR) ? 'QR 코드를 먼저 선택하세요' : 'Dashboard 도면에서 위치 확인 및 수정'}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
