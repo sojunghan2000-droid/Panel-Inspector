@@ -9,7 +9,7 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, LogOut } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB, deleteInspection } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB, deleteInspection, flushIDBDeleteQueue, getIDBDeleteQueue } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
 import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
@@ -209,13 +209,31 @@ const App: React.FC = () => {
         setIsLoading(true);
         await initIndexedDB();
 
-        // 1. IndexedDB에서 기존 데이터 로드
+        // 1. IDB 삭제 대기 큐 플러시 (이전 세션에서 실패한 삭제 재시도)
+        await flushIDBDeleteQueue();
+
+        // 2. IndexedDB에서 기존 데이터 로드
         const savedInspections = await getAllInspectionsWithPhotos();
         const savedQRCodes = await getAllQRCodes();
 
-        // 2. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
+        // 3. 삭제 대기 큐 기반 필터링 (재시도 실패해도 UI에 나타나지 않도록)
+        const idbDeleteQueue = getIDBDeleteQueue();
+        const pendingDeleteInspectionIds = new Set(
+          idbDeleteQueue.filter(q => q.type === 'inspection').map(q => q.key)
+        );
+        const pendingDeleteQRIds = new Set(
+          idbDeleteQueue.filter(q => q.type === 'qr').map(q => q.key)
+        );
+        const filteredInspections = savedInspections.filter(
+          i => !pendingDeleteInspectionIds.has(i.panelNo)
+        );
+        const filteredQRCodes = savedQRCodes.filter(
+          qr => !pendingDeleteQRIds.has(qr.id)
+        );
+
+        // 4. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
         let currentInspections: InspectionRecord[];
-        if (savedInspections.length === 0 && savedQRCodes.length === 0) {
+        if (filteredInspections.length === 0 && filteredQRCodes.length === 0) {
           console.log('[초기화] 최초 접속 - 초기 데이터 65면 시드');
           const initialQRCodes = generateInitialQRCodes(INITIAL_INSPECTIONS);
 
@@ -225,8 +243,8 @@ const App: React.FC = () => {
           currentInspections = INITIAL_INSPECTIONS;
           setQrCodesState(initialQRCodes);
         } else {
-          currentInspections = savedInspections;
-          setQrCodesState(savedQRCodes);
+          currentInspections = filteredInspections;
+          setQrCodesState(filteredQRCodes);
         }
 
         // 3. Floor Plan 기본 배경 이미지 시드 (8개 층 중 하나라도 없을 때만)

@@ -277,6 +277,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   }, [selectedInspectionId, inspections, selectedFloor]);
 
+  // startInEditMode가 true로 바뀔 때 selectedInspection을 강제 재설정
+  // (모달 닫힌 후 같은 패널로 재오픈 시 selectedInspection=null 문제 해결)
+  useEffect(() => {
+    if (startInEditMode && selectedInspectionId) {
+      const inspection = inspections.find(i => i.panelNo === selectedInspectionId);
+      if (inspection) {
+        setSelectedInspection(inspection);
+        setPanelPosition({ x: 0, y: 0 });
+        prevSelectedInspectionIdRef.current = selectedInspectionId;
+      }
+    }
+  }, [startInEditMode]);
+
   // startInEditMode일 때 상세 패널이 열리면 위치 수정 모드로 시작
   useEffect(() => {
     if (startInEditMode && selectedInspection && onUpdateInspections) {
@@ -1286,33 +1299,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
                   {selectedInspection.lastInspectionDate !== '-'
                     ? new Date(selectedInspection.lastInspectionDate).toLocaleString()
                     : 'Not inspected'}
-                </p>
-              </div>
-
-              {/* Connected Loads */}
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Connected Loads</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { key: 'welder', label: 'Welder', connected: selectedInspection.loads.welder },
-                    { key: 'grinder', label: 'Grinder', connected: selectedInspection.loads.grinder },
-                    { key: 'light', label: 'Light', connected: selectedInspection.loads.light },
-                    { key: 'pump', label: 'Pump', connected: selectedInspection.loads.pump },
-                  ].map((load) => (
-                    <span
-                      key={load.key}
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        load.connected
-                          ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
-                      }`}
-                    >
-                      {load.label}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  Active: {getConnectedLoadsCount(selectedInspection.loads)} / 4
                 </p>
               </div>
 
