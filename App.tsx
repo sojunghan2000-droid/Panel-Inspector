@@ -18,7 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase } from './services/supabaseService';
+import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -384,9 +384,20 @@ const App: React.FC = () => {
           setReports(savedReports);
         }
 
-        // 7. Inspection History 로드
+        // 7. Inspection History 로드 (Supabase 우선, fallback: IndexedDB)
         const savedHistory = await getAllInspectionHistory();
-        if (savedHistory && savedHistory.length > 0) {
+        if (session && isConfigured) {
+          try {
+            const remoteHistory = await fetchAllInspectionHistory();
+            if (remoteHistory.length > 0) {
+              setInspectionHistory(remoteHistory);
+            } else if (savedHistory.length > 0) {
+              setInspectionHistory(savedHistory);
+            }
+          } catch {
+            if (savedHistory.length > 0) setInspectionHistory(savedHistory);
+          }
+        } else if (savedHistory && savedHistory.length > 0) {
           setInspectionHistory(savedHistory);
         }
 
@@ -628,10 +639,13 @@ const App: React.FC = () => {
     setInspectionHistory(prev => {
       const updated = prev.map(e => e.id === id ? { ...e, groupId: newGroupId } : e);
       const target = updated.find(e => e.id === id);
-      if (target) saveInspectionHistory(target).catch(console.error);
+      if (target) {
+        saveInspectionHistory(target).catch(console.error);
+        if (session && isConfigured) upsertInspectionHistory(target).catch(console.error);
+      }
       return updated;
     });
-  }, []);
+  }, [session, isConfigured]);
 
   // 마지막 Inspection History 항목의 통계를 현재 상태로 업데이트 (잠긴 항목은 무시)
   const handleSnapshotInspections = useCallback(async (_groupId: string) => {
@@ -647,19 +661,23 @@ const App: React.FC = () => {
       if (prev.length === 0 || prev[0].locked) return prev; // 잠긴 항목은 업데이트 안 함
       const updated = { ...prev[0], stats: newStats };
       saveInspectionHistory(updated).catch(console.error);
+      if (session && isConfigured) upsertInspectionHistory(updated).catch(console.error);
       return [updated, ...prev.slice(1)];
     });
-  }, [inspections]);
+  }, [inspections, session, isConfigured]);
 
   // Inspection History 항목 잠금 해제 (비밀번호 확인 후)
   const handleUnlockInspectionHistory = useCallback(async (id: string) => {
     setInspectionHistory(prev => {
       const updated = prev.map(e => e.id === id ? { ...e, locked: false } : e);
       const target = updated.find(e => e.id === id);
-      if (target) saveInspectionHistory(target).catch(console.error);
+      if (target) {
+        saveInspectionHistory(target).catch(console.error);
+        if (session && isConfigured) upsertInspectionHistory(target).catch(console.error);
+      }
       return updated;
     });
-  }, []);
+  }, [session, isConfigured]);
 
   // 전체 Inspection 초기화 → Inspection History 스냅샷 저장
   const handleResetAllInspections = useCallback(async (groupId: string) => {
@@ -683,13 +701,15 @@ const App: React.FC = () => {
       if (prev.length > 0 && !prev[0].locked) {
         const locked = { ...prev[0], locked: true };
         saveInspectionHistory(locked).catch(console.error);
+        if (session && isConfigured) upsertInspectionHistory(locked).catch(console.error);
         return [locked, ...prev.slice(1)];
       }
       return prev;
     });
 
-    // IndexedDB에 스냅샷 저장
+    // IndexedDB + Supabase에 스냅샷 저장
     await saveInspectionHistory(entry);
+    if (session && isConfigured) upsertInspectionHistory(entry).catch(console.error);
     setInspectionHistory(prev => [entry, ...prev]);
 
     // 모든 Inspection status → Pending (Reports는 유지)
@@ -1289,6 +1309,7 @@ const App: React.FC = () => {
                     onUnlockInspectionHistory={handleUnlockInspectionHistory}
                     onDeleteInspectionHistory={async (id) => {
                       await deleteInspectionHistory(id);
+                      if (session && isConfigured) deleteInspectionHistoryFromSupabase(id).catch(console.error);
                       setInspectionHistory(prev => prev.filter(e => e.id !== id));
                     }}
                   />

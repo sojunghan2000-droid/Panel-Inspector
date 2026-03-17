@@ -6,7 +6,7 @@
  */
 
 import { supabase } from './supabaseClient';
-import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import type { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
 
 // ─────────────────────────────────────────
 // InspectionRecord ↔ DB 행 변환
@@ -353,6 +353,41 @@ export async function deleteReport(reportId: string): Promise<void> {
       // Storage 삭제 실패는 무시
     }
   }
+}
+
+// ─────────────────────────────────────────
+// InspectionHistory CRUD
+// ─────────────────────────────────────────
+
+export async function upsertInspectionHistory(entry: InspectionHistoryEntry): Promise<void> {
+  const { error } = await supabase.from('inspection_history').upsert({
+    id: entry.id,
+    group_id: entry.groupId,
+    created_at: entry.createdAt,
+    locked: entry.locked ?? false,
+    stats: entry.stats,
+  });
+  if (error) throw error;
+}
+
+export async function fetchAllInspectionHistory(): Promise<InspectionHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from('inspection_history')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    groupId: row.group_id as string,
+    createdAt: row.created_at as string,
+    locked: (row.locked as boolean) ?? false,
+    stats: row.stats as InspectionHistoryEntry['stats'],
+  }));
+}
+
+export async function deleteInspectionHistoryFromSupabase(id: string): Promise<void> {
+  const { error } = await supabase.from('inspection_history').delete().eq('id', id);
+  if (error) throw error;
 }
 
 /**
