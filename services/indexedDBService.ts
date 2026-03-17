@@ -146,12 +146,21 @@ export const getInspection = async (panelNo: string): Promise<InspectionRecord |
 };
 
 /**
- * Inspection 삭제
+ * Inspection 삭제 (삭제 대기 큐 연동)
+ * - 삭제 전 큐에 등록 → 성공 시 큐 제거, 실패 시 큐 유지
+ * - 앱 재시작 시 flushIDBDeleteQueue()로 재시도됨
  */
 export const deleteInspection = async (panelNo: string): Promise<void> => {
-  const db = await initIndexedDB();
-  await db.delete('inspections', panelNo);
-  await db.delete('photos', panelNo); // 관련 사진도 삭제
+  addToIDBDeleteQueue('inspection', panelNo);
+  try {
+    const db = await initIndexedDB();
+    await db.delete('inspections', panelNo);
+    await db.delete('photos', panelNo);
+    removeFromIDBDeleteQueue('inspection', panelNo);
+  } catch (err) {
+    console.error('[IDB] inspection 삭제 실패, 큐에 보관:', panelNo, err);
+    // 큐에 유지 → 앱 재시작 시 재시도
+  }
 };
 
 /**
@@ -339,11 +348,18 @@ export const getQRCode = async (id: string): Promise<QRCodeData | undefined> => 
 };
 
 /**
- * QR 코드 삭제
+ * QR 코드 삭제 (삭제 대기 큐 연동)
+ * - 삭제 전 큐에 등록 → 성공 시 큐 제거, 실패 시 큐 유지
  */
 export const deleteQRCode = async (id: string): Promise<void> => {
-  const db = await initIndexedDB();
-  await db.delete('qrCodes', id);
+  addToIDBDeleteQueue('qr', id);
+  try {
+    const db = await initIndexedDB();
+    await db.delete('qrCodes', id);
+    removeFromIDBDeleteQueue('qr', id);
+  } catch (err) {
+    console.error('[IDB] QR 삭제 실패, 큐에 보관:', id, err);
+  }
 };
 
 /**
@@ -497,3 +513,66 @@ export const deleteInspectionHistory = async (id: string): Promise<void> => {
   const db = await initIndexedDB();
   await db.delete('inspectionHistory', id);
 };
+
+// ─────────────────────────────────────────
+// IDB 삭제 대기 큐 (localStorage 기반)
+// 삭제 실패 시 큐에 보관 → 앱 재시작 시 재시도 + UI 필터링
+// ─────────────────────────────────────────
+
+const IDB_DELETE_QUEUE_KEY = 'panel-inspector-idb-delete-queue';
+
+interface IDBDeleteQueueItem {
+  type: 'inspection' | 'qr';
+  key: string; // panelNo or qrId
+  timestamp: string;
+}
+
+function addToIDBDeleteQueue(type: 'inspection' | 'qr', key: string): void {
+  try {
+    const raw = localStorage.getItem(IDB_DELETE_QUEUE_KEY);
+    const queue: IDBDeleteQueueItem[] = raw ? JSON.parse(raw) : [];
+    if (!queue.some(q => q.type === type && q.key === key)) {
+      queue.push({ type, key, timestamp: new Date().toISOString() });
+      localStorage.setItem(IDB_DELETE_QUEUE_KEY, JSON.stringify(queue));
+    }
+  } catch { /* localStorage 오류 무시 */ }
+}
+
+function removeFromIDBDeleteQueue(type: 'inspection' | 'qr', key: string): void {
+  try {
+    const raw = localStorage.getItem(IDB_DELETE_QUEUE_KEY);
+    const queue: IDBDeleteQueueItem[] = raw ? JSON.parse(raw) : [];
+    const filtered = queue.filter(q => !(q.type === type && q.key === key));
+    localStorage.setItem(IDB_DELETE_QUEUE_KEY, JSON.stringify(filtered));
+  } catch { /* localStorage 오류 무시 */ }
+}
+
+export function getIDBDeleteQueue(): IDBDeleteQueueItem[] {
+  try {
+    const raw = localStorage.getItem(IDB_DELETE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+/**
+ * 앱 시작 시 미삭제 항목 재시도
+ */
+export async function flushIDBDeleteQueue(): Promise<void> {
+  const queue = getIDBDeleteQueue();
+  if (queue.length === 0) return;
+
+  for (const item of queue) {
+    try {
+      const db = await initIndexedDB();
+      if (item.type === 'inspection') {
+        await db.delete('inspections', item.key);
+        await db.delete('photos', item.key);
+      } else if (item.type === 'qr') {
+        await db.delete('qrCodes', item.key);
+      }
+      removeFromIDBDeleteQueue(item.type, item.key);
+    } catch {
+      // 재시도 실패 → 큐에 유지 → 다음 앱 시작 때 다시 시도
+    }
+  }
+}
