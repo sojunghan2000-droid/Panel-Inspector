@@ -17,8 +17,8 @@ import { parseInspectionExcel, mergeImportedData } from './services/excelImportS
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
-import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase, deleteQRCodeFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase, deleteInspectionFromSupabase } from './services/supabaseService';
+import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
+import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -159,10 +159,11 @@ const App: React.FC = () => {
       const deletedIds = [...prevIds].filter(id => !newIds.has(id as string)) as string[];
 
       // 삭제된 항목: IndexedDB + Supabase에서 제거
+      // pushDeleteQRCode: 실패 시 오프라인 큐에 저장 → 네트워크 복귀 시 재시도
       deletedIds.forEach((id: string) => {
         deleteQRCodeFromIDB(id).catch(console.error);
         if (session && isConfigured) {
-          deleteQRCodeFromSupabase(id).catch(console.error);
+          pushDeleteQRCode(id).catch(console.error);
         }
       });
 
@@ -661,7 +662,8 @@ const App: React.FC = () => {
     setInspections(prev => prev.filter(i => i.panelNo !== panelNo));
     deleteInspection(panelNo).catch(console.error);
     if (session && isConfigured) {
-      deleteInspectionFromSupabase(panelNo).catch(console.error);
+      // pushDeleteInspection: 실패 시 오프라인 큐에 저장 → 네트워크 복귀 시 재시도
+      pushDeleteInspection(panelNo).catch(console.error);
     }
     setQrCodes((prev: QRCodeData[]) => prev.filter((qr: QRCodeData) => {
       try { return JSON.parse(qr.qrData).id !== panelNo; } catch { return true; }
