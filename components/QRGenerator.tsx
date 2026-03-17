@@ -72,16 +72,18 @@ interface QRGeneratorProps {
   onQrCodesChange?: (codes: QRCodeData[]) => void;
   onSelectInspection?: (inspectionId: string) => void;
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
+  onDeleteInspection?: (panelNo: string) => void;
   /** main 스크롤 유지용 (App의 main ref) */
   mainScrollRef?: React.RefObject<HTMLElement | null>;
 }
 
-const QRGenerator: React.FC<QRGeneratorProps> = ({ 
-  inspections = [], 
+const QRGenerator: React.FC<QRGeneratorProps> = ({
+  inspections = [],
   qrCodes: propQrCodes = [],
   onQrCodesChange,
   onSelectInspection,
   onUpdateInspections,
+  onDeleteInspection,
   mainScrollRef
 }) => {
   const qrCodes = propQrCodes;
@@ -118,6 +120,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   /** true일 때만 FloorPlanView 상세 패널(모달) 표시 - "Dashboard에 위치 매핑" 클릭 시 true */
   const [openDetailPanelForMapping, setOpenDetailPanelForMapping] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteInspectionConfirmId, setDeleteInspectionConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (msg: string) => {
@@ -899,6 +902,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     showToast('QR 코드가 삭제되었습니다.');
   };
 
+  const confirmDeleteInspection = () => {
+    if (!deleteInspectionConfirmId) return;
+    onDeleteInspection?.(deleteInspectionConfirmId);
+    setDeleteInspectionConfirmId(null);
+    showToast('패널이 삭제되었습니다.');
+  };
+
   const handleMapToDashboard = () => {
     let qrDataToUse: any = null;
     // selectedQR 또는 generatedQR에서 데이터 가져오기
@@ -1448,6 +1458,22 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         </div>
       )}
+      {/* 패널 삭제 확인 모달 */}
+      {deleteInspectionConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-72 flex flex-col gap-4">
+            <p className="text-sm text-slate-700 font-medium text-center">
+              <strong>{deleteInspectionConfirmId}</strong> 패널을 완전히 삭제하시겠습니까?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteInspectionConfirmId(null)}
+                className="flex-1 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">취소</button>
+              <button onClick={confirmDeleteInspection}
+                className="flex-1 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 transition-colors">삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Left Panel: QR List - 모바일에서는 패널 미선택 시만 표시 */}
       <div className={`
         ${selectedQR || showForm ? 'hidden' : 'flex'}
@@ -1579,6 +1605,15 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                           <Trash2 size={13} />
                         </button>
                       </div>
+                    )}
+                    {!matchingQR && onDeleteInspection && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteInspectionConfirmId(inspection.panelNo); }}
+                        className="p-1 hover:bg-red-50 rounded text-slate-300 hover:text-red-500 transition-colors"
+                        title="패널 삭제"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     )}
                   </div>
                 </div>
