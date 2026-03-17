@@ -14,6 +14,8 @@ import {
   upsertReport,
   fetchAllReports,
   uploadBlob,
+  deleteQRCodeFromSupabase,
+  deleteInspectionFromSupabase,
 } from './supabaseService';
 import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB } from './indexedDBService';
 import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
@@ -23,8 +25,8 @@ export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 const OFFLINE_QUEUE_KEY = 'panel-inspector-offline-queue';
 
 interface OfflineQueueItem {
-  type: 'inspection' | 'qrcodes' | 'report';
-  key: string; // panelNo / 'all' / reportId
+  type: 'inspection' | 'qrcodes' | 'report' | 'delete-qr' | 'delete-inspection';
+  key: string; // panelNo / qrId / 'all' / reportId
   timestamp: string;
 }
 
@@ -135,8 +137,45 @@ export async function pushAllQRCodes(codes: QRCodeData[]): Promise<void> {
 }
 
 /**
- * 보고서를 Supabase에 push
+ * QR 코드 삭제를 Supabase에 push (오프라인 큐 지원)
+ * - 오프라인 또는 실패 시 큐에 저장 → 네트워크 복귀 시 재시도
  */
+export async function pushDeleteQRCode(id: string): Promise<void> {
+  if (!navigator.onLine) {
+    addToOfflineQueue({ type: 'delete-qr', key: id, timestamp: new Date().toISOString() });
+    notifyStatus('offline');
+    return;
+  }
+  try {
+    await deleteQRCodeFromSupabase(id);
+  } catch (err) {
+    console.error('[syncService] QR 삭제 오류:', err);
+    addToOfflineQueue({ type: 'delete-qr', key: id, timestamp: new Date().toISOString() });
+    notifyStatus('error', String(err));
+    throw err;
+  }
+}
+
+/**
+ * Inspection 삭제를 Supabase에 push (오프라인 큐 지원)
+ * - 오프라인 또는 실패 시 큐에 저장 → 네트워크 복귀 시 재시도
+ */
+export async function pushDeleteInspection(panelNo: string): Promise<void> {
+  if (!navigator.onLine) {
+    addToOfflineQueue({ type: 'delete-inspection', key: panelNo, timestamp: new Date().toISOString() });
+    notifyStatus('offline');
+    return;
+  }
+  try {
+    await deleteInspectionFromSupabase(panelNo);
+  } catch (err) {
+    console.error('[syncService] Inspection 삭제 오류:', err);
+    addToOfflineQueue({ type: 'delete-inspection', key: panelNo, timestamp: new Date().toISOString() });
+    notifyStatus('error', String(err));
+    throw err;
+  }
+}
+
 /**
  * 보고서를 Supabase로 push (Storage 마이그레이션 지원)
  * - report.htmlContent가 있으면 Storage에 업로드
@@ -195,6 +234,15 @@ export async function pullAll(
   notifyStatus('syncing');
 
   try {
+    // 오프라인 큐에서 삭제 예정 ID 수집 (병합 시 부활 방지)
+    const offlineQueue = getOfflineQueue();
+    const pendingDeleteQRIds = new Set(
+      offlineQueue.filter(q => q.type === 'delete-qr').map(q => q.key)
+    );
+    const pendingDeleteInspectionIds = new Set(
+      offlineQueue.filter(q => q.type === 'delete-inspection').map(q => q.key)
+    );
+
     // ── Inspections ──
     const remoteInspections = await fetchAllInspections();
 
@@ -206,6 +254,9 @@ export async function pullAll(
     const localMap = new Map(effectiveLocal.map(r => [r.panelNo, r]));
 
     for (const remote of remoteInspections) {
+      // 삭제 예정 항목은 병합에서 제외 (부활 방지)
+      if (pendingDeleteInspectionIds.has(remote.panelNo)) continue;
+
       const local = localMap.get(remote.panelNo);
       if (!local) {
         // 원격에만 존재 → 로컬에 추가
@@ -245,6 +296,9 @@ export async function pullAll(
     const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
 
     for (const remote of remoteQRCodes) {
+      // 삭제 예정 항목은 병합에서 제외 (부활 방지)
+      if (pendingDeleteQRIds.has(remote.id)) continue;
+
       const local = localQRMap.get(remote.id);
       if (!local) {
         // 원격에만 존재 → 로컬에 추가
@@ -356,6 +410,18 @@ export async function flushOfflineQueue(
     );
     for (const report of reportsToPush) {
       await upsertReport(report);
+    }
+
+    // QR 삭제 큐 처리
+    const deleteQRItems = queue.filter(q => q.type === 'delete-qr');
+    for (const item of deleteQRItems) {
+      await deleteQRCodeFromSupabase(item.key);
+    }
+
+    // Inspection 삭제 큐 처리
+    const deleteInspectionItems = queue.filter(q => q.type === 'delete-inspection');
+    for (const item of deleteInspectionItems) {
+      await deleteInspectionFromSupabase(item.key);
     }
 
     clearOfflineQueue();
