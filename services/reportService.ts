@@ -321,10 +321,10 @@ export const generateExcelReport = async (record: InspectionRecord): Promise<voi
   };
   worksheet.getCell(`N${r4}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // r5: 수용율(%) — 기본 100%, 직접 수정 가능
+  // r5: 수용율(%) — record.acceptanceRate 우선, 없으면 100
   applySummaryLabelStyle(r5, summaryLabels[5]);
   worksheet.mergeCells(`N${r5}:V${r5}`);
-  worksheet.getCell(`N${r5}`).value = 100;
+  worksheet.getCell(`N${r5}`).value = record.acceptanceRate ?? 100;
   worksheet.getCell(`N${r5}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // r6: 수용부하(VA) — G열(차단기용량) × 수용율
@@ -719,7 +719,7 @@ export const generateReportHtml = (record: InspectionRecord): string => {
       </div>
       <div class="summary-row">
         <span class="summary-label">수용율(%)</span>
-        <span>100</span>
+        <span>${record.acceptanceRate ?? 100}</span>
       </div>
       <div class="summary-row">
         <span class="summary-label">수용부하(VA)</span>
