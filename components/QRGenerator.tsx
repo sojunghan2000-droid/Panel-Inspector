@@ -930,12 +930,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       return;
     }
     
-    // 해당 패널의 층으로 FloorPlanView 이동
-    const targetFloor = qrDataToUse.floor || qrData.floor;
-    if (targetFloor) {
-      setSelectedFloor(targetFloor);
-    }
-
     // 상세 패널(모달) 표시 후 해당 마커 선택 → 위치 수정 가능
     if (qrDataToUse.id && onSelectInspection) {
       setOpenDetailPanelForMapping(true);
