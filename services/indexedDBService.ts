@@ -49,14 +49,24 @@ let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
  * 버전 2: qrCodes, floorPlanImages 저장소 추가
  * 버전 3: reports 저장소 추가
  * 버전 4: inspectionHistory 저장소 추가
+ * 버전 5: qrCodes 스토어 초기화 (중복/오염 데이터 제거, Supabase 재동기화)
+ * 버전 6: inspections 스토어에서 잘못된 '06867034' 패널 삭제
  */
 export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
   if (dbInstance) {
     return dbInstance;
   }
 
-  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 4, {
-    upgrade(db, oldVersion, newVersion) {
+  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 6, {
+    upgrade(db, oldVersion, newVersion, transaction) {
+      // v5: qrCodes 스토어 초기화 (386개 중복 데이터 제거)
+      if (oldVersion < 5 && db.objectStoreNames.contains('qrCodes')) {
+        db.deleteObjectStore('qrCodes');
+      }
+      // v6: 잘못된 inspection '06867034' 삭제
+      if (oldVersion < 6 && db.objectStoreNames.contains('inspections')) {
+        transaction.objectStore('inspections').delete('06867034');
+      }
       // Inspections 저장소
       if (!db.objectStoreNames.contains('inspections')) {
         const inspectionStore = db.createObjectStore('inspections', {
