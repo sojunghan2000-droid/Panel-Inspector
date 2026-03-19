@@ -1016,7 +1016,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           </div>
 
           {/* Legend — inspections에서 동적 생성 */}
-          <div className="flex-shrink-0">
+          <div className="w-full">
             <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</div>
             <div className="flex flex-wrap gap-3 text-xs">
               {trLegendItems.map(({ trKey, label, color, count }) => (
