@@ -1052,7 +1052,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* 모달 헤더 */}
             <div className={`px-5 py-4 ${historyModal.mode === 'reset' ? 'bg-orange-600' : 'bg-blue-600'} text-white`}>
               <h3 className="font-bold text-base">
-                {historyModal.mode === 'reset' ? '전체 초기화' : '업데이트'}
+                {historyModal.mode === 'reset' ? '신규 검사 등록' : '업데이트'}
               </h3>
               <p className="text-xs mt-0.5 opacity-80">
                 {historyModal.mode === 'reset'
@@ -1063,7 +1063,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* 모달 본문 */}
             <div className="px-5 py-4 space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">그룹 ID</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">검사 그룹 ID</label>
                 <input
                   type="text"
                   value={historyModal.groupId}
@@ -1108,7 +1108,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 disabled={!historyModal.groupId.trim()}
                 className={`flex-1 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-40 ${historyModal.mode === 'reset' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
-                {historyModal.mode === 'reset' ? '초기화 실행' : '기록 저장'}
+                {historyModal.mode === 'reset' ? '신규 등록' : '기록 저장'}
               </button>
             </div>
           </div>
@@ -1265,7 +1265,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   onClick={() => !isLocked && onSnapshotInspections('')}
                   disabled={isLocked}
                   className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium ${isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-                  title={isLocked ? '잠긴 기록은 업데이트할 수 없습니다' : '마지막 검사 기록 현황 업데이트'}
+                  title={isLocked ? '잠긴 기록은 업데이트할 수 없습니다' : '현재 검사 기록 업데이트'}
                 >
                   {isLocked ? <Lock size={13} /> : <BookmarkPlus size={13} />}
                   <span className="hidden sm:inline">{isLocked ? '잠금' : '업데이트'}</span>
@@ -1277,10 +1277,10 @@ const Dashboard: React.FC<DashboardProps> = ({
               <button
                 onClick={() => setHistoryModal({ mode: 'reset', groupId: `${new Date().getMonth() + 1}월 검사` })}
                 className="shrink-0 flex items-center gap-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
-                title="전체 Inspection 미점검 초기화"
+                title="신규 Inspection 등록"
               >
                 <RefreshCw size={13} />
-                <span className="hidden sm:inline">전체 초기화</span>
+                <span className="hidden sm:inline">신규 검사</span>
               </button>
             )}
           </div>
