@@ -965,14 +965,58 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
-          <p className="text-sm text-slate-600 mt-1">
-            {allMarkers.length} board{allMarkers.length !== 1 ? 's' : ''} mapped on floor plan
-          </p>
+      {/* 타이틀 */}
+      <div className="p-3 md:p-4 border-b border-slate-200 bg-slate-50">
+        <h3 className="text-base md:text-lg font-semibold text-slate-800 truncate">Distribution Board Locations</h3>
+        <p className="text-sm text-slate-600 mt-1">
+          {allMarkers.length} board{allMarkers.length !== 1 ? 's' : ''} mapped on floor plan
+        </p>
+      </div>
+
+      {/* 층별 현황 + Legend + 층 선택 */}
+      <div className="px-4 py-3 border-b border-slate-200 bg-white flex flex-col gap-3">
+        <div className="flex flex-wrap justify-between items-start gap-4">
+          {/* 층별 현황판 */}
+          <div className="flex-1 min-w-[200px]">
+            <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">층별 현황</div>
+            <div className="grid grid-cols-4 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs">
+              {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
+                <div key={floor} className="flex flex-col items-center">
+                  <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}</span>
+                  <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
+                    {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100 text-xs font-semibold">
+              <span className="text-slate-700">총:</span>
+              <span className="text-emerald-600">{floorStats.total}면</span>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="flex-shrink-0">
+            <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</div>
+            <div className="flex flex-wrap gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
+                <span className="text-slate-600">TR-1 900KVA</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
+                <span className="text-slate-600">TR-2 950KVA</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
+                <span className="text-slate-600">미지정</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+
+        {/* 층 선택 + 버튼들 */}
+        <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
           <label className="text-sm font-medium text-slate-700">층 선택:</label>
           <select
             value={selectedFloor}
@@ -1021,47 +1065,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               className="hidden"
             />
           </label>
-        </div>
-      </div>
-
-      {/* 층별 현황 + Legend - 사진 영역 위에 가로 배치 */}
-      <div className="px-4 py-3 border-b border-slate-200 bg-white flex flex-wrap justify-between items-start gap-4">
-        {/* 층별 현황판 */}
-        <div className="flex-1 min-w-[200px]">
-          <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">층별 현황</div>
-          <div className="grid grid-cols-4 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs">
-            {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
-              <div key={floor} className="flex flex-col items-center">
-                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}</span>
-                <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
-                  {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100 text-xs font-semibold">
-            <span className="text-slate-700">총:</span>
-            <span className="text-emerald-600">{floorStats.total}면</span>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex-shrink-0">
-          <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</div>
-          <div className="flex flex-wrap gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
-              <span className="text-slate-600">TR-1 900KVA</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
-              <span className="text-slate-600">TR-2 950KVA</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
-              <span className="text-slate-600">미지정</span>
-            </div>
-          </div>
         </div>
       </div>
 
