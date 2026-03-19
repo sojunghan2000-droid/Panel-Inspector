@@ -1053,7 +1053,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               ☑ 다중 선택
             </button>
           )}
-          {/* 배경 이미지 업로드 버튼 */}
+          {/* 배경 이미지 업로드 버튼 (Dashboard에서는 숨김) */}
+          {mode !== 'dashboard' && (
           <label className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer text-sm font-medium transition-colors">
             <Upload size={16} />
             <span className="hidden sm:inline">{selectedFloor} 배경</span>
@@ -1065,6 +1066,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               className="hidden"
             />
           </label>
+          )}
         </div>
       </div>
 
