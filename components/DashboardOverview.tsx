@@ -56,34 +56,41 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>공사용 가설 분전반 점검 보고서</title>
   <style>
-    body { font-family: 'Malgun Gothic', Arial, sans-serif; padding: 20px; background-color: #f5f5f5; }
-    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h1 { color: #1e40af; border-bottom: 3px solid #1e40af; padding-bottom: 10px; margin-bottom: 20px; }
-    .draft-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 15px; }
-    .info { margin: 15px 0; padding: 10px; background-color: #f9fafb; border-left: 4px solid #3b82f6; border-radius: 4px; }
-    .label { font-weight: bold; color: #374151; display: inline-block; min-width: 150px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Malgun Gothic', Arial, sans-serif; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; padding: 8px; }
+    .container { width: 100%; max-width: 600px; background: white; padding: 14px 18px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #1e40af; border-bottom: 2px solid #1e40af; padding-bottom: 6px; margin-bottom: 8px; font-size: 15px; }
+    .draft-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-bottom: 8px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .info { padding: 5px 8px; background-color: #f9fafb; border-left: 3px solid #3b82f6; border-radius: 3px; font-size: 12px; }
+    .label { font-weight: bold; color: #374151; display: block; font-size: 10px; }
     .value { color: #1f2937; }
     .empty { color: #9ca3af; font-style: italic; }
+    .full { grid-column: 1 / -1; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>공사용 가설 분전반 점검 보고서</h1>
     <div class="draft-badge">미생성 (Draft)</div>
-    ${inspection.projectName ? `<div class="info"><span class="label">PJT명:</span><span class="value">${inspection.projectName}</span></div>` : `<div class="info"><span class="label">PJT명:</span><span class="empty">-</span></div>`}
-    ${inspection.contractor ? `<div class="info"><span class="label">시공사:</span><span class="value">${inspection.contractor}</span></div>` : `<div class="info"><span class="label">시공사:</span><span class="empty">-</span></div>`}
-    ${inspection.managementNumber ? `<div class="info"><span class="label">관리번호:</span><span class="value">${inspection.managementNumber}</span></div>` : `<div class="info"><span class="label">관리번호:</span><span class="empty">-</span></div>`}
-    <div class="info"><span class="label">PNL NO.:</span><span class="value">${inspection.panelNo}</span></div>
-    <div class="info"><span class="label">TR:</span><span class="${inspection.tr ? 'value' : 'empty'}">${inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-'}</span></div>
-    <div class="info"><span class="label">층수:</span><span class="${inspection.floor ? 'value' : 'empty'}">${inspection.floor || '-'}</span></div>
-    <div class="info"><span class="label">공칭 단면적:</span><span class="${inspection.nominalCrossSection ? 'value' : 'empty'}">${inspection.nominalCrossSection || '-'}</span></div>
-    <div class="info"><span class="label">상태:</span><span class="value">${inspection.status}</span></div>
-    <div class="info"><span class="label">마지막 점검일:</span><span class="value">${inspection.lastInspectionDate !== '-' ? inspection.lastInspectionDate : '-'}</span></div>
-    <div class="info"><span class="label">부하 원인:</span><span class="value">${loadCause}</span></div>
-    <div class="info"><span class="label">점검 조치 사항:</span><span class="${inspection.memo ? 'value' : 'empty'}">${inspection.memo || '-'}</span></div>
-    ${inspection.inspectors && inspection.inspectors.length > 0 ? `<div class="info"><span class="label">점검자:</span><span class="value">${inspection.inspectors.join(', ')}</span></div>` : `<div class="info"><span class="label">점검자:</span><span class="empty">-</span></div>`}
+    <div class="grid">
+      ${inspection.projectName ? `<div class="info"><span class="label">PJT명</span><span class="value">${inspection.projectName}</span></div>` : `<div class="info"><span class="label">PJT명</span><span class="empty">-</span></div>`}
+      ${inspection.contractor ? `<div class="info"><span class="label">시공사</span><span class="value">${inspection.contractor}</span></div>` : `<div class="info"><span class="label">시공사</span><span class="empty">-</span></div>`}
+      ${inspection.managementNumber ? `<div class="info"><span class="label">관리번호</span><span class="value">${inspection.managementNumber}</span></div>` : `<div class="info"><span class="label">관리번호</span><span class="empty">-</span></div>`}
+      <div class="info"><span class="label">PNL NO.</span><span class="value">${inspection.panelNo}</span></div>
+      <div class="info"><span class="label">TR</span><span class="${inspection.tr ? 'value' : 'empty'}">${inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-'}</span></div>
+      <div class="info"><span class="label">층수</span><span class="${inspection.floor ? 'value' : 'empty'}">${inspection.floor || '-'}</span></div>
+      <div class="info"><span class="label">공칭 단면적</span><span class="${inspection.nominalCrossSection ? 'value' : 'empty'}">${inspection.nominalCrossSection || '-'}</span></div>
+      <div class="info"><span class="label">상태</span><span class="value">${inspection.status}</span></div>
+      <div class="info"><span class="label">마지막 점검일</span><span class="value">${inspection.lastInspectionDate !== '-' ? inspection.lastInspectionDate : '-'}</span></div>
+      <div class="info"><span class="label">부하 원인</span><span class="value">${loadCause}</span></div>
+      <div class="info full"><span class="label">점검 조치 사항</span><span class="${inspection.memo ? 'value' : 'empty'}">${inspection.memo || '-'}</span></div>
+      ${inspection.inspectors && inspection.inspectors.length > 0 ? `<div class="info full"><span class="label">점검자</span><span class="value">${inspection.inspectors.join(', ')}</span></div>` : `<div class="info full"><span class="label">점검자</span><span class="empty">-</span></div>`}
+    </div>
   </div>
 </body>
 </html>`.trim();

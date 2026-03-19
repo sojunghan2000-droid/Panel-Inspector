@@ -146,12 +146,15 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
 
   const restoreMainScrollOnFocus = useCallback(() => {
+    // onFocus 시점의 현재 scroll 위치를 캡처하여 복원 (브라우저 포커스 스크롤 방지)
+    const snapMain = mainScrollRef?.current?.scrollTop ?? 0;
+    const snapRight = rightPanelScrollRef.current?.scrollTop ?? 0;
     const restore = () => {
       if (mainScrollRef?.current != null) {
-        mainScrollRef.current.scrollTop = savedMainScrollOnInteractionRef.current;
+        mainScrollRef.current.scrollTop = snapMain;
       }
       if (rightPanelScrollRef.current != null) {
-        rightPanelScrollRef.current.scrollTop = savedRightScrollOnInteractionRef.current;
+        rightPanelScrollRef.current.scrollTop = snapRight;
       }
     };
     requestAnimationFrame(() => {
@@ -517,14 +520,12 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            setSelectedFloor(floorFromId);
           }
         } else if (idParts.length >= 2) {
           const floorFromId = NUM_TO_FLOOR[idParts[0]] || '';
           const locationFromId = NUM_TO_TR[idParts[1]] || idParts[1];
           if (floorFromId && (!updated.floor || updated.floor !== floorFromId)) {
             updated.floor = floorFromId;
-            setSelectedFloor(floorFromId);
           }
           if (locationFromId && isValidTR(locationFromId.toUpperCase()) && (!updated.location || updated.location !== locationFromId.toUpperCase())) {
             updated.location = locationFromId.toUpperCase();
@@ -535,10 +536,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       // 유효한 층수 목록
       const validFloors = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'B1', 'B2'];
 
-      // 층수 필드 변경 시 selectedFloor도 동기화
-      if (field === 'floor' && validFloors.includes(value)) {
-        setSelectedFloor(value);
-      }
+      // 층수 필드 변경 시 selectedFloor 동기화 제거 (스크롤 이동 방지)
 
       // 층수와 위치가 모두 입력되면 자동으로 QR 생성 (선택된 QR 편집 중일 때는 제외)
       const hasFloor = updated.floor && validFloors.includes(updated.floor);
@@ -876,16 +874,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
 
     showToast('QR 코드가 수정되었습니다.');
-
-    // FloorPlanView에서 변경된 층으로 자동 이동 + 마커 포커스
-    // 같은 패널이 이미 선택된 경우에도 동작하도록 한번 초기화 후 재선택
-    if (onSelectInspection) {
-      onSelectInspection('');
-      setTimeout(() => {
-        onSelectInspection(finalId);
-      }, 150);
-    }
-    // alert/리렌더 후 스크롤 복원 (여러 시점에 복원)
+    // 저장 후 스크롤 위치 복원
     restoreScrollAfterAction();
   };
 
@@ -1560,8 +1549,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           )}
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 h-full overflow-y-auto">
-        <div className="p-3 border-b border-slate-200 bg-slate-50">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 h-full flex flex-col">
+        <div className="p-3 border-b border-slate-200 bg-slate-50 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
             <div className="flex items-center gap-2">
@@ -1593,6 +1582,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         </div>
 
+        <div className="overflow-y-auto flex-1">
         {filteredInspections.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
             <QrCode size={48} className="mb-4 opacity-50" />
@@ -1631,8 +1621,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     if (onSelectInspection) {
                       onSelectInspection(inspection.panelNo);
                     }
-                    // 패널 클릭 시 FloorPlanView 위젯으로 스크롤
-                    scrollToFloorPlanWidget(inspection.panelNo);
                   }}
                   className={`px-3 py-2 cursor-pointer transition-colors hover:bg-slate-50 ${
                     isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
@@ -1668,7 +1656,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             handleEditQR(matchingQR, e);
-                            scrollToPanelDetail();
                           }}
                           className="p-1 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors"
                           title="Edit QR code"
@@ -1702,6 +1689,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             })}
           </div>
         )}
+        </div>{/* overflow-y-auto flex-1 */}
         </div>
       </div>
 
@@ -1740,10 +1728,6 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               const matchingQR = qrCodeMap.get(id);
               if (matchingQR) {
                 selectQR(matchingQR);
-                // 패널 상세 섹션으로 스크롤
-                setTimeout(() => {
-                  panelDetailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100);
               } else {
                 setSelectedQR(null);
                 const inspection = inspections.find(i => i.panelNo === id);
