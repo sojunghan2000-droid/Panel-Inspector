@@ -285,26 +285,15 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* 차단기 용량별 현황 - Recent Inspections 아래 배치 */}
         <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">차단기 용량별 현황</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
             {breakerCapacitySummary.items.map(item => (
-              <div key={item.capacity} className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2 text-sm font-medium">
-                <span className="font-bold">{item.capacity}A</span>
-                <span className="text-blue-500">=</span>
-                <span>{item.count}대</span>
-              </div>
+              <span key={item.capacity}>{item.capacity}A = {item.count}대</span>
             ))}
             {breakerCapacitySummary.missingCount > 0 && (
-              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-sm font-medium">
-                <span className="font-bold">정보 부재</span>
-                <span className="text-amber-500">=</span>
-                <span>{breakerCapacitySummary.missingCount}대</span>
-              </div>
+              <span>정보 부재 = {breakerCapacitySummary.missingCount}대</span>
             )}
             {breakerCapacitySummary.items.length > 0 && (
-              <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm font-semibold">
-                <span>총</span>
-                <span className="text-emerald-600">{breakerCapacitySummary.items.reduce((sum, i) => sum + i.count, 0)}대</span>
-              </div>
+              <span className="text-slate-900 font-medium">총 {breakerCapacitySummary.items.reduce((sum, i) => sum + i.count, 0)}대</span>
             )}
           </div>
         </div>
