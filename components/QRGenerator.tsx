@@ -75,6 +75,8 @@ interface QRGeneratorProps {
   onDeleteInspection?: (panelNo: string) => void;
   /** main 스크롤 유지용 (App의 main ref) */
   mainScrollRef?: React.RefObject<HTMLElement | null>;
+  /** Supabase Storage URL 목록 (FloorPlanView에 전달) */
+  floorPlanUrls?: { floor: string; url: string }[];
 }
 
 const QRGenerator: React.FC<QRGeneratorProps> = ({
@@ -84,7 +86,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   onSelectInspection,
   onUpdateInspections,
   onDeleteInspection,
-  mainScrollRef
+  mainScrollRef,
+  floorPlanUrls = []
 }) => {
   const qrCodes = propQrCodes;
   const setQrCodes = useCallback((updater: QRCodeData[] | ((prev: QRCodeData[]) => QRCodeData[])) => {
@@ -1692,6 +1695,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           }}
           showDetailPanel={openDetailPanelForMapping}
           startInEditMode={openDetailPanelForMapping}
+          floorPlanUrls={floorPlanUrls}
         />
         </div>
         {/* 패널 미선택 & 폼 미표시 시 안내 메시지 (order-2) */}

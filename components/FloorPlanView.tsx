@@ -3,7 +3,6 @@ import { InspectionRecord, QRCodeData } from '../types';
 import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 import { pushFloorPlanImage } from '../services/syncService';
-import { fetchAllFloorPlanUrls } from '../services/supabaseService';
 
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
@@ -25,6 +24,8 @@ interface FloorPlanViewProps {
   readOnly?: boolean;
   /** Dashboard 모드에서 위젯 클릭 시 InspectionDetail Modal 표시 */
   onShowInspectionModal?: (inspection: InspectionRecord) => void;
+  /** Supabase Storage URL 목록 (pullAll에서 가져온 결과, 중복 fetch 방지) */
+  floorPlanUrls?: { floor: string; url: string }[];
 }
 
 /** MOCK_DATA와 동일: 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2. F1 탭에 1~6층, B1 탭에 7~8층 표시 */
@@ -71,7 +72,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   startInEditMode = false,
   mode = 'panel-master',
   readOnly = false,
-  onShowInspectionModal
+  onShowInspectionModal,
+  floorPlanUrls = []
 }) => {
   const [selectedInspection, setSelectedInspection] = useState<InspectionRecord | null>(null);
   const [hoveredInspection, setHoveredInspection] = useState<InspectionRecord | null>(null);
@@ -140,18 +142,13 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   // prop으로 전달된 층수가 있으면 사용, 없으면 내부 상태 사용
   const selectedFloor = propSelectedFloor ?? internalSelectedFloor;
 
-  // IndexedDB에서 배경 이미지 로드 (없으면 Supabase Storage fallback)
+  // IndexedDB에서 배경 이미지 로드 (없으면 props로 전달된 Storage URL fallback)
+  // Supabase 직접 호출 없음 — URL은 pullAll()에서 가져와 props로 전달됨
   useEffect(() => {
     const loadAllFloorPlanImages = async () => {
       try {
-        // Supabase Storage URL 목록 먼저 조회 (fallback용)
-        let storageUrls: Record<string, string> = {};
-        try {
-          const urlList = await fetchAllFloorPlanUrls();
-          urlList.forEach(({ floor, url }) => { storageUrls[floor] = url; });
-        } catch {
-          // Supabase 연결 실패 시 IndexedDB만 사용
-        }
+        const storageUrls: Record<string, string> = {};
+        floorPlanUrls.forEach(({ floor, url }) => { storageUrls[floor] = url; });
 
         const images: Record<string, string | null> = {};
         for (const floor of ALL_FLOORS) {
@@ -160,14 +157,14 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           if (img) {
             images[floor] = img;
           } else if (storageUrls[floor]) {
-            // 2순위: Supabase Storage URL → fetch → IndexedDB에도 저장
+            // 2순위: props URL → fetch → IndexedDB에 캐시
             try {
               const res = await fetch(storageUrls[floor]);
               const blob = await res.blob();
               await saveFloorPlanImage(floor, blob);
               const dataUrl = URL.createObjectURL(blob);
               images[floor] = dataUrl;
-              console.log(`[FloorPlan] ${floor} Supabase Storage에서 복원`);
+              console.log(`[FloorPlan] ${floor} Storage에서 복원`);
             } catch {
               images[floor] = null;
             }
@@ -181,7 +178,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       }
     };
     loadAllFloorPlanImages();
-  }, []);
+  }, [floorPlanUrls]);
 
   // 배경 이미지 업로드 핸들러
   const handleFloorPlanImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {

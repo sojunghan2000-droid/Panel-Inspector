@@ -12,6 +12,7 @@ interface DashboardOverviewProps {
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
   reports?: ReportHistory[];
+  floorPlanUrls?: { floor: string; url: string }[];
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
@@ -19,7 +20,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onUpdateInspections,
   selectedInspectionId,
   onSelectionChange,
-  reports = []
+  reports = [],
+  floorPlanUrls = []
 }) => {
   // InspectionDetail Modal 상태
   const [showInspectionModal, setShowInspectionModal] = useState(false);
@@ -304,6 +306,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           mode="dashboard"
           readOnly={true}
           onShowInspectionModal={handleShowInspectionModal}
+          floorPlanUrls={floorPlanUrls}
         />
 
         {/* Pending Inspections Alert */}

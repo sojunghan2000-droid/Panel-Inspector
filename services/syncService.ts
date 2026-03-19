@@ -9,10 +9,16 @@ import {
   upsertInspection,
   upsertInspections,
   fetchAllInspections,
+  fetchInspectionsSince,
+  fetchAllInspectionIds,
   upsertQRCodes,
   fetchAllQRCodes,
+  fetchQRCodesSince,
+  fetchAllQRCodeIds,
   upsertReport,
   fetchAllReports,
+  fetchReportsSince,
+  fetchAllReportIds,
   uploadBlob,
   deleteQRCodeFromSupabase,
   deleteInspectionFromSupabase,
@@ -232,10 +238,32 @@ export interface PullCallbacks {
   onQRCodesUpdated: (codes: QRCodeData[]) => void;
   onReportsUpdated: (reports: ReportHistory[]) => void;
   onSyncStatusChange: (status: SyncStatus, msg?: string) => void;
+  onFloorPlanUrlsUpdated?: (urls: { floor: string; url: string }[]) => void;
+}
+
+// ─────────────────────────────────────────
+// 증분 동기화 타임스탬프 관리
+// ─────────────────────────────────────────
+
+const LAST_SYNC_KEY = 'panel-inspector-last-sync';
+
+function getLastSyncTimestamp(): string | null {
+  return localStorage.getItem(LAST_SYNC_KEY);
+}
+
+function setLastSyncTimestamp(ts: string): void {
+  localStorage.setItem(LAST_SYNC_KEY, ts);
+}
+
+/** 강제 전체 동기화 (로그아웃, 데이터 리셋 시 호출) */
+export function resetSyncTimestamp(): void {
+  localStorage.removeItem(LAST_SYNC_KEY);
 }
 
 /**
- * Supabase에서 전체 데이터를 가져와 IDB와 병합
+ * Supabase에서 데이터를 가져와 IDB와 병합
+ * - 초회(lastSync 없음): 전체 데이터 로드
+ * - 이후: 변경분만 증분 로드 + ID 목록으로 삭제 감지
  */
 export async function pullAll(
   localInspections: InspectionRecord[],
@@ -252,6 +280,9 @@ export async function pullAll(
   notifyStatus('syncing');
 
   try {
+    const lastSync = getLastSyncTimestamp();
+    const syncStartTime = new Date().toISOString();
+
     // 오프라인 큐에서 삭제 예정 ID 수집 (병합 시 부활 방지)
     const offlineQueue = getOfflineQueue();
     const pendingDeleteQRIds = new Set(
@@ -261,127 +292,237 @@ export async function pullAll(
       offlineQueue.filter(q => q.type === 'delete-inspection').map(q => q.key)
     );
 
-    // ── Inspections ──
-    const remoteInspections = await fetchAllInspections();
-
     // IDB를 직접 읽어 실제 최신 로컬 상태를 가져온다.
-    // useEffect 클로저 stale 문제로 localInspections가 [] 일 수 있기 때문.
     const idbInspections = await getAllInspectionsFromIDB().catch(() => [] as typeof localInspections);
     const effectiveLocal = idbInspections.length > 0 ? idbInspections : localInspections;
 
-    const localMap = new Map(effectiveLocal.map(r => [r.panelNo, r]));
+    if (!lastSync) {
+      // ═══════════════════════════════════════
+      // 초회: 전체 동기화 (기존 로직)
+      // ═══════════════════════════════════════
+      console.log('[syncService] 초회 전체 동기화 시작');
 
-    for (const remote of remoteInspections) {
-      // 삭제 예정 항목은 병합에서 제외 (부활 방지)
-      if (pendingDeleteInspectionIds.has(remote.panelNo)) continue;
+      // ── Inspections ──
+      const remoteInspections = await fetchAllInspections();
+      const localMap = new Map(effectiveLocal.map(r => [r.panelNo, r]));
 
-      const local = localMap.get(remote.panelNo);
-      if (!local) {
-        // 원격에만 존재 → 로컬에 추가
-        localMap.set(remote.panelNo, remote);
-        await saveInspection(remote);
-      } else {
-        const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-        const localTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
-        if (remoteTs > localTs) {
-          // 원격이 더 최신 → 덮어쓰기
+      for (const remote of remoteInspections) {
+        if (pendingDeleteInspectionIds.has(remote.panelNo)) continue;
+        const local = localMap.get(remote.panelNo);
+        if (!local) {
           localMap.set(remote.panelNo, remote);
           await saveInspection(remote);
+        } else {
+          const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+          const localTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+          if (remoteTs > localTs) {
+            localMap.set(remote.panelNo, remote);
+            await saveInspection(remote);
+          }
         }
-        // 로컬이 더 최신 또는 동일 → 유지
       }
-    }
+      callbacks.onInspectionsUpdated(Array.from(localMap.values()));
 
-    const mergedInspections = Array.from(localMap.values());
-    callbacks.onInspectionsUpdated(mergedInspections);
+      // 로컬 → Supabase 역방향 push
+      const remotePanelNos = new Set(remoteInspections.map(r => r.panelNo));
+      const inspectionsToPush = effectiveLocal.filter(insp => {
+        if (!remotePanelNos.has(insp.panelNo)) return true;
+        const remote = remoteInspections.find(r => r.panelNo === insp.panelNo)!;
+        const localTs = insp.updatedAt ? new Date(insp.updatedAt).getTime() : 0;
+        const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        return localTs > remoteTs;
+      });
+      if (inspectionsToPush.length > 0) {
+        console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
+        await upsertInspections(inspectionsToPush);
+      }
 
-    // ── 로컬 → Supabase 역방향 push (로컬에만 있거나, 로컬이 더 최신인 항목) ──
-    const remotePanelNos = new Set(remoteInspections.map(r => r.panelNo));
-    const inspectionsToPush = effectiveLocal.filter(insp => {
-      if (!remotePanelNos.has(insp.panelNo)) return true; // 로컬에만 있음
-      const remote = remoteInspections.find(r => r.panelNo === insp.panelNo)!;
-      const localTs = insp.updatedAt ? new Date(insp.updatedAt).getTime() : 0;
-      const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-      return localTs > remoteTs; // 로컬이 더 최신
-    });
-    if (inspectionsToPush.length > 0) {
-      console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
-      await upsertInspections(inspectionsToPush);
-    }
+      // ── QR Codes ──
+      const remoteQRCodes = await fetchAllQRCodes();
+      const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
 
-    // ── QR Codes — Inspection과 동일한 양방향 병합 (createdAt 기준 last-write-wins) ──
-    const remoteQRCodes = await fetchAllQRCodes();
-    const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
-
-    for (const remote of remoteQRCodes) {
-      // 삭제 예정 항목은 병합에서 제외 (부활 방지)
-      if (pendingDeleteQRIds.has(remote.id)) continue;
-
-      const local = localQRMap.get(remote.id);
-      if (!local) {
-        // 원격에만 존재 → 로컬에 추가
-        localQRMap.set(remote.id, remote);
-        await saveQRCode(remote);
-      } else {
-        // createdAt을 updatedAt 대용으로 사용 (수정 시 갱신됨)
-        const remoteTs = new Date(remote.createdAt).getTime();
-        const localTs = new Date(local.createdAt).getTime();
-        if (remoteTs > localTs) {
-          // 원격이 더 최신 → 덮어쓰기
+      for (const remote of remoteQRCodes) {
+        if (pendingDeleteQRIds.has(remote.id)) continue;
+        const local = localQRMap.get(remote.id);
+        if (!local) {
           localQRMap.set(remote.id, remote);
           await saveQRCode(remote);
+        } else {
+          const remoteTs = new Date(remote.createdAt).getTime();
+          const localTs = new Date(local.createdAt).getTime();
+          if (remoteTs > localTs) {
+            localQRMap.set(remote.id, remote);
+            await saveQRCode(remote);
+          }
         }
-        // 로컬이 더 최신 또는 동일 → 유지
       }
-    }
-    const mergedQRCodes = Array.from(localQRMap.values());
-    callbacks.onQRCodesUpdated(mergedQRCodes);
+      callbacks.onQRCodesUpdated(Array.from(localQRMap.values()));
 
-    // 로컬 → Supabase 역방향 push (로컬에만 있는 QR 코드)
-    const remoteQRIds = new Set(remoteQRCodes.map(q => q.id));
-    const qrsToPush = localQRCodes.filter(q => {
-      if (!remoteQRIds.has(q.id)) return true; // 로컬에만 존재
-      const remote = remoteQRCodes.find(r => r.id === q.id)!;
-      const localTs = new Date(q.createdAt).getTime();
-      const remoteTs = new Date(remote.createdAt).getTime();
-      return localTs > remoteTs; // 로컬이 더 최신
-    });
-    if (qrsToPush.length > 0) {
-      console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
-      await upsertQRCodes(qrsToPush);
-    }
+      // 로컬 → Supabase push (QR)
+      const remoteQRIds = new Set(remoteQRCodes.map(q => q.id));
+      const qrsToPush = localQRCodes.filter(q => {
+        if (!remoteQRIds.has(q.id)) return true;
+        const remote = remoteQRCodes.find(r => r.id === q.id)!;
+        return new Date(q.createdAt).getTime() > new Date(remote.createdAt).getTime();
+      });
+      if (qrsToPush.length > 0) {
+        console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
+        await upsertQRCodes(qrsToPush);
+      }
 
-    // ── Reports ── (id 기준 병합 - 같은 날 Complete 재발행 시 두 레코드 모두 유지)
-    const remoteReports = await fetchAllReports();
-    if (remoteReports.length > 0) {
-      const reportMap = new Map(localReports.map(r => [r.id, r]));
-      for (const remote of remoteReports) {
-        if (!reportMap.has(remote.id)) {
-          // 로컬에 없는 원격 보고서 → 추가
-          reportMap.set(remote.id, remote);
-          await saveReport(remote);
+      // ── Reports ──
+      const remoteReports = await fetchAllReports();
+      if (remoteReports.length > 0) {
+        const reportMap = new Map(localReports.map(r => [r.id, r]));
+        for (const remote of remoteReports) {
+          if (!reportMap.has(remote.id)) {
+            reportMap.set(remote.id, remote);
+            await saveReport(remote);
+          }
         }
-        // 로컬에 있으면 로컬 우선 (이미 최신 상태)
+        callbacks.onReportsUpdated(
+          Array.from(reportMap.values()).sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+        );
       }
-      const mergedReports = Array.from(reportMap.values())
-        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
-      callbacks.onReportsUpdated(mergedReports);
+
+      // 로컬에만 있는 report → push
+      const remoteIds = new Set(remoteReports.map(r => r.id));
+      const localOnlyReports = localReports.filter(r => !remoteIds.has(r.id));
+      if (localOnlyReports.length > 0) {
+        console.log(`[syncService] Reports 로컬→Supabase push: ${localOnlyReports.length}건`);
+        for (const report of localOnlyReports) {
+          await upsertReport(report);
+        }
+      }
+
+    } else {
+      // ═══════════════════════════════════════
+      // 증분: 변경분만 동기화
+      // ═══════════════════════════════════════
+      console.log(`[syncService] 증분 동기화 시작 (since: ${lastSync})`);
+
+      // ── Inspections (변경분) ──
+      const changedInspections = await fetchInspectionsSince(lastSync);
+      const localMap = new Map(effectiveLocal.map(r => [r.panelNo, r]));
+      let inspectionsChanged = false;
+
+      if (changedInspections.length > 0) {
+        console.log(`[syncService] 증분 inspections: ${changedInspections.length}건`);
+        for (const remote of changedInspections) {
+          if (pendingDeleteInspectionIds.has(remote.panelNo)) continue;
+          const local = localMap.get(remote.panelNo);
+          const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+          const localTs = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+          if (!local || remoteTs > localTs) {
+            localMap.set(remote.panelNo, remote);
+            await saveInspection(remote);
+            inspectionsChanged = true;
+          }
+        }
+      }
+
+      // 삭제 감지: ID 목록만 가져와 비교 (경량)
+      const remoteInspectionIds = new Set(await fetchAllInspectionIds());
+      for (const local of effectiveLocal) {
+        if (!remoteInspectionIds.has(local.panelNo) && !pendingDeleteInspectionIds.has(local.panelNo)) {
+          localMap.delete(local.panelNo);
+          inspectionsChanged = true;
+          console.log(`[syncService] 원격 삭제 감지: ${local.panelNo}`);
+        }
+      }
+
+      if (inspectionsChanged) {
+        callbacks.onInspectionsUpdated(Array.from(localMap.values()));
+      }
+
+      // 로컬 → Supabase push (로컬에만 있는 항목)
+      const inspectionsToPush = effectiveLocal.filter(insp => !remoteInspectionIds.has(insp.panelNo));
+      if (inspectionsToPush.length > 0) {
+        console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
+        await upsertInspections(inspectionsToPush);
+      }
+
+      // ── QR Codes (변경분) ──
+      const changedQRCodes = await fetchQRCodesSince(lastSync);
+      const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
+      let qrChanged = false;
+
+      if (changedQRCodes.length > 0) {
+        console.log(`[syncService] 증분 QR codes: ${changedQRCodes.length}건`);
+        for (const remote of changedQRCodes) {
+          if (pendingDeleteQRIds.has(remote.id)) continue;
+          const local = localQRMap.get(remote.id);
+          if (!local) {
+            localQRMap.set(remote.id, remote);
+            await saveQRCode(remote);
+            qrChanged = true;
+          } else {
+            const remoteTs = new Date(remote.createdAt).getTime();
+            const localTs = new Date(local.createdAt).getTime();
+            if (remoteTs > localTs) {
+              localQRMap.set(remote.id, remote);
+              await saveQRCode(remote);
+              qrChanged = true;
+            }
+          }
+        }
+      }
+
+      // 삭제 감지 (QR)
+      const remoteQRIdSet = new Set(await fetchAllQRCodeIds());
+      for (const local of localQRCodes) {
+        if (!remoteQRIdSet.has(local.id) && !pendingDeleteQRIds.has(local.id)) {
+          localQRMap.delete(local.id);
+          qrChanged = true;
+          console.log(`[syncService] QR 원격 삭제 감지: ${local.id}`);
+        }
+      }
+
+      if (qrChanged) {
+        callbacks.onQRCodesUpdated(Array.from(localQRMap.values()));
+      }
+
+      // 로컬 → Supabase push (QR)
+      const qrsToPush = localQRCodes.filter(q => !remoteQRIdSet.has(q.id));
+      if (qrsToPush.length > 0) {
+        console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
+        await upsertQRCodes(qrsToPush);
+      }
+
+      // ── Reports (변경분) ──
+      const changedReports = await fetchReportsSince(lastSync);
+      if (changedReports.length > 0) {
+        console.log(`[syncService] 증분 reports: ${changedReports.length}건`);
+        const reportMap = new Map(localReports.map(r => [r.id, r]));
+        for (const remote of changedReports) {
+          if (!reportMap.has(remote.id)) {
+            reportMap.set(remote.id, remote);
+            await saveReport(remote);
+          }
+        }
+        callbacks.onReportsUpdated(
+          Array.from(reportMap.values()).sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+        );
+      }
+
+      // 로컬에만 있는 report → push
+      const remoteReportIdSet = new Set(await fetchAllReportIds());
+      const localOnlyReports = localReports.filter(r => !remoteReportIdSet.has(r.id));
+      if (localOnlyReports.length > 0) {
+        console.log(`[syncService] Reports 로컬→Supabase push: ${localOnlyReports.length}건`);
+        for (const report of localOnlyReports) {
+          await upsertReport(report);
+        }
+      }
     }
 
-    // ── 로컬에만 있는 report → Supabase push ──
-    const remoteIds = new Set(remoteReports.map(r => r.id));
-    const localOnlyReports = localReports.filter(r => !remoteIds.has(r.id));
-    if (localOnlyReports.length > 0) {
-      console.log(`[syncService] Reports 로컬→Supabase push: ${localOnlyReports.length}건`);
-      for (const report of localOnlyReports) {
-        await upsertReport(report);
-      }
-    }
-
-    // ── Floor Plan Images — Supabase → IndexedDB 복원 ──
-    // 새 기기 접속 시 도면이 없으면 Supabase Storage에서 다운로드
+    // ── Floor Plan Images — 소량이므로 항상 전체 fetch ──
     try {
       const remoteFloorPlans = await fetchAllFloorPlanUrls();
+      // URL 목록을 콜백으로 전달 (FloorPlanView에서 사용)
+      if (callbacks.onFloorPlanUrlsUpdated) {
+        callbacks.onFloorPlanUrlsUpdated(remoteFloorPlans);
+      }
       for (const { floor, url } of remoteFloorPlans) {
         const existing = await getFloorPlanImage(floor);
         if (!existing) {
@@ -394,9 +535,11 @@ export async function pullAll(
         }
       }
     } catch (err) {
-      // 도면 복원 실패는 치명적이지 않으므로 다음 pullAll 때 재시도
       console.warn('[syncService] 도면 복원 오류 (무시):', err);
     }
+
+    // 동기화 타임스탬프 저장
+    setLastSyncTimestamp(syncStartTime);
 
     callbacks.onSyncStatusChange('success');
     notifyStatus('success');

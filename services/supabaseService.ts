@@ -135,6 +135,20 @@ export async function fetchAllInspections(): Promise<InspectionRecord[]> {
   return (data as Record<string, unknown>[]).map(rowToInspection);
 }
 
+/** 증분 동기화: since 이후 변경된 inspections만 가져오기 */
+export async function fetchInspectionsSince(since: string): Promise<InspectionRecord[]> {
+  const { data, error } = await supabase.from('inspections').select('*').gt('updated_at', since);
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(rowToInspection);
+}
+
+/** 삭제 감지용: 전체 panel_no 목록만 (경량) */
+export async function fetchAllInspectionIds(): Promise<string[]> {
+  const { data, error } = await supabase.from('inspections').select('panel_no');
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(r => r.panel_no as string);
+}
+
 export async function deleteInspectionFromSupabase(panelNo: string): Promise<void> {
   const { error } = await supabase.from('inspections').delete().eq('panel_no', panelNo);
   if (error) throw error;
@@ -174,6 +188,29 @@ export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
     qrData: row.qr_data as string,
     createdAt: row.created_at as string,
   }));
+}
+
+const rowToQRCode = (row: Record<string, unknown>): QRCodeData => ({
+  id: row.id as string,
+  location: row.location as string,
+  floor: row.floor as string,
+  position: row.position as string,
+  qrData: row.qr_data as string,
+  createdAt: row.created_at as string,
+});
+
+/** 증분 동기화: since 이후 변경된 QR codes만 가져오기 */
+export async function fetchQRCodesSince(since: string): Promise<QRCodeData[]> {
+  const { data, error } = await supabase.from('qr_codes').select('*').gt('updated_at', since);
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(rowToQRCode);
+}
+
+/** 삭제 감지용: 전체 QR code ID 목록만 (경량) */
+export async function fetchAllQRCodeIds(): Promise<string[]> {
+  const { data, error } = await supabase.from('qr_codes').select('id');
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(r => r.id as string);
 }
 
 // ─────────────────────────────────────────
@@ -239,19 +276,39 @@ export async function fetchAllReports(): Promise<ReportHistory[]> {
     .select('id,report_id,board_id,status,is_generated,html_url,html_size_bytes,migrated_to_storage,generated_at,inspection_group_id')
     .order('generated_at', { ascending: false });
   if (error) throw error;
-  return (data as Record<string, unknown>[]).map(row => ({
-    id: row.id as string,
-    reportId: row.report_id as string,
-    boardId: row.board_id as string,
-    generatedAt: row.generated_at as string,
-    status: row.status as ReportHistory['status'],
-    htmlContent: '', // 필요할 때만 fetchReportHtml()로 로드
-    isGenerated: row.is_generated as boolean,
-    htmlUrl: (row.html_url as string) ?? undefined,
-    htmlSizeBytes: (row.html_size_bytes as number) ?? undefined,
-    migratedToStorage: (row.migrated_to_storage as boolean) ?? false,
-    inspectionGroupId: (row.inspection_group_id as string) ?? undefined,
-  }));
+  return (data as Record<string, unknown>[]).map(reportRowToMeta);
+}
+
+const reportRowToMeta = (row: Record<string, unknown>): ReportHistory => ({
+  id: row.id as string,
+  reportId: row.report_id as string,
+  boardId: row.board_id as string,
+  generatedAt: row.generated_at as string,
+  status: row.status as ReportHistory['status'],
+  htmlContent: '',
+  isGenerated: row.is_generated as boolean,
+  htmlUrl: (row.html_url as string) ?? undefined,
+  htmlSizeBytes: (row.html_size_bytes as number) ?? undefined,
+  migratedToStorage: (row.migrated_to_storage as boolean) ?? false,
+  inspectionGroupId: (row.inspection_group_id as string) ?? undefined,
+});
+
+/** 증분 동기화: since 이후 변경된 reports 메타데이터만 가져오기 */
+export async function fetchReportsSince(since: string): Promise<ReportHistory[]> {
+  const { data, error } = await supabase
+    .from('reports')
+    .select('id,report_id,board_id,status,is_generated,html_url,html_size_bytes,migrated_to_storage,generated_at,inspection_group_id')
+    .gt('updated_at', since)
+    .order('generated_at', { ascending: false });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(reportRowToMeta);
+}
+
+/** 삭제 감지용: 전체 report ID 목록만 (경량) */
+export async function fetchAllReportIds(): Promise<string[]> {
+  const { data, error } = await supabase.from('reports').select('id');
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(r => r.id as string);
 }
 
 /**
