@@ -168,6 +168,18 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <p className="text-sm md:text-base text-slate-600">Safety inspection status and statistics</p>
         </div>
 
+        {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
+        <FloorPlanView
+          inspections={inspections}
+          onUpdateInspections={onUpdateInspections}
+          selectedInspectionId={selectedInspectionId}
+          onSelectionChange={onSelectionChange}
+          mode="dashboard"
+          readOnly={true}
+          onShowInspectionModal={handleShowInspectionModal}
+          floorPlanUrls={floorPlanUrls}
+        />
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
@@ -296,18 +308,6 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             )}
           </div>
         </div>
-
-        {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
-        <FloorPlanView
-          inspections={inspections}
-          onUpdateInspections={onUpdateInspections}
-          selectedInspectionId={selectedInspectionId}
-          onSelectionChange={onSelectionChange}
-          mode="dashboard"
-          readOnly={true}
-          onShowInspectionModal={handleShowInspectionModal}
-          floorPlanUrls={floorPlanUrls}
-        />
 
         {/* Pending Inspections Alert */}
         {pendingCount > 0 && (
