@@ -4,7 +4,7 @@ import { InspectionRecord, StatData, ReportHistory } from '../types';
 import StatsChart from './StatsChart';
 import FloorPlanView from './FloorPlanView';
 import InspectionDetail from './InspectionDetail';
-import { CheckCircle2, Clock, AlertCircle, TrendingUp, Activity, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ShieldCheck, X } from 'lucide-react';
 
 interface DashboardOverviewProps {
   inspections: InspectionRecord[];
@@ -183,43 +183,23 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Activity size={24} className="text-blue-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{totalInspections}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Total Inspections</p>
+            <span className="text-2xl font-bold text-slate-800">{totalInspections}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Total Inspections</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-emerald-100 rounded-lg">
-                <CheckCircle2 size={24} className="text-emerald-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{completeCount}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Completed</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{completeCount}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Completed</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-amber-100 rounded-lg">
-                <Clock size={24} className="text-amber-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{inProgressCount}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">In Progress</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{inProgressCount}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">In Progress</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <TrendingUp size={24} className="text-purple-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{completionRate}%</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Completion Rate</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{completionRate}%</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Completion Rate</p>
           </div>
         </div>
 
