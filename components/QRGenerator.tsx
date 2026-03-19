@@ -1922,14 +1922,21 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   TR
                 </label>
                 <select
-                  value={isValidTR(qrData.location) ? qrData.location : 'A'}
+                  value={qrData.location || 'A'}
                   onChange={(e) => handleInputChange('location', e.target.value)}
                   onFocus={restoreMainScrollOnFocus}
                   className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white cursor-pointer"
                 >
-                  {TR_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{TR_DISPLAY_LABELS[opt]}</option>
+                  {trSummary.map(({ trKey, trLabel }) => (
+                    <option key={trKey} value={trKey}>{trLabel}</option>
                   ))}
+                  {/* 기본 옵션 (TR이 아직 없는 경우) */}
+                  {trSummary.length === 0 && (
+                    <>
+                      <option value="A">{TR_DISPLAY_LABELS['A']}</option>
+                      <option value="B">{TR_DISPLAY_LABELS['B']}</option>
+                    </>
+                  )}
                 </select>
               </div>
 
