@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, Hash, Zap, GitBranch, ChevronLeft } from 'lucide-react';
+import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, Hash, Zap, GitBranch, ChevronLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeData, InspectionRecord } from '../types';
 import FloorPlanView from './FloorPlanView';
 import TRSystemModal from './TRSystemModal';
@@ -117,6 +117,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [showQRModal, setShowQRModal] = useState(false);
   // showForm: 신규 등록 모드 플래그 (selectedQR 없이 폼 표시)
   const [showTRSystemModal, setShowTRSystemModal] = useState(false);
+  const [trPanelExpanded, setTrPanelExpanded] = useState(false);
   const [sortField, setSortField] = useState<'panelNo'|'createdAt'|'tr'|'floor'>('panelNo');
   const [sortDirection, setSortDirection] = useState<'asc'|'desc'>('asc');
   const [searchText, setSearchText] = useState('');
@@ -1386,6 +1387,24 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     );
   }, [sortedInspections, searchText]);
 
+  // TR 계통 요약 (인라인 패널용)
+  const trSummary = useMemo(() => {
+    const trMap: Record<string, InspectionRecord[]> = {};
+    inspections.forEach(insp => {
+      const tr = insp.tr || '';
+      if (!trMap[tr]) trMap[tr] = [];
+      trMap[tr].push(insp);
+    });
+    return Object.entries(trMap)
+      .map(([trKey, panels]) => ({
+        trKey,
+        trLabel: trKey === 'A' ? 'TR-1 (A) 900KVA' : trKey === 'B' ? 'TR-2 (B) 950KVA' : trKey ? `TR-${trKey}` : '미지정',
+        panels,
+        color: trKey === 'A' ? 'bg-blue-500' : trKey === 'B' ? 'bg-orange-500' : 'bg-slate-400',
+      }))
+      .sort((a, b) => a.trKey.localeCompare(b.trKey));
+  }, [inspections]);
+
   // 선택된 QR의 ID 추출 최적화
   const selectedQRId = useMemo(() => {
     if (selectedQR) {
@@ -1482,18 +1501,68 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         ${selectedQR || showForm ? 'hidden' : 'flex'}
         lg:flex lg:col-span-4 flex-col h-full min-h-0
       `}>
+        {/* TR 계통 인라인 패널 (접기/펼치기) */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-2 overflow-hidden shrink-0">
+          <div
+            className="p-3 bg-slate-50 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
+            onClick={() => setTrPanelExpanded(prev => !prev)}
+          >
+            <div className="flex items-center gap-2">
+              {trPanelExpanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+              <GitBranch size={14} className="text-slate-600" />
+              <span className="font-semibold text-sm text-slate-800">TR 계통</span>
+              <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                {trSummary.length}개 TR · {inspections.length}개 PNL
+              </span>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowTRSystemModal(true); }}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+            >
+              편집
+            </button>
+          </div>
+          {trPanelExpanded && (
+            <>
+              {/* TR 현황 요약 */}
+              <div className="px-4 py-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                {trSummary.map(({ trKey, trLabel, panels, color }) => (
+                  <span key={trKey} className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${color}`} />
+                    {trLabel}: <strong className="text-slate-700">{panels.length}</strong>개
+                  </span>
+                ))}
+                <span className="ml-auto text-slate-600">
+                  총 <strong className="text-slate-700">{inspections.length}</strong>개 PNL
+                </span>
+              </div>
+              {/* 간결한 TR 트리 (읽기 전용) */}
+              <div className="px-4 py-2 border-t border-slate-100 space-y-2 max-h-[250px] overflow-y-auto text-xs">
+                {trSummary.map(({ trKey, trLabel, panels, color }) => (
+                  <div key={trKey}>
+                    <div className="flex items-center gap-1.5 font-medium text-slate-700 mb-1">
+                      <span className={`w-2 h-2 rounded-full ${color}`} />
+                      {trLabel} ({panels.length}개)
+                    </div>
+                    <div className="ml-4 flex flex-wrap gap-1">
+                      {panels.map(p => (
+                        <span key={p.panelNo} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
+                          {p.panelNo}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 h-full overflow-y-auto">
         <div className="p-3 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowTRSystemModal(true)}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium transition-colors"
-              >
-                <GitBranch size={13} />
-                TR 계통
-              </button>
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{filteredInspections.length}/{inspections.length}</span>
             </div>
           </div>
