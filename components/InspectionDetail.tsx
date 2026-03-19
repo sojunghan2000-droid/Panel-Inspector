@@ -1309,64 +1309,7 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
           </div>
         </div>
 
-        {/* Site Photo Section */}
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <label className="block text-sm font-semibold text-slate-700">현장 사진</label>
-            {formData.photoUrl && (
-              <button
-                onClick={handleAnalyzePhoto}
-                disabled={isAnalyzing}
-                className="text-xs flex items-center gap-1.5 bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full hover:bg-purple-200 transition-colors disabled:opacity-50"
-              >
-                {isAnalyzing ? (
-                  <span className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full" />
-                ) : (
-                  <Sparkles size={14} />
-                )}
-                {isAnalyzing ? '분석 중...' : 'AI 분석'}
-              </button>
-            )}
-          </div>
-          
-          <div className="relative group">
-            {formData.photoUrl ? (
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center" style={{ height: '214px' }}>
-                <img src={formData.photoUrl} alt="Inspection Site" className="h-full w-auto object-contain" />
-                <button 
-                  onClick={() => setFormData(prev => ({ ...prev, photoUrl: null }))}
-                  className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Upload size={14} className="rotate-45" />
-                </button>
-                {aiMessage && (
-                   <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-md text-white text-xs p-2 text-center animate-fade-in">
-                     {aiMessage}
-                   </div>
-                )}
-              </div>
-            ) : (
-              <label 
-                className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors"
-                onDrop={handlePhotoDrop}
-                onDragOver={handlePhotoDragOver}
-              >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Camera className="w-8 h-8 text-slate-400 mb-2" />
-                  <p className="text-sm text-slate-500">사진을 업로드하거나 드래그하세요</p>
-                  <p className="text-xs text-slate-400 mt-1">(최대 10MB)</p>
-                </div>
-                <input 
-                  ref={fileInputRef}
-                  type="file" 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={handlePhotoUpload} 
-                />
-              </label>
-            )}
-          </div>
-        </div>
+        {/* Site Photo Section — 제거됨 */}
 
 
         {/* Memo */}
