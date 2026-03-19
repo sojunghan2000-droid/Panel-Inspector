@@ -18,7 +18,7 @@ import { supabase, isConfigured, getSession, Session } from './services/supabase
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
-import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, fetchAllInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
+import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
 
@@ -188,6 +188,7 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
+  const [floorPlanUrls, setFloorPlanUrls] = useState<{ floor: string; url: string }[]>([]);
   const [inspectionHistory, setInspectionHistory] = useState<InspectionHistoryEntry[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -403,20 +404,9 @@ const App: React.FC = () => {
           setReports(savedReports);
         }
 
-        // 7. Inspection History 로드 (Supabase 우선, fallback: IndexedDB)
+        // 7. Inspection History 로드 (IndexedDB에서만 — Supabase 동기화는 pullAll()에서 처리)
         const savedHistory = await getAllInspectionHistory();
-        if (session && isConfigured) {
-          try {
-            const remoteHistory = await fetchAllInspectionHistory();
-            if (remoteHistory.length > 0) {
-              setInspectionHistory(remoteHistory);
-            } else if (savedHistory.length > 0) {
-              setInspectionHistory(savedHistory);
-            }
-          } catch {
-            if (savedHistory.length > 0) setInspectionHistory(savedHistory);
-          }
-        } else if (savedHistory && savedHistory.length > 0) {
+        if (savedHistory && savedHistory.length > 0) {
           setInspectionHistory(savedHistory);
         }
 
@@ -542,6 +532,7 @@ const App: React.FC = () => {
       onQRCodesUpdated: (merged) => setQrCodesState(merged),
       onReportsUpdated: (merged) => setReports(merged),
       onSyncStatusChange: (status) => setSyncStatus(status),
+      onFloorPlanUrlsUpdated: (urls) => setFloorPlanUrls(urls),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -1046,7 +1037,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shrink-0"></div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{session?.user?.email ?? 'Admin User'}</p>
+              <p className="text-sm font-medium truncate">{session?.user?.email?.split('@')[0] ?? 'Admin User'}</p>
               <p className="text-xs text-slate-500">Facility Manager</p>
             </div>
             {session && (
@@ -1308,6 +1299,7 @@ const App: React.FC = () => {
                   selectedInspectionId={selectedInspectionId}
                   onSelectionChange={setSelectedInspectionId}
                   reports={reports}
+                  floorPlanUrls={floorPlanUrls}
                 />
               ) : currentPage === 'dashboard' ? (
                 <ErrorBoundary>
@@ -1416,6 +1408,7 @@ const App: React.FC = () => {
                   onUpdateInspections={updateInspections}
                   onDeleteInspection={handleDeleteInspection}
                   mainScrollRef={mainScrollRef}
+                  floorPlanUrls={floorPlanUrls}
                 />
               )}
             </>

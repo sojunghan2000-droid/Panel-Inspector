@@ -21,14 +21,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const getKoreanError = (msg: string): string => {
-    if (msg.includes('Invalid login credentials')) return '이메일 또는 비밀번호가 올바르지 않습니다.';
-    if (msg.includes('Email not confirmed')) return '이메일 인증이 필요합니다. 메일함을 확인해 주세요.';
+    if (msg.includes('Invalid login credentials')) return 'ID 또는 비밀번호가 올바르지 않습니다.';
+    if (msg.includes('Email not confirmed')) return '계정 인증 대기 중입니다. 관리자에게 문의하세요.';
     if (msg.includes('Too many requests')) return '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.';
-    if (msg.includes('User not found')) return '등록되지 않은 이메일입니다.';
-    if (msg.includes('User already registered')) return '이미 등록된 이메일입니다.';
+    if (msg.includes('User not found')) return '등록되지 않은 ID입니다.';
+    if (msg.includes('User already registered')) return '이미 등록된 ID입니다.';
     if (msg.includes('Sign ups not allowed')) return '회원가입이 비활성화되어 있습니다. 관리자에게 문의하세요.';
     if (msg.includes('Password should be at least')) return '비밀번호는 최소 6자 이상이어야 합니다.';
-    if (msg.includes('Unable to validate email')) return '유효한 이메일 주소를 입력해 주세요.';
+    if (msg.includes('Unable to validate email')) return '유효하지 않은 ID입니다.';
     if (msg.includes('network') || msg.includes('fetch')) return '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.';
     return mode === 'login' ? `로그인 오류: ${msg}` : `회원가입 오류: ${msg}`;
   };
@@ -45,7 +45,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setError('이메일과 비밀번호를 모두 입력해 주세요.');
+      setError('ID와 비밀번호를 모두 입력해 주세요.');
       return;
     }
     if (!isConfigured) {
@@ -55,8 +55,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setError(null);
     try {
+      const authEmail = email.trim().includes('@') ? email.trim() : `${email.trim()}@panel.local`;
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: authEmail,
         password,
       });
       if (authError) {
@@ -74,7 +75,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setError('이메일과 비밀번호를 모두 입력해 주세요.');
+      setError('ID와 비밀번호를 모두 입력해 주세요.');
       return;
     }
     if (commonKey !== 'secc') {
@@ -96,8 +97,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setError(null);
     try {
+      const authEmail = email.trim().includes('@') ? email.trim() : `${email.trim()}@panel.local`;
       const { error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: authEmail,
         password,
       });
       if (authError) {
@@ -151,17 +153,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           )}
 
           <form onSubmit={mode === 'login' ? handleLogin : handleSignup} className="space-y-4">
-            {/* 이메일 */}
+            {/* ID */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">ID</label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@company.com"
+                placeholder="사용자 ID 입력"
                 className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-colors"
                 disabled={isLoading}
-                autoComplete="email"
+                autoComplete="username"
               />
             </div>
 

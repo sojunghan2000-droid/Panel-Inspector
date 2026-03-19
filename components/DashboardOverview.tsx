@@ -4,7 +4,7 @@ import { InspectionRecord, StatData, ReportHistory } from '../types';
 import StatsChart from './StatsChart';
 import FloorPlanView from './FloorPlanView';
 import InspectionDetail from './InspectionDetail';
-import { CheckCircle2, Clock, AlertCircle, TrendingUp, Activity, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ShieldCheck, X } from 'lucide-react';
 
 interface DashboardOverviewProps {
   inspections: InspectionRecord[];
@@ -12,6 +12,7 @@ interface DashboardOverviewProps {
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
   reports?: ReportHistory[];
+  floorPlanUrls?: { floor: string; url: string }[];
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
@@ -19,7 +20,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onUpdateInspections,
   selectedInspectionId,
   onSelectionChange,
-  reports = []
+  reports = [],
+  floorPlanUrls = []
 }) => {
   // InspectionDetail Modal 상태
   const [showInspectionModal, setShowInspectionModal] = useState(false);
@@ -166,46 +168,38 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <p className="text-sm md:text-base text-slate-600">Safety inspection status and statistics</p>
         </div>
 
+        {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
+        <FloorPlanView
+          inspections={inspections}
+          onUpdateInspections={onUpdateInspections}
+          selectedInspectionId={selectedInspectionId}
+          onSelectionChange={onSelectionChange}
+          mode="dashboard"
+          readOnly={true}
+          onShowInspectionModal={handleShowInspectionModal}
+          floorPlanUrls={floorPlanUrls}
+        />
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Activity size={24} className="text-blue-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{totalInspections}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Total Inspections</p>
+            <span className="text-2xl font-bold text-slate-800">{totalInspections}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Total Inspections</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-emerald-100 rounded-lg">
-                <CheckCircle2 size={24} className="text-emerald-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{completeCount}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Completed</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{completeCount}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Completed</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-amber-100 rounded-lg">
-                <Clock size={24} className="text-amber-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{inProgressCount}</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">In Progress</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{inProgressCount}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">In Progress</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <TrendingUp size={24} className="text-purple-600" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800">{completionRate}%</span>
-            </div>
-            <p className="text-sm text-slate-600 font-medium">Completion Rate</p>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+            <span className="text-2xl font-bold text-slate-800">{completionRate}%</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">Completion Rate</p>
           </div>
         </div>
 
@@ -271,40 +265,18 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* 차단기 용량별 현황 - Recent Inspections 아래 배치 */}
         <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">차단기 용량별 현황</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
             {breakerCapacitySummary.items.map(item => (
-              <div key={item.capacity} className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2 text-sm font-medium">
-                <span className="font-bold">{item.capacity}A</span>
-                <span className="text-blue-500">=</span>
-                <span>{item.count}대</span>
-              </div>
+              <span key={item.capacity}>{item.capacity}A = {item.count}대</span>
             ))}
             {breakerCapacitySummary.missingCount > 0 && (
-              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-sm font-medium">
-                <span className="font-bold">정보 부재</span>
-                <span className="text-amber-500">=</span>
-                <span>{breakerCapacitySummary.missingCount}대</span>
-              </div>
+              <span>정보 부재 = {breakerCapacitySummary.missingCount}대</span>
             )}
             {breakerCapacitySummary.items.length > 0 && (
-              <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm font-semibold">
-                <span>총</span>
-                <span className="text-emerald-600">{breakerCapacitySummary.items.reduce((sum, i) => sum + i.count, 0)}대</span>
-              </div>
+              <span className="text-slate-900 font-medium">총 {breakerCapacitySummary.items.reduce((sum, i) => sum + i.count, 0)}대</span>
             )}
           </div>
         </div>
-
-        {/* Floor Plan View - Dashboard 모드 (읽기 전용, 클릭 시 InspectionDetail Modal) */}
-        <FloorPlanView
-          inspections={inspections}
-          onUpdateInspections={onUpdateInspections}
-          selectedInspectionId={selectedInspectionId}
-          onSelectionChange={onSelectionChange}
-          mode="dashboard"
-          readOnly={true}
-          onShowInspectionModal={handleShowInspectionModal}
-        />
 
         {/* Pending Inspections Alert */}
         {pendingCount > 0 && (
