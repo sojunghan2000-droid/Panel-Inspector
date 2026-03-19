@@ -982,7 +982,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             <div className="grid grid-cols-4 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs">
               {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
                 <div key={floor} className="flex flex-col items-center">
-                  <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}</span>
+                  <span className="text-slate-500 whitespace-nowrap">{FLOOR_DISPLAY_LABELS[floor]}:</span>
                   <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
                     {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
                   </span>

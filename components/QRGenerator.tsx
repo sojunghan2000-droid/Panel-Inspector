@@ -118,6 +118,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   // showForm: 신규 등록 모드 플래그 (selectedQR 없이 폼 표시)
   const [showTRSystemModal, setShowTRSystemModal] = useState(false);
   const [trPanelExpanded, setTrPanelExpanded] = useState(false);
+  /** 모바일: 도면보기 모드 (Left→Right 패널 전환) */
+  const [showFloorPlanMobile, setShowFloorPlanMobile] = useState(false);
   const [sortField, setSortField] = useState<'panelNo'|'createdAt'|'tr'|'floor'>('panelNo');
   const [sortDirection, setSortDirection] = useState<'asc'|'desc'>('asc');
   const [searchText, setSearchText] = useState('');
@@ -1498,7 +1500,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       )}
       {/* Left Panel: QR List - 모바일에서는 패널 미선택 시만 표시 */}
       <div className={`
-        ${selectedQR || showForm ? 'hidden' : 'flex'}
+        ${selectedQR || showForm || showFloorPlanMobile ? 'hidden' : 'flex'}
         lg:flex lg:col-span-4 flex-col h-full min-h-0
       `}>
         {/* TR 계통 인라인 패널 (접기/펼치기) */}
@@ -1564,6 +1566,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{filteredInspections.length}/{inspections.length}</span>
+              <button
+                onClick={() => setShowFloorPlanMobile(true)}
+                className="lg:hidden flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                도면보기
+                <ChevronLeft size={14} className="rotate-180" />
+              </button>
             </div>
           </div>
           {/* 정렬 버튼 + 검색 */}
@@ -1700,13 +1709,23 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       <div
         ref={rightPanelScrollRef}
         className={`
-          ${selectedQR || showForm ? 'flex' : 'hidden'}
+          ${selectedQR || showForm || showFloorPlanMobile ? 'flex' : 'hidden'}
           lg:flex lg:col-span-8 h-full min-h-0 flex-col overflow-hidden
         `}
         style={{ overflowX: 'visible', overflowY: isSelectFocused ? 'visible' : 'auto', position: 'relative' }}
       >
         {/* Floor Plan View - 패널 상세 위에 표시 (order-1) */}
         <div className="order-1">
+        {/* 모바일 도면보기 모드: 목록으로 돌아가기 버튼 */}
+        {showFloorPlanMobile && (
+          <button
+            onClick={() => setShowFloorPlanMobile(false)}
+            className="lg:hidden flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-2 text-sm font-medium px-2"
+          >
+            <ChevronLeft size={18} />
+            목록으로
+          </button>
+        )}
         <FloorPlanView
           inspections={filteredInspections}
           onSelectInspection={(inspection) => {
@@ -1809,6 +1828,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               onClick={() => {
                 setSelectedQR(null);
                 setShowForm(false);
+                setShowFloorPlanMobile(false);
                 setIsEditing(false);
                 resetForm();
               }}
