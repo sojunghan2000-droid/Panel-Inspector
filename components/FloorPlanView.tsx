@@ -1029,10 +1029,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         {/* 층별 현황판 */}
         <div className="flex-1 min-w-[200px]">
           <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">층별 현황</div>
-          <div className="grid grid-cols-4 gap-x-2 gap-y-1 text-[10px] sm:text-xs">
+          <div className="grid grid-cols-4 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs">
             {['F6', 'F5', 'F4', 'F3', 'F2', 'F1', 'B1', 'B2'].map(floor => (
-              <div key={floor} className="flex justify-between gap-0.5 whitespace-nowrap">
-                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}:</span>
+              <div key={floor} className="flex flex-col items-center">
+                <span className="text-slate-500">{FLOOR_DISPLAY_LABELS[floor]}</span>
                 <span className={`font-medium ${floorStats.stats[floor] > 0 ? (floor.startsWith('B') ? 'text-orange-600' : 'text-blue-600') : 'text-slate-400'}`}>
                   {floorStats.stats[floor] > 0 ? `${floorStats.stats[floor]}면` : '-'}
                 </span>
