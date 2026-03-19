@@ -958,6 +958,26 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     return { stats, total: Object.values(stats).reduce((a, b) => a + b, 0) };
   }, [inspections]);
 
+  // TR Legend 동적 생성: inspections에서 고유 TR 값 추출
+  const trLegendItems = useMemo(() => {
+    const trMap: Record<string, number> = {};
+    inspections.forEach(insp => {
+      const tr = insp.tr || '';
+      if (!trMap[tr]) trMap[tr] = 0;
+      trMap[tr]++;
+    });
+    const colorMap: Record<string, string> = { 'A': '#3b82f6', 'B': '#f97316' };
+    const labelMap: Record<string, string> = { 'A': 'TR-1 (A) 900KVA', 'B': 'TR-2 (B) 950KVA' };
+    return Object.entries(trMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([trKey, count]) => ({
+        trKey,
+        label: trKey ? (labelMap[trKey] || `TR-${trKey}`) : '미지정',
+        color: trKey ? (colorMap[trKey] || '#94a3b8') : '#94a3b8',
+        count,
+      }));
+  }, [inspections]);
+
   // 층에 따른 이미지 경로 결정 (IndexedDB에 저장된 이미지가 있으면 사용, 없으면 null)
   const floorImagePath = useMemo(() => {
     return floorPlanImages[selectedFloor] || null;
@@ -995,22 +1015,16 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             </div>
           </div>
 
-          {/* Legend */}
+          {/* Legend — inspections에서 동적 생성 */}
           <div className="flex-shrink-0">
             <div className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Legend (TR)</div>
             <div className="flex flex-wrap gap-3 text-xs">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
-                <span className="text-slate-600">TR-1 900KVA</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }}></div>
-                <span className="text-slate-600">TR-2 950KVA</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#94a3b8' }}></div>
-                <span className="text-slate-600">미지정</span>
-              </div>
+              {trLegendItems.map(({ trKey, label, color, count }) => (
+                <div key={trKey || '_none'} className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+                  <span className="text-slate-600">{label} ({count})</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
