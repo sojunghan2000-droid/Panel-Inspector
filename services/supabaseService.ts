@@ -168,12 +168,13 @@ export async function deleteInspectionFromSupabase(panelNo: string): Promise<voi
 
 export async function upsertQRCodes(codes: QRCodeData[]): Promise<void> {
   if (codes.length === 0) return;
+  // @MX:NOTE: qr_data 필드 제외 - DB 트리거(sync_qr_data)가 자동 생성
+  // tr_data, floor, position 변경 시 트리거가 qr_data를 재생성함
   const rows = codes.map(c => ({
     id: c.id,
     tr_data: c.trData,
     floor: c.floor,
     position: c.position,
-    qr_data: c.qrData,
     created_at: c.createdAt,
     updated_at: c.updatedAt || new Date().toISOString(),
   }));
