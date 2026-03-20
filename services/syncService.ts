@@ -25,7 +25,7 @@ import {
   upsertFloorPlanUrl,
   fetchAllFloorPlanUrls,
 } from './supabaseService';
-import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage } from './indexedDBService';
+import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, deleteQRCode as deleteQRCodeFromIDB } from './indexedDBService';
 import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
@@ -482,6 +482,8 @@ export async function pullAll(
           localMap.delete(local.panelNo);
           deletedLocalIds.add(local.panelNo); // 삭제된 ID 추적
           inspectionsChanged = true;
+          // IDB에서도 실제 삭제 (미삭제 시 다음 sync에서 반복 감지 문제 방지)
+          deleteInspectionFromIDB(local.panelNo).catch(console.error);
           console.log(`[syncService] 원격 삭제 감지: ${local.panelNo}`);
         }
       }
@@ -531,6 +533,8 @@ export async function pullAll(
         if (!remoteQRIdSet.has(local.id) && !pendingDeleteQRIds.has(local.id)) {
           localQRMap.delete(local.id);
           qrChanged = true;
+          // IDB에서도 실제 삭제 (미삭제 시 다음 sync에서 반복 감지 문제 방지)
+          deleteQRCodeFromIDB(local.id).catch(console.error);
           console.log(`[syncService] QR 원격 삭제 감지: ${local.id}`);
         }
       }
