@@ -17,7 +17,7 @@ import { parseInspectionExcel, mergeImportedData } from './services/excelImportS
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
-import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
+import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
@@ -672,9 +672,8 @@ const App: React.FC = () => {
         const prevTs = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
         return newTs > prevTs;
       });
-      for (const inspection of toSync) {
-        pushInspection(inspection).catch(console.error);
-      }
+      // 배치 단일 POST → 커넥션 1개 (개별 반복 호출에 의한 커넥션 풀 고갈 방지)
+      pushInspectionsBatch(toSync).catch(console.error);
     }
   }, [session]);
 

@@ -128,6 +128,50 @@ export async function pushInspection(record: InspectionRecord): Promise<void> {
 }
 
 /**
+ * 다수의 Inspection을 Supabase에 배치 push
+ * - 사진(data: URL) 없는 항목: 단일 배치 POST → 커넥션 1개
+ * - 사진 있는 항목: 순차 개별 push (Storage 업로드 필요)
+ * - 개별 pushInspection() 반복 호출 대신 사용하여 커넥션 풀 고갈 방지
+ */
+export async function pushInspectionsBatch(records: InspectionRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  if (!navigator.onLine) {
+    records.forEach(r =>
+      addToOfflineQueue({ type: 'inspection', key: r.panelNo, timestamp: new Date().toISOString() })
+    );
+    return;
+  }
+  notifyStatus('syncing');
+  try {
+    // 사진 업로드가 필요한 항목(data: URL) vs 일반 항목 분리
+    const withPhotos = records.filter(
+      r => r.photoUrl?.startsWith('data:') || r.thermalImage?.imageUrl?.startsWith('data:')
+    );
+    const noPhotos = records.filter(
+      r => !r.photoUrl?.startsWith('data:') && !r.thermalImage?.imageUrl?.startsWith('data:')
+    );
+
+    // 사진 없는 항목: 단일 배치 POST (커넥션 1개)
+    if (noPhotos.length > 0) {
+      await upsertInspections(noPhotos);
+    }
+
+    // 사진 있는 항목: 순차 처리 (동시 Storage 업로드 방지)
+    for (const record of withPhotos) {
+      await pushInspection(record);
+    }
+
+    notifyStatus('success');
+  } catch (err) {
+    console.error('[syncService] pushInspectionsBatch 오류:', err);
+    records.forEach(r =>
+      addToOfflineQueue({ type: 'inspection', key: r.panelNo, timestamp: new Date().toISOString() })
+    );
+    notifyStatus('error', String(err));
+  }
+}
+
+/**
  * 모든 QR Codes를 Supabase에 push
  */
 export async function pushAllQRCodes(codes: QRCodeData[]): Promise<void> {
