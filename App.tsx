@@ -191,8 +191,6 @@ const App: React.FC = () => {
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
 
   // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
-  // 다음 코드를 이 위치에 추가:
-  /*
   // 활동 감지 hook 사용
   const activityState = useActivityDetector((state) => {
     console.log('[App] 활동 상태 변경:', {
@@ -220,7 +218,7 @@ const App: React.FC = () => {
   //   saveAutoSyncConfig({ enabled, intervalMinutes });
   //   // UI 업데이트 후 자동 동기화 재시작
   // };
-  */
+
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
