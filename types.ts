@@ -113,11 +113,20 @@ export interface InspectionHistoryEntry {
 
 export interface QRCodeData {
   id: string;
-  location: string;
   floor: string;
-  position: string;
+  position: {
+    x: number; // 백분율 (0-100)
+    y: number; // 백분율 (0-100)
+  };
+  trData: {
+    tr_no: string; // 예: "TR-06867034"
+    description: string; // 예: "TR-1(A) 900KVA"
+    capacity?: string; // 예: "900KVA"
+    position?: string; // 예: "1(A)"
+  };
   qrData: string; // JSON string
   createdAt: string;
+  updatedAt: string;
 }
 
 // @MX:NOTE: 동기화 메타데이터 추적 (Phase 1)

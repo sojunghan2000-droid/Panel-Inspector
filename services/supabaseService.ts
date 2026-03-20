@@ -170,11 +170,12 @@ export async function upsertQRCodes(codes: QRCodeData[]): Promise<void> {
   if (codes.length === 0) return;
   const rows = codes.map(c => ({
     id: c.id,
-    location: c.location,
+    tr_data: c.trData,
     floor: c.floor,
     position: c.position,
     qr_data: c.qrData,
     created_at: c.createdAt,
+    updated_at: c.updatedAt || new Date().toISOString(),
   }));
   const { error } = await supabase.from('qr_codes').upsert(rows, { onConflict: 'id' });
   if (error) throw error;
@@ -190,21 +191,23 @@ export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
   if (error) throw error;
   return (data as Record<string, unknown>[]).map(row => ({
     id: row.id as string,
-    location: row.location as string,
     floor: row.floor as string,
-    position: row.position as string,
+    position: row.position as { x: number; y: number },
+    trData: row.tr_data as QRCodeData['trData'],
     qrData: row.qr_data as string,
     createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
   }));
 }
 
 const rowToQRCode = (row: Record<string, unknown>): QRCodeData => ({
   id: row.id as string,
-  location: row.location as string,
   floor: row.floor as string,
-  position: row.position as string,
+  position: row.position as { x: number; y: number },
+  trData: row.tr_data as QRCodeData['trData'],
   qrData: row.qr_data as string,
   createdAt: row.created_at as string,
+  updatedAt: row.updated_at as string,
 });
 
 /** 증분 동기화: since 이후 변경된 QR codes만 가져오기 */
