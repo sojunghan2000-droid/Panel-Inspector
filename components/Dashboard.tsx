@@ -127,7 +127,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         ...updated,
         lastInspectionDate: updated.status === 'Complete'
           ? new Date().toLocaleString()
-          : updated.lastInspectionDate
+          : updated.lastInspectionDate,
+        // updatedAt 갱신 필수: 미갱신 시 updateInspections의 newTs(0) > prevTs(0) = false → Supabase push 안 됨
+        // → 다음 pull 시 Supabase 구버전(Pending)이 로컬을 덮어써서 Dashboard 집계 롤백 현상 발생
+        updatedAt: new Date().toISOString(),
       };
 
       // PNL NO 기준으로 중복 제거: 같은 panelNo를 가진 항목은 모두 제거하고 최신 1개만 유지
