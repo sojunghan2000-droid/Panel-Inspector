@@ -17,7 +17,7 @@ import { parseInspectionExcel, mergeImportedData } from './services/excelImportS
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
-import { pushInspection, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
+import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
@@ -185,6 +185,9 @@ const App: React.FC = () => {
   // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
   const editingReportRef = useRef<ReportHistory | null>(null);
   useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
+  // inspectionsRef: updateInspections에서 이전 상태 비교용 (stale closure 방지)
+  const inspectionsRef = useRef<InspectionRecord[]>([]);
+  useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
@@ -659,11 +662,18 @@ const App: React.FC = () => {
       console.error('IndexedDB 저장 오류:', error);
     }
 
-    // Supabase push (fire-and-forget)
+    // Supabase push (fire-and-forget) — updatedAt이 갱신된 항목만 push (egress 절감)
     if (session && isConfigured) {
-      for (const inspection of uniqueInspections) {
-        pushInspection(inspection).catch(console.error);
-      }
+      const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
+      const toSync = uniqueInspections.filter(ins => {
+        const prev = prevMap.get(ins.panelNo);
+        if (!prev) return true; // 신규 항목
+        const newTs = ins.updatedAt ? new Date(ins.updatedAt).getTime() : 0;
+        const prevTs = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+        return newTs > prevTs;
+      });
+      // 배치 단일 POST → 커넥션 1개 (개별 반복 호출에 의한 커넥션 풀 고갈 방지)
+      pushInspectionsBatch(toSync).catch(console.error);
     }
   }, [session]);
 

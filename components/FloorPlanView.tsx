@@ -581,7 +581,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
           ? {
               ...inspection,
               position: { x: editingPosition.x, y: editingPosition.y },
-              ...(editingFloor ? { floor: editingFloor } : {})
+              ...(editingFloor ? { floor: editingFloor } : {}),
+              updatedAt: new Date().toISOString(),
             }
           : inspection
       );
@@ -767,7 +768,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (selectedInspection && onUpdateInspections) {
       const updatedInspections = inspections.map(inspection =>
         inspection.panelNo === selectedInspection.panelNo
-          ? { ...inspection, position: { x: clampedX, y: clampedY } }
+          ? { ...inspection, position: { x: clampedX, y: clampedY }, updatedAt: new Date().toISOString() }
           : inspection
       );
 
@@ -791,9 +792,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         handleMarkerClick(nearestInspection);
         // 위치 업데이트
         if (onUpdateInspections) {
-          const updatedInspections = inspections.map(inspection => 
+          const updatedInspections = inspections.map(inspection =>
             inspection.panelNo === nearestInspection.panelNo
-              ? { ...inspection, position: { x: clampedX, y: clampedY } }
+              ? { ...inspection, position: { x: clampedX, y: clampedY }, updatedAt: new Date().toISOString() }
               : inspection
           );
           onUpdateInspections(updatedInspections);
