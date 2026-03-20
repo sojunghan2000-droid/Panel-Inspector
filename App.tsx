@@ -185,6 +185,9 @@ const App: React.FC = () => {
   // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
   const editingReportRef = useRef<ReportHistory | null>(null);
   useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
+  // inspectionsRef: updateInspections에서 이전 상태 비교용 (stale closure 방지)
+  const inspectionsRef = useRef<InspectionRecord[]>([]);
+  useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
@@ -659,9 +662,17 @@ const App: React.FC = () => {
       console.error('IndexedDB 저장 오류:', error);
     }
 
-    // Supabase push (fire-and-forget)
+    // Supabase push (fire-and-forget) — updatedAt이 갱신된 항목만 push (egress 절감)
     if (session && isConfigured) {
-      for (const inspection of uniqueInspections) {
+      const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
+      const toSync = uniqueInspections.filter(ins => {
+        const prev = prevMap.get(ins.panelNo);
+        if (!prev) return true; // 신규 항목
+        const newTs = ins.updatedAt ? new Date(ins.updatedAt).getTime() : 0;
+        const prevTs = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+        return newTs > prevTs;
+      });
+      for (const inspection of toSync) {
         pushInspection(inspection).catch(console.error);
       }
     }
