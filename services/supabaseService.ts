@@ -12,6 +12,14 @@ import type { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntr
 // InspectionRecord ↔ DB 행 변환
 // ─────────────────────────────────────────
 
+// 빈 문자열·undefined·null → null, 숫자 변환 가능하면 number 반환
+// numeric DB 컬럼에 빈 문자열을 전달하면 "invalid input syntax for type numeric" 오류 발생 방지
+function toNum(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
 function inspectionToRow(r: InspectionRecord, photoUrl?: string, thermalUrl?: string): Record<string, unknown> {
   const thermalForDb = r.thermalImage
     ? {
@@ -39,9 +47,9 @@ function inspectionToRow(r: InspectionRecord, photoUrl?: string, thermalUrl?: st
     contractor: r.contractor ?? null,
     management_number: r.managementNumber ?? null,
     breakers: r.breakers ?? null,
-    current_l1: r.currentL1 ?? null,
-    current_l2: r.currentL2 ?? null,
-    current_l3: r.currentL3 ?? null,
+    current_l1: toNum(r.currentL1),
+    current_l2: toNum(r.currentL2),
+    current_l3: toNum(r.currentL3),
     tr: r.tr ?? null,
     floor: r.floor ?? null,
     nominal_cross_section: r.nominalCrossSection ?? null,
@@ -52,7 +60,7 @@ function inspectionToRow(r: InspectionRecord, photoUrl?: string, thermalUrl?: st
     thermal_image: thermalForDb,
     load_summary: r.loadSummary ?? null,
     updated_at: r.updatedAt ?? new Date().toISOString(),
-    acceptance_rate: r.acceptanceRate ?? 100,
+    acceptance_rate: toNum(r.acceptanceRate) ?? 100,
   };
 }
 
