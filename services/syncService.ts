@@ -309,16 +309,23 @@ export function resetSyncTimestamp(): void {
  * - 초회(lastSync 없음): 전체 데이터 로드
  * - 이후: 변경분만 증분 로드 + ID 목록으로 삭제 감지
  */
+// BUG-1 수정: pullAll 중복 실행 방지 뮤텍스
+// - session 상태 변경(INITIAL_SESSION, SIGNED_IN 등)마다 useEffect 재실행 → 3번 동시 실행 문제
+// - _isPullRunning 플래그로 동시 중복 실행 차단
+let _isPullRunning = false;
+
 export async function pullAll(
   localInspections: InspectionRecord[],
   localQRCodes: QRCodeData[],
   localReports: ReportHistory[],
   callbacks: PullCallbacks
 ): Promise<void> {
+  if (_isPullRunning) return; // 이미 실행 중이면 즉시 리턴
   if (!navigator.onLine) {
     callbacks.onSyncStatusChange('offline');
     return;
   }
+  _isPullRunning = true;
 
   callbacks.onSyncStatusChange('syncing');
   notifyStatus('syncing');
@@ -467,9 +474,13 @@ export async function pullAll(
 
       // 삭제 감지: ID 목록만 가져와 비교 (경량)
       const remoteInspectionIds = new Set(await fetchAllInspectionIds());
+      // BUG-2 수정: 삭제 감지된 항목을 추적하여 역방향 push에서 제외
+      // 이전: 삭제 감지 후 즉시 역방향 push 필터에서 동일 항목 선택 → Supabase 재생성 루프
+      const deletedLocalIds = new Set<string>();
       for (const local of effectiveLocal) {
         if (!remoteInspectionIds.has(local.panelNo) && !pendingDeleteInspectionIds.has(local.panelNo)) {
           localMap.delete(local.panelNo);
+          deletedLocalIds.add(local.panelNo); // 삭제된 ID 추적
           inspectionsChanged = true;
           console.log(`[syncService] 원격 삭제 감지: ${local.panelNo}`);
         }
@@ -479,8 +490,10 @@ export async function pullAll(
         callbacks.onInspectionsUpdated(Array.from(localMap.values()));
       }
 
-      // 로컬 → Supabase push (로컬에만 있는 항목)
-      const inspectionsToPush = effectiveLocal.filter(insp => !remoteInspectionIds.has(insp.panelNo));
+      // 로컬 → Supabase push (로컬에만 있는 항목, 원격 삭제 항목 제외)
+      const inspectionsToPush = effectiveLocal.filter(
+        insp => !remoteInspectionIds.has(insp.panelNo) && !deletedLocalIds.has(insp.panelNo)
+      );
       if (inspectionsToPush.length > 0) {
         console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
         await upsertInspections(inspectionsToPush);
@@ -591,6 +604,8 @@ export async function pullAll(
     console.error('[syncService] pullAll 오류:', err);
     callbacks.onSyncStatusChange('error', String(err));
     notifyStatus('error', String(err));
+  } finally {
+    _isPullRunning = false; // 성공/실패 모두 플래그 해제
   }
 }
 
