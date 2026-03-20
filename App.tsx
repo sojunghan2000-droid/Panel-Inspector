@@ -19,7 +19,7 @@ import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { AutoSyncSettings } from './components/AutoSyncSettings';
 import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus, getAutoSyncConfig, saveAutoSyncConfig, startAutoSync, stopAutoSync, getLastAutoSyncTime } from './services/syncService';
-import { useActivityDetector, canAutoSync } from './hooks/useActivityDetector';
+import { useActivityDetector, canAutoSync, ActivityState } from './hooks/useActivityDetector';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
@@ -192,17 +192,24 @@ const App: React.FC = () => {
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
 
   // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
-  // 활동 감지 hook 사용
-  const activityState = useActivityDetector((state) => {
-    console.log('[App] 활동 상태 변경:', {
-      isActive: state.isActive,
-      isTabVisible: state.isTabVisible,
-      batteryLevel: state.batteryLevel,
-      isCharging: state.isCharging,
-    });
-  });
+  // @MX:WARN: inline 콜백 사용 금지 - 매 렌더마다 새 함수 참조 생성 → battery useEffect 무한 재실행
+  // @MX:REASON: useCallback으로 안정적인 참조 보장. activityState는 Ref이므로 의존성 배열에서 제외
+  const onActivityChange = useCallback((state: ActivityState) => {
+    // 디버그 로그: 개발 환경에서만 출력 (프로덕션 과부하 방지)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[App] 활동 상태 변경:', {
+        isActive: state.isActive,
+        isTabVisible: state.isTabVisible,
+        batteryLevel: state.batteryLevel,
+        isCharging: state.isCharging,
+      });
+    }
+  }, []); // 빈 deps: 렌더 간 안정적 참조 유지
+
+  const activityState = useActivityDetector(onActivityChange);
 
   // 자동 동기화 관리
+  // @MX:NOTE: activityState는 useRef 기반 객체 - 레퍼런스 불변이므로 deps에서 제외
   useEffect(() => {
     if (!session || !isConfigured) return;
 
@@ -212,7 +219,8 @@ const App: React.FC = () => {
     return () => {
       stopSync();
     };
-  }, [session, isConfigured, activityState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, isConfigured]); // activityState 제거: ref 객체는 참조 불변
 
   // 사용자가 설정을 변경할 때 호출할 함수 예시:
   // const handleAutoSyncSettingsChange = (enabled: boolean, intervalMinutes: number) => {
