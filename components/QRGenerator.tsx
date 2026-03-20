@@ -890,7 +890,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     if (selectedQR?.id === deleteConfirmId) {
       setSelectedQR(null);
       setGeneratedQR(null);
-      setQrData({ id: '', location: 'A', floor: 'F1', position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' });
+      setQrData({ id: '', location: 'A', floor: selectedFloor, position: '', positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' });
       setIsEditing(false);
     }
     setDeleteConfirmId(null);
@@ -1266,7 +1266,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     setQrData({
       id: '',
       location: 'A',
-      floor: 'F1',
+      // @MX:NOTE: 현재 FloorPlanView에서 선택된 층(selectedFloor)을 기본값으로 사용
+      floor: selectedFloor,
       position: '',
       positionX: '',
       positionY: '',
@@ -1609,7 +1610,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       setQrData({
                         id: inspection.panelNo,
                         location: 'A',
-                        floor: 'F1',
+                        floor: inspection.floor || selectedFloor,
                         position: '',
                         positionX: inspection.position?.x?.toString() || '',
                         positionY: inspection.position?.y?.toString() || '',
@@ -1735,7 +1736,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   setQrData({
                     id: inspection.panelNo,
                     location: 'A',
-                    floor: 'F1',
+                    floor: inspection.floor || selectedFloor,
                     position: '',
                     positionX: inspection.position?.x?.toString() || '',
                     positionY: inspection.position?.y?.toString() || '',
