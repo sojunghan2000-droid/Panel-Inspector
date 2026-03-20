@@ -13,7 +13,7 @@ const StatsChart: React.FC<StatsChartProps> = ({ data }) => {
   }
   return (
     <div className="w-full" style={{ height: '256px', minHeight: '200px', minWidth: 0 }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={1}>
         <PieChart>
           <Pie
             data={data}
