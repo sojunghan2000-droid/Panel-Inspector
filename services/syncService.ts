@@ -25,12 +25,28 @@ import {
   upsertFloorPlanUrl,
   fetchAllFloorPlanUrls,
 } from './supabaseService';
-import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, deleteQRCode as deleteQRCodeFromIDB } from './indexedDBService';
-import type { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, deleteQRCode as deleteQRCodeFromIDB, saveSyncMetadata, getSyncMetadata, updateSyncMetadata } from './indexedDBService';
+import type { InspectionRecord, QRCodeData, ReportHistory, SyncMetadata, AutoSyncConfig } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 
 const OFFLINE_QUEUE_KEY = 'panel-inspector-offline-queue';
+
+// @MX:NOTE: Phase 2 - 저장소별 캐시 TTL (분 단위)
+const CACHE_TTL_MINUTES = {
+  inspections: 30,           // 검사 데이터: 30분
+  photos: 60,                // 사진: 60분
+  qrCodes: 60,               // QR 코드: 60분
+  floorPlanImages: 120,      // 층 평면도: 120분 (거의 변경 없음)
+  reports: 15,               // 보고서: 15분 (자주 변경)
+  inspectionHistory: 45,     // 검사 히스토리: 45분
+};
+
+// 개발 모드 TTL 설정 (환경변수로 오버라이드 가능)
+const getDevCacheTTLSeconds = (): number => {
+  const devTTL = process.env.REACT_APP_DEV_CACHE_TTL;
+  return devTTL ? parseInt(devTTL, 10) : 30; // 기본값: 30초
+};
 
 interface OfflineQueueItem {
   type: 'inspection' | 'qrcodes' | 'report' | 'delete-qr' | 'delete-inspection' | 'floor-plan';
@@ -304,10 +320,236 @@ export function resetSyncTimestamp(): void {
   localStorage.removeItem(LAST_SYNC_KEY);
 }
 
+// @MX:NOTE: Phase 1 - 저장소별 동기화 메타데이터 관리
+/**
+ * 특정 저장소의 마지막 동기화 시간 조회
+ * @param storeType 저장소 타입
+ * @returns ISO 8601 형식의 타임스탬프 또는 null
+ */
+export async function getLastSyncTimeForStore(storeType: string): Promise<string | null> {
+  const metadata = await getSyncMetadata(storeType);
+  return metadata?.lastSyncTime ?? null;
+}
+
+/**
+ * 특정 저장소의 마지막 동기화 시간 업데이트
+ * @param storeType 저장소 타입
+ * @param recordCount 현재 레코드 수
+ */
+export async function setLastSyncTimeForStore(storeType: string, recordCount: number = 0): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await getSyncMetadata(storeType);
+  
+  if (existing) {
+    // 기존 메타데이터 업데이트
+    await updateSyncMetadata(storeType, {
+      lastSyncTime: now,
+      recordCount,
+      syncStatus: 'success',
+    });
+  } else {
+    // 새로운 메타데이터 생성
+    const newMetadata: SyncMetadata = {
+      id: `sync-meta-${storeType}`,
+      storeType: storeType as any,
+      lastSyncTime: now,
+      recordCount,
+      syncStatus: 'success',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveSyncMetadata(newMetadata);
+  }
+}
+
+/**
+ * 특정 저장소의 동기화 상태 업데이트
+ * @param storeType 저장소 타입
+ * @param status 동기화 상태 ('idle' | 'syncing' | 'success' | 'error')
+ * @param error 에러 메시지 (status === 'error'인 경우)
+ */
+export async function updateStoreSyncStatus(
+  storeType: string,
+  status: 'idle' | 'syncing' | 'success' | 'error',
+  error?: string
+): Promise<void> {
+  const updates: any = { syncStatus: status };
+  if (error) updates.lastError = error;
+  
+  const existing = await getSyncMetadata(storeType);
+  if (existing) {
+    await updateSyncMetadata(storeType, updates);
+  } else {
+    const now = new Date().toISOString();
+    const newMetadata: SyncMetadata = {
+      id: `sync-meta-${storeType}`,
+      storeType: storeType as any,
+      lastSyncTime: existing?.lastSyncTime ?? now,
+      recordCount: 0,
+      syncStatus: status,
+      lastError: error,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveSyncMetadata(newMetadata);
+  }
+}
+
+// @MX:NOTE: Phase 2 - 캐시 TTL 검증 함수들
+/**
+ * 캐시가 만료되었는지 확인
+ * @param storeType 저장소 타입
+ * @param isDevelopmentMode 개발 모드 여부
+ * @returns true = 캐시 만료 (refresh 필요), false = 캐시 유효
+ */
+export async function isCacheExpired(storeType: string, isDevelopmentMode: boolean = false): Promise<boolean> {
+  const metadata = await getSyncMetadata(storeType);
+  if (!metadata || !metadata.lastSyncTime) {
+    return true; // 메타데이터 없음 = 캐시 없음 = 만료
+  }
+
+  const lastSyncTime = new Date(metadata.lastSyncTime).getTime();
+  const now = new Date().getTime();
+  
+  // 개발 모드 TTL
+  if (isDevelopmentMode) {
+    const devTTLMs = getDevCacheTTLSeconds() * 1000;
+    return now - lastSyncTime > devTTLMs;
+  }
+
+  // 프로덕션 모드 TTL
+  const ttlMinutes = CACHE_TTL_MINUTES[storeType as keyof typeof CACHE_TTL_MINUTES] || 30;
+  const ttlMs = ttlMinutes * 60 * 1000;
+  return now - lastSyncTime > ttlMs;
+}
+
+/**
+ * 저장소를 새로고침해야 하는지 확인
+ * - 캐시 만료
+ * - 동기화 에러 상태
+ * - 강제 새로고침 플래그 (forceRefresh)
+ * 
+ * @param storeType 저장소 타입
+ * @param forceRefresh 강제 새로고침 플래그
+ * @returns true = refresh 필요, false = 캐시 사용 가능
+ */
+export async function shouldRefreshStore(storeType: string, forceRefresh: boolean = false): Promise<boolean> {
+  if (forceRefresh) {
+    return true;
+  }
+
+  // 현재 syncing 상태 확인
+  const metadata = await getSyncMetadata(storeType);
+  if (metadata?.syncStatus === 'syncing') {
+    return false; // 현재 동기화 중이면 skip
+  }
+
+  // 이전 에러 상태 확인
+  if (metadata?.syncStatus === 'error') {
+    return true; // 에러 상태면 재시도
+  }
+
+  // 캐시 만료 확인
+  const isDev = process.env.NODE_ENV === 'development';
+  return await isCacheExpired(storeType, isDev);
+}
+
+// @MX:NOTE: Phase 2 - pullAll() 통합을 위한 헬퍼 함수들
+/**
+ * pullAll() 내부에서 호출할 캐시 체크 헬퍼
+ * - 캐시 유효하면 false 반환 (fetch 스킵)
+ * - 캐시 만료하면 true 반환 (fetch 수행)
+ */
+async function shouldFetchStore(
+  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages'
+): Promise<boolean> {
+  return await shouldRefreshStore(storeType, false);
+}
+
+/**
+ * 저장소 동기화 완료 시 호출
+ * - SyncMetadata 업데이트 (lastSyncTime, recordCount)
+ * - 동기화 상태를 'success'로 설정
+ */
+async function markStoreSyncComplete(
+  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages',
+  recordCount: number
+): Promise<void> {
+  await setLastSyncTimeForStore(storeType, recordCount);
+}
+
+/**
+ * 저장소 동기화 실패 시 호출
+ * - SyncMetadata 업데이트 (syncStatus = 'error', lastError)
+ */
+async function markStoreSyncError(
+  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages',
+  error: string
+): Promise<void> {
+  await updateStoreSyncStatus(storeType, 'error', error);
+}
+
+// @MX:NOTE: Phase 3 - 자동 주기 동기화 관리
+const AUTO_SYNC_CONFIG_KEY = 'sync-auto-settings';
+const LAST_AUTO_SYNC_KEY = 'last-auto-sync';
+
+// 자동 동기화 타이머 ID 및 활동 상태 추적
+let _autoSyncIntervalId: NodeJS.Timeout | null = null;
+let _activityState: any = null;
+
+/**
+ * 기본 자동 동기화 설정
+ */
+const DEFAULT_AUTO_SYNC_CONFIG: AutoSyncConfig = {
+  enabled: false,
+  intervalMinutes: 15,
+  respectIdleState: true,
+  idleThresholdMinutes: 3,
+  respectTabVisibility: true,
+  respectBatteryStatus: true,
+  batteryLevelThreshold: 20,
+};
+
+/**
+ * 자동 동기화 설정 조회
+ */
+export function getAutoSyncConfig(): AutoSyncConfig {
+  try {
+    const raw = localStorage.getItem(AUTO_SYNC_CONFIG_KEY);
+    if (!raw) return DEFAULT_AUTO_SYNC_CONFIG;
+    return { ...DEFAULT_AUTO_SYNC_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_AUTO_SYNC_CONFIG;
+  }
+}
+
+/**
+ * 자동 동기화 설정 저장
+ */
+export function saveAutoSyncConfig(config: Partial<AutoSyncConfig>): void {
+  try {
+    const current = getAutoSyncConfig();
+    const updated = { ...current, ...config };
+    localStorage.setItem(AUTO_SYNC_CONFIG_KEY, JSON.stringify(updated));
+  } catch {
+    console.error('[syncService] 자동 동기화 설정 저장 실패');
+  }
+}
+
 /**
  * Supabase에서 데이터를 가져와 IDB와 병합
  * - 초회(lastSync 없음): 전체 데이터 로드
  * - 이후: 변경분만 증분 로드 + ID 목록으로 삭제 감지
+ * 
+ * @MX:NOTE Phase 2 캐시 TTL 통합
+ * 각 저장소별로 shouldRefreshStore() 호출하여 캐시 유효성 확인:
+ * - inspections: 30분 (dev: 30초)
+ * - qrCodes: 60분 (dev: 30초)  
+ * - reports: 15분 (dev: 30초)
+ * - floorPlanImages: 120분 (dev: 30초)
+ * 
+ * 캐시 유효 시 fetch 스킵, 메타데이터만 업데이트
+ * 캐시 만료 시 fetch 수행 후 setLastSyncTimeForStore() 호출
  */
 // BUG-1 수정: pullAll 중복 실행 방지 뮤텍스
 // - session 상태 변경(INITIAL_SESSION, SIGNED_IN 등)마다 useEffect 재실행 → 3번 동시 실행 문제
@@ -684,4 +926,192 @@ export async function flushOfflineQueue(
     console.error('[syncService] flushOfflineQueue 오류:', err);
     notifyStatus('error', String(err));
   }
+}
+
+/**
+ * @MX:NOTE Phase 2 pullAll() 통합 가이드
+ * 
+ * ============================================
+ * pullAll() 함수의 각 fetch 지점에 다음과 같이 통합:
+ * ============================================
+ * 
+ * **1. 초회 Inspections 로드 전에:**
+ * ```typescript
+ * if (await shouldFetchStore('inspections')) {
+ *   const remoteInspections = await fetchAllInspections();
+ *   // ... 기존 로직 ...
+ *   await markStoreSyncComplete('inspections', localMap.size);
+ * } else {
+ *   console.log('[syncService] inspections 캐시 유효 - fetch 스킵');
+ * }
+ * ```
+ * 
+ * **2. 초회 QR Codes 로드 전에:**
+ * ```typescript
+ * if (await shouldFetchStore('qrCodes')) {
+ *   const remoteQRCodes = await fetchAllQRCodes();
+ *   // ... 기존 로직 ...
+ *   await markStoreSyncComplete('qrCodes', localQRMap.size);
+ * }
+ * ```
+ * 
+ * **3. 초회 Reports 로드 전에:**
+ * ```typescript
+ * if (await shouldFetchStore('reports')) {
+ *   const remoteReports = await fetchAllReports();
+ *   // ... 기존 로직 ...
+ *   await markStoreSyncComplete('reports', remoteReports.length);
+ * }
+ * ```
+ * 
+ * **4. 증분 동기화 섹션도 동일하게 적용:**
+ * - fetchInspectionsSince() 호출 전 shouldFetchStore('inspections')
+ * - fetchQRCodesSince() 호출 전 shouldFetchStore('qrCodes')
+ * - fetchReportsSince() 호출 전 shouldFetchStore('reports')
+ * 
+ * **5. 에러 처리:**
+ * ```typescript
+ * try {
+ *   if (await shouldFetchStore('inspections')) {
+ *     // fetch 수행
+ *   }
+ * } catch (error) {
+ *   await markStoreSyncError('inspections', error.message);
+ *   throw;
+ * }
+ * ```
+ * 
+ * ============================================
+ * 환경 변수 설정 (개발 모드 TTL):
+ * ============================================
+ * .env.local:
+ *   REACT_APP_DEV_CACHE_TTL=10  # 10초 (기본값: 30초)
+ * 
+ * ============================================
+ * 캐시 TTL 값 변경:
+ * ============================================
+ * syncService.ts의 CACHE_TTL_MINUTES 상수 수정:
+ * - inspections: 30분 (검사 데이터)
+ * - qrCodes: 60분 (QR 코드)
+ * - reports: 15분 (보고서 - 자주 변경)
+ * - floorPlanImages: 120분 (층 평면도)
+ * - photos: 60분
+ * - inspectionHistory: 45분
+ */
+
+/**
+ * 마지막 자동 동기화 시간 조회
+ */
+export function getLastAutoSyncTime(): string | null {
+  return localStorage.getItem(LAST_AUTO_SYNC_KEY);
+}
+
+/**
+ * 마지막 자동 동기화 시간 업데이트
+ */
+function setLastAutoSyncTime(): void {
+  try {
+    localStorage.setItem(LAST_AUTO_SYNC_KEY, new Date().toISOString());
+  } catch {
+    // localStorage 오류 무시
+  }
+}
+
+/**
+ * 현재 활동 상태로 자동 동기화 실행 가능 여부 판정
+ */
+function canExecuteAutoSync(config: AutoSyncConfig, isSyncing: boolean): boolean {
+  if (isSyncing || _syncStatusCallbacks.length === 0) {
+    return false;
+  }
+
+  if (_activityState) {
+    if (config.respectTabVisibility && !_activityState.isTabVisible) {
+      return false;
+    }
+
+    if (config.respectIdleState && !_activityState.isActive) {
+      return false;
+    }
+
+    if (config.respectBatteryStatus && _activityState.batteryLevel !== null) {
+      const batteryOK =
+        _activityState.isCharging ||
+        _activityState.batteryLevel >= config.batteryLevelThreshold;
+      if (!batteryOK) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
+ * 자동 동기화 시작
+ */
+export function startAutoSync(
+  activityState: any,
+  pullAllFn: (cb: any) => Promise<void>
+): () => void {
+  _activityState = activityState;
+  const config = getAutoSyncConfig();
+
+  if (!config.enabled || config.intervalMinutes <= 0) {
+    return stopAutoSync;
+  }
+
+  if (_autoSyncIntervalId) {
+    clearInterval(_autoSyncIntervalId);
+  }
+
+  _autoSyncIntervalId = setInterval(async () => {
+    try {
+      const currentConfig = getAutoSyncConfig();
+      const isSyncing = _syncStatusCallbacks.length > 0;
+
+      if (!canExecuteAutoSync(currentConfig, isSyncing)) {
+        console.log('[syncService] 자동 동기화 조건 불만족 - 스킵');
+        return;
+      }
+
+      const lastAutoSync = getLastAutoSyncTime();
+      if (lastAutoSync) {
+        const lastSyncMs = new Date(lastAutoSync).getTime();
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - lastSyncMs;
+        const intervalMs = currentConfig.intervalMinutes * 60 * 1000;
+
+        if (elapsedMs < intervalMs) {
+          console.log('[syncService] 자동 동기화 주기 미달 - 스킵');
+          return;
+        }
+      }
+
+      console.log('[syncService] 자동 동기화 시작');
+      await pullAllFn({
+        onInspectionsUpdated: () => {},
+        onQRCodesUpdated: () => {},
+        onReportsUpdated: () => {},
+        onSyncStatusChange: (status: SyncStatus) => notifyStatus(status),
+      });
+      setLastAutoSyncTime();
+    } catch (error) {
+      console.error('[syncService] 자동 동기화 실패:', error);
+    }
+  }, config.intervalMinutes * 60 * 1000);
+
+  return stopAutoSync;
+}
+
+/**
+ * 자동 동기화 중지
+ */
+export function stopAutoSync(): void {
+  if (_autoSyncIntervalId) {
+    clearInterval(_autoSyncIntervalId);
+    _autoSyncIntervalId = null;
+  }
+  _activityState = null;
+  console.log('[syncService] 자동 동기화 중지');
 }

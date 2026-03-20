@@ -119,3 +119,49 @@ export interface QRCodeData {
   qrData: string; // JSON string
   createdAt: string;
 }
+
+// @MX:NOTE: 동기화 메타데이터 추적 (Phase 1)
+export interface SyncMetadata {
+  id: string; // 고유ID: "sync-metadata"
+  storeType: 'inspections' | 'photos' | 'qrCodes' | 'floorPlanImages' | 'reports' | 'inspectionHistory';
+  lastSyncTime: string; // ISO 8601 형식
+  recordCount: number; // 마지막 동기화 시점의 레코드 수
+  syncStatus: 'idle' | 'syncing' | 'success' | 'error';
+  lastError?: string; // 에러 발생 시 메시지
+  partialSyncIds?: string[]; // 부분동기 시 처리된 ID 목록
+  createdAt: string;
+  updatedAt: string;
+}
+
+// @MX:NOTE: 캐시 설정 (Phase 2)
+export interface CacheConfig {
+  storeType: keyof Omit<InspectionsDB, 'migration'>;
+  ttlMinutes: number; // 캐시 유효시간 (분)
+  enabled: boolean; // 캐시 활성화 여부
+  developmentModeTTLSeconds?: number; // 개발모드 TTL (초)
+}
+
+// @MX:NOTE: 자동 동기화 설정 (Phase 3)
+export interface AutoSyncConfig {
+  enabled: boolean; // 자동 동기화 활성화
+  intervalMinutes: number; // 동기화 주기 (5, 15, 30분 또는 0=비활성화)
+  respectIdleState: boolean; // 유휴 상태 존중 (default: true)
+  idleThresholdMinutes: number; // 유휴 상태 판정 시간 (default: 3분)
+  respectTabVisibility: boolean; // 탭 가시성 확인 (default: true)
+  respectBatteryStatus: boolean; // 배터리 상태 확인 (default: true)
+  batteryLevelThreshold: number; // 자동 동기화 최소 배터리 (%) (default: 20)
+  lastAutoSyncTime?: string; // 마지막 자동 동기화 시간
+  nextAutoSyncTime?: string; // 다음 자동 동기화 예정 시간
+}
+
+// @MX:NOTE: IndexedDB v6 호환성을 위한 타입 확장
+export interface InspectionsDB {
+  inspections: InspectionRecord;
+  photos: any;
+  qrCodes: QRCodeData;
+  floorPlanImages: any;
+  reports: ReportHistory;
+  inspectionHistory: InspectionHistoryEntry;
+  syncMetadata?: SyncMetadata; // v7에서 추가됨
+  migration?: any;
+}

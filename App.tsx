@@ -17,7 +17,8 @@ import { parseInspectionExcel, mergeImportedData } from './services/excelImportS
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
-import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus } from './services/syncService';
+import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus, getAutoSyncConfig, saveAutoSyncConfig, startAutoSync, stopAutoSync, getLastAutoSyncTime } from './services/syncService';
+import { useActivityDetector, canAutoSync } from './hooks/useActivityDetector';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
 type Page = 'dashboard' | 'dashboard-overview' | 'reports' | 'qr-generator';
@@ -188,6 +189,38 @@ const App: React.FC = () => {
   // inspectionsRef: updateInspections에서 이전 상태 비교용 (stale closure 방지)
   const inspectionsRef = useRef<InspectionRecord[]>([]);
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
+
+  // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
+  // 다음 코드를 이 위치에 추가:
+  /*
+  // 활동 감지 hook 사용
+  const activityState = useActivityDetector((state) => {
+    console.log('[App] 활동 상태 변경:', {
+      isActive: state.isActive,
+      isTabVisible: state.isTabVisible,
+      batteryLevel: state.batteryLevel,
+      isCharging: state.isCharging,
+    });
+  });
+
+  // 자동 동기화 관리
+  useEffect(() => {
+    if (!session || !isConfigured) return;
+
+    // pullAll 함수를 startAutoSync에 전달
+    const stopSync = startAutoSync(activityState, pullAll);
+
+    return () => {
+      stopSync();
+    };
+  }, [session, isConfigured, activityState]);
+
+  // 사용자가 설정을 변경할 때 호출할 함수 예시:
+  // const handleAutoSyncSettingsChange = (enabled: boolean, intervalMinutes: number) => {
+  //   saveAutoSyncConfig({ enabled, intervalMinutes });
+  //   // UI 업데이트 후 자동 동기화 재시작
+  // };
+  */
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
