@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
+import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry, SyncMetadata } from '../types';
 
 interface InspectionsDB extends DBSchema {
   inspections: {
@@ -40,6 +40,11 @@ interface InspectionsDB extends DBSchema {
     key: string; // id
     value: InspectionHistoryEntry;
   };
+  syncMetadata: {
+    key: string; // 고유ID: "sync-metadata"
+    value: SyncMetadata;
+    indexes: { 'by-storeType': string };
+  };
 }
 
 let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
@@ -57,7 +62,7 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
     return dbInstance;
   }
 
-  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 6, {
+  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 7, {
     upgrade(db, oldVersion, newVersion, transaction) {
       // v5: qrCodes 스토어 초기화 (386개 중복 데이터 제거)
       if (oldVersion < 5 && db.objectStoreNames.contains('qrCodes')) {
@@ -66,6 +71,13 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
       // v6: 잘못된 inspection '06867034' 삭제
       if (oldVersion < 6 && db.objectStoreNames.contains('inspections')) {
         transaction.objectStore('inspections').delete('06867034');
+      }
+      // v7: syncMetadata 저장소 추가 (동기화 메타데이터 추적)
+      if (oldVersion < 7 && !db.objectStoreNames.contains('syncMetadata')) {
+        const syncMetadataStore = db.createObjectStore('syncMetadata', {
+          keyPath: 'id',
+        });
+        syncMetadataStore.createIndex('by-storeType', 'storeType', { unique: false });
       }
       // Inspections 저장소
       if (!db.objectStoreNames.contains('inspections')) {
@@ -574,5 +586,80 @@ export async function flushIDBDeleteQueue(): Promise<void> {
     } catch {
       // 재시도 실패 → 큐에 유지 → 다음 앱 시작 때 다시 시도
     }
+  }
+}
+
+// @MX:NOTE: Phase 1 - SyncMetadata 관리 함수들 추가
+/**
+ * SyncMetadata 저장 또는 업데이트
+ * @param metadata 저장할 메타데이터
+ */
+export async function saveSyncMetadata(metadata: SyncMetadata): Promise<void> {
+  const db = await initIndexedDB();
+  await db.put('syncMetadata', metadata);
+}
+
+/**
+ * 특정 저장소의 SyncMetadata 조회
+ * @param storeType 저장소 타입 ('inspections', 'photos', 'qrCodes', 'floorPlanImages', 'reports', 'inspectionHistory')
+ */
+export async function getSyncMetadata(storeType: string): Promise<SyncMetadata | undefined> {
+  const db = await initIndexedDB();
+  const allMetadata = await db.getAllFromIndex('syncMetadata', 'by-storeType', storeType);
+  return allMetadata[0];
+}
+
+/**
+ * 모든 SyncMetadata 조회
+ */
+export async function getAllSyncMetadata(): Promise<SyncMetadata[]> {
+  const db = await initIndexedDB();
+  return await db.getAll('syncMetadata');
+}
+
+/**
+ * SyncMetadata 업데이트 (특정 필드만)
+ * @param storeType 저장소 타입
+ * @param updates 업데이트할 필드들
+ */
+export async function updateSyncMetadata(
+  storeType: string,
+  updates: Partial<Omit<SyncMetadata, 'id' | 'createdAt'>>
+): Promise<SyncMetadata | undefined> {
+  const existing = await getSyncMetadata(storeType);
+  if (!existing) return undefined;
+  
+  const updated: SyncMetadata = {
+    ...existing,
+    ...updates,
+    id: existing.id,
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  await saveSyncMetadata(updated);
+  return updated;
+}
+
+/**
+ * SyncMetadata 삭제
+ * @param storeType 저장소 타입
+ */
+export async function deleteSyncMetadata(storeType: string): Promise<void> {
+  const metadata = await getSyncMetadata(storeType);
+  if (metadata) {
+    const db = await initIndexedDB();
+    await db.delete('syncMetadata', metadata.id);
+  }
+}
+
+/**
+ * 모든 SyncMetadata 삭제 (마이그레이션 또는 리셋 시 사용)
+ */
+export async function clearAllSyncMetadata(): Promise<void> {
+  const db = await initIndexedDB();
+  const allMetadata = await db.getAll('syncMetadata');
+  for (const metadata of allMetadata) {
+    await db.delete('syncMetadata', metadata.id);
   }
 }
