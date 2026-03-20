@@ -17,6 +17,7 @@ import { parseInspectionExcel, mergeImportedData } from './services/excelImportS
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
+import { AutoSyncSettings } from './components/AutoSyncSettings';
 import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus, getAutoSyncConfig, saveAutoSyncConfig, startAutoSync, stopAutoSync, getLastAutoSyncTime } from './services/syncService';
 import { useActivityDetector, canAutoSync } from './hooks/useActivityDetector';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
@@ -231,6 +232,7 @@ const App: React.FC = () => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
   const [unregisteredPanelNo, setUnregisteredPanelNo] = useState<string>('');
+  const [isAutoSyncSettingsOpen, setIsAutoSyncSettingsOpen] = useState(false);
 
   // PWA 설치 프롬프트 상태
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -1119,6 +1121,7 @@ const App: React.FC = () => {
                   onSyncStatusChange: (status) => setSyncStatus(status),
                 });
               }}
+              onSettingsClick={() => setIsAutoSyncSettingsOpen(true)}
             />
 
             {/* QR Scan 버튼 - 헤더 */}
@@ -1576,6 +1579,25 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* 자동 동기화 설정 모달 */}
+        <AutoSyncSettings
+          isOpen={isAutoSyncSettingsOpen}
+          onClose={() => setIsAutoSyncSettingsOpen(false)}
+          onSettingsSaved={() => {
+            // 설정 변경 시 자동 동기화 재시작
+            stopAutoSync();
+            const activityState = {
+              isActive: true,
+              isTabVisible: document.visibilityState === 'visible',
+              batteryLevel: null,
+              isCharging: null,
+              lastActivityTime: Date.now(),
+              idleThresholdMs: 60000,
+            };
+            startAutoSync(activityState, pullAll);
+          }}
+        />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 // @MX:NOTE: Phase 3 - 활동 감지 및 배터리 상태 모니터링
 
-interface ActivityState {
+export interface ActivityState {
   isActive: boolean;              // 사용자 활동 여부 (3분 이내)
   isTabVisible: boolean;          // 현재 탭이 보이는 중
   batteryLevel: number | null;    // 배터리 레벨 (0-100%) 또는 null

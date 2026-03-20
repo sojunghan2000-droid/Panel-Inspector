@@ -1,14 +1,15 @@
 import React from 'react';
-import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertCircle, Settings } from 'lucide-react';
 import type { SyncStatus } from '../services/syncService';
 
 interface SyncStatusBadgeProps {
   status: SyncStatus;
   isConfigured: boolean;
   onManualSync: () => void;
+  onSettingsClick?: () => void;
 }
 
-const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ status, isConfigured, onManualSync }) => {
+const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ status, isConfigured, onManualSync, onSettingsClick }) => {
   if (!isConfigured) return null;
 
   const config: Record<SyncStatus, { icon: React.ReactNode; label: string; className: string }> = {
@@ -42,15 +43,26 @@ const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({ status, isConfigured,
   const { icon, label, className } = config[status];
 
   return (
-    <button
-      onClick={onManualSync}
-      disabled={status === 'syncing'}
-      title={`${label} · 클릭하여 수동 동기화`}
-      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed ${className}`}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
+    <div className="flex items-center gap-1">
+      <button
+        onClick={onManualSync}
+        disabled={status === 'syncing'}
+        title={`${label} · 클릭하여 수동 동기화`}
+        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed ${className}`}
+      >
+        {icon}
+        <span className="hidden sm:inline">{label}</span>
+      </button>
+      {onSettingsClick && (
+        <button
+          onClick={onSettingsClick}
+          title="자동 동기화 설정"
+          className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
+        >
+          <Settings size={14} />
+        </button>
+      )}
+    </div>
   );
 };
 
