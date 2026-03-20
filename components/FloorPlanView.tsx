@@ -10,6 +10,7 @@ interface FloorPlanViewProps {
   qrCodes?: QRCodeData[];
   onSelectInspection?: (inspection: InspectionRecord) => void;
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
+  onUpdateQRCodes?: (qrCodes: QRCodeData[]) => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
   selectedFloor?: string;
@@ -53,7 +54,7 @@ const ALL_FLOORS = [...UPPER_FLOORS, ...BASEMENT_FLOORS];
 
 interface QRLocation {
   id: string;
-  location: string;
+  trNo: string; // TR 번호 (예: "TR-06867034")
   floor: string;
   position: { x: number; y: number };
   qrId: string;
@@ -64,6 +65,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   qrCodes: propQrCodes = [],
   onSelectInspection,
   onUpdateInspections,
+  onUpdateQRCodes,
   selectedInspectionId,
   onSelectionChange,
   selectedFloor: propSelectedFloor,
@@ -87,15 +89,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     const locations: QRLocation[] = [];
     propQrCodes.forEach((qr: QRCodeData) => {
       try {
-        const qrData = JSON.parse(qr.qrData);
-        let position = { x: 50, y: 50 };
-        if (qrData.position && typeof qrData.position === 'object' && qrData.position.x != null && qrData.position.y != null) {
-          position = { x: qrData.position.x, y: qrData.position.y };
-        }
+        // 직접 position 객체 사용 (JSON 파싱 불필요)
+        const position = qr.position || { x: 50, y: 50 };
         if (position.x >= 0 && position.x <= 100 && position.y >= 0 && position.y <= 100) {
           locations.push({
             id: `qr-${qr.id}`,
-            location: qr.location,
+            trNo: qr.trData.tr_no,
             floor: qr.floor,
             position,
             qrId: qr.id
@@ -130,6 +129,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const zoomInnerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  /** QR 코드 드래그 2초 디바운싱 타이머 */
+  const qrCodeDragTimerRef = useRef<NodeJS.Timeout | null>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
   const prevSelectedInspectionIdRef = useRef<string | null>(null);
   /** 내부 마커 클릭 추적: true면 scrollToMarker 호출 생략 (스크롤 초기화 방지) */
@@ -616,6 +617,29 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   };
 
+  /** QR 코드 위젯 이동 (2초 디바운싱 저장) */
+  const handleQRCodeDrag = (qrId: string, newPosition: { x: number; y: number }) => {
+    if (!onUpdateQRCodes) return;
+
+    // 2초 디바운싱: 이동 중에는 로컬 상태만 업데이트
+    if (qrCodeDragTimerRef.current) {
+      clearTimeout(qrCodeDragTimerRef.current);
+    }
+
+    qrCodeDragTimerRef.current = setTimeout(() => {
+      const updatedQRCodes = propQrCodes.map(qr =>
+        qr.id === qrId
+          ? {
+              ...qr,
+              position: newPosition,
+              updatedAt: new Date().toISOString(),
+            }
+          : qr
+      );
+
+      onUpdateQRCodes(updatedQRCodes);
+    }, 2000); // 2초 디바운싱
+  };
 
   /** TR 기준 색상 반환: TR-1 (A) = 파란색, TR-2 (B) = 주황색 */
   const getTRColor = (panelNo: string, qrCodes: QRCodeData[], inspection?: InspectionRecord): string => {
@@ -623,14 +647,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (inspection?.tr === 'A') return '#3b82f6'; // TR-1 파란색
     if (inspection?.tr === 'B') return '#f97316'; // TR-2 주황색
 
-    // 2. QR 코드에서 location 확인
+    // 2. QR 코드에서 trData 확인
     const matchingQR = qrCodes.find(qr => {
       try { return JSON.parse(qr.qrData).id === panelNo; } catch { return false; }
     });
     if (matchingQR) {
-      const loc = matchingQR.location?.toUpperCase();
-      if (loc === 'A' || loc === '1') return '#3b82f6';
-      if (loc === 'B' || loc === '2') return '#f97316';
+      const trNo = matchingQR.trData?.tr_no?.toUpperCase() || '';
+      // TR-1, TR-1(A)와 같은 형식에서 숫자 추출
+      if (trNo.includes('1') && trNo.includes('A')) return '#3b82f6';
+      if (trNo.includes('2') && trNo.includes('B')) return '#f97316';
     }
 
     return '#94a3b8'; // 기본 회색
