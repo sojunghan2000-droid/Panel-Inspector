@@ -168,10 +168,10 @@ export async function deleteInspectionFromSupabase(panelNo: string): Promise<voi
 
 export async function upsertQRCodes(codes: QRCodeData[]): Promise<void> {
   if (codes.length === 0) return;
-  // @MX:NOTE: qr_data 필드 제외 - DB 트리거(sync_qr_data)가 자동 생성
-  // tr_data, floor, position 변경 시 트리거가 qr_data를 재생성함
+  // @MX:NOTE: qr_data 필드 제외 - DB 트리거(sync_qr_data)가 panel_no+tr_data로 자동 생성
   const rows = codes.map(c => ({
     id: c.id,
+    panel_no: c.panelNo,
     tr_data: c.trData,
     floor: c.floor,
     position: c.position,
@@ -192,6 +192,7 @@ export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
   if (error) throw error;
   return (data as Record<string, unknown>[]).map(row => ({
     id: row.id as string,
+    panelNo: (row.panel_no as string) || '',
     floor: row.floor as string,
     position: row.position as { x: number; y: number },
     trData: row.tr_data as QRCodeData['trData'],
@@ -203,6 +204,7 @@ export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
 
 const rowToQRCode = (row: Record<string, unknown>): QRCodeData => ({
   id: row.id as string,
+  panelNo: (row.panel_no as string) || '',
   floor: row.floor as string,
   position: row.position as { x: number; y: number },
   trData: row.tr_data as QRCodeData['trData'],

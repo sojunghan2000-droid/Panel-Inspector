@@ -648,9 +648,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (inspection?.tr === 'B') return '#f97316'; // TR-2 주황색
 
     // 2. QR 코드에서 trData 확인
-    const matchingQR = qrCodes.find(qr => {
-      try { return JSON.parse(qr.qrData).id === panelNo; } catch { return false; }
-    });
+    const matchingQR = qrCodes.find(qr => qr.panelNo === panelNo);
     if (matchingQR) {
       const trNo = matchingQR.trData?.tr_no?.toUpperCase() || '';
       // TR-1, TR-1(A)와 같은 형식에서 숫자 추출
@@ -878,11 +876,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     qrLocations.forEach(qrLoc => {
       try {
         const qrCode = propQrCodes.find((qr: QRCodeData) => qr.id === qrLoc.qrId);
-        if (qrCode) {
-          const qrData = JSON.parse(qrCode.qrData);
-          if (qrData.id) {
-            qrMapByInspectionId.set(qrData.id, qrLoc);
-          }
+        if (qrCode?.panelNo) {
+          qrMapByInspectionId.set(qrCode.panelNo, qrLoc);
         }
       } catch (e) {
         // 무시
@@ -907,14 +902,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         } else {
           // QR 코드 정보가 없으면 propQrCodes에서 직접 확인
           try {
-            const qrCode = propQrCodes.find((qr: QRCodeData) => {
-              try {
-                const qrData = JSON.parse(qr.qrData);
-                return qrData.id === inspection.panelNo;
-              } catch {
-                return false;
-              }
-            });
+            const qrCode = propQrCodes.find((qr: QRCodeData) => qr.panelNo === inspection.panelNo);
             
             if (qrCode) {
               markerFloor = qrCode.floor;

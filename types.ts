@@ -113,18 +113,21 @@ export interface InspectionHistoryEntry {
 
 export interface QRCodeData {
   id: string;
+  // @MX:NOTE: DB panel_no 컬럼 직접 매핑 - JSON.parse(qrData).id 대체
+  panelNo: string;
+  location?: string; // 구형 호환: qr_data.location 또는 UI 입력값 (선택적)
   floor: string;
   position: {
     x: number; // 백분율 (0-100)
     y: number; // 백분율 (0-100)
   };
   trData: {
-    tr_no: string; // 예: "TR-06867034"
-    description: string; // 예: "TR-1(A) 900KVA"
-    capacity?: string; // 예: "900KVA"
-    position?: string; // 예: "1(A)"
+    tr_no: string; // 예: "TR-1(A) 900KVA"
+    description: string;
+    capacity?: string;
+    position?: string;
   };
-  qrData: string; // JSON string
+  qrData: string; // JSON string - 신규 형식: {pnl_no, tr_data: {tr_no}}
   createdAt: string;
   updatedAt: string;
 }

@@ -211,22 +211,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
     savedQRCodes.forEach((qr: QRCodeData) => {
       try {
-        const qrData = JSON.parse(qr.qrData);
-        const position = qrData.position || {};
+        const position = qr.position || { x: 0, y: 0 };
 
         // 이미 존재하는 InspectionRecord인지 확인
         const locationCode = qr.location.replace(/\s+/g, '-').toUpperCase();
         const floorCode = qr.floor.replace(/\s+/g, '').toUpperCase();
 
-        // PNL NO.로 먼저 확인 (정확한 매칭)
-        const existingInspectionById = currentInspections.find(inspection => {
-          try {
-            const qrDataId = qrData.id;
-            return inspection.panelNo === qrDataId;
-          } catch {
-            return false;
-          }
-        });
+        // PNL NO.로 먼저 확인 (panelNo 직접 사용)
+        const existingInspectionById = currentInspections.find(inspection =>
+          inspection.panelNo === qr.panelNo
+        );
 
         // PNL NO.로 찾지 못한 경우에만 패턴 매칭 시도
         const existingInspection = existingInspectionById || currentInspections.find(inspection => {
@@ -250,7 +244,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             ? { x: position.x, y: position.y }
             : undefined;
 
-          const newPanelNo = qrData.id?.trim() || qrData.panelNo || (isValidTR(qr.location) ? toPnlNo(qr.floor, qr.location) : `${FLOOR_TO_NUM[qr.floor] || qr.floor}-${qr.location}`);
+          const newPanelNo = qr.panelNo || (isValidTR(qr.location) ? toPnlNo(qr.floor, qr.location) : `${FLOOR_TO_NUM[qr.floor] || qr.floor}-${qr.location}`);
           const alreadyInNewInspections = newInspections.some(ins => ins.panelNo === newPanelNo);
 
           if (!alreadyInNewInspections) {
@@ -260,45 +254,30 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               lastInspectionDate: '-',
               loads: { welder: false, grinder: false, light: false, pump: false },
               photoUrl: null,
-              memo: `QR 코드로 생성됨\n위치: ${qr.location}\n층수: ${qr.floor}\n위치 정보: ${qr.position}`,
+              memo: `QR 코드로 생성됨\n위치: ${qr.location}\n층수: ${qr.floor}`,
               position: positionObj,
-              contractor: qrData.contractor || '',
-              projectName: qrData.projectName || '',
-              nominalCrossSection: qrData.nominalCrossSection || '',
-              breakerCapacity: qrData.breakerCapacity || '',
-              managementNumber: qrData.managementNumber || ''
+              contractor: '',
+              projectName: '',
+              nominalCrossSection: '',
+              breakerCapacity: '',
+              managementNumber: ''
             };
 
             newInspections.push(newInspection);
           }
         } else {
-          // 기존 InspectionRecord의 Panel Master 필드 업데이트
-          const qrContractor = qrData.contractor || '';
-          const qrProjectName = qrData.projectName || '';
-          const qrNominalCrossSection = qrData.nominalCrossSection || '';
-          const qrBreakerCapacity = qrData.breakerCapacity || '';
-          const qrManagementNumber = qrData.managementNumber || '';
-          const qrFloor = qrData.floor || '';
-          const qrTr = qrData.location || '';
+          // 기존 InspectionRecord의 층/TR 정보 업데이트 (qr 컬럼 직접 참조)
+          const qrFloor = qr.floor || '';
+          const qrTr = qr.location || '';
 
-          if (qrContractor || qrProjectName || qrNominalCrossSection || qrBreakerCapacity || qrManagementNumber || qrFloor || qrTr) {
+          if (qrFloor || qrTr) {
             const needsUpdate =
-              (qrContractor && existingInspection.contractor !== qrContractor) ||
-              (qrProjectName && existingInspection.projectName !== qrProjectName) ||
-              (qrNominalCrossSection && existingInspection.nominalCrossSection !== qrNominalCrossSection) ||
-              (qrBreakerCapacity && existingInspection.breakerCapacity !== qrBreakerCapacity) ||
-              (qrManagementNumber && existingInspection.managementNumber !== qrManagementNumber) ||
               (qrFloor && existingInspection.floor !== qrFloor) ||
               (qrTr && existingInspection.tr !== qrTr);
 
             if (needsUpdate) {
               updatedExisting.push({
                 panelNo: existingInspection.panelNo,
-                contractor: qrContractor || existingInspection.contractor,
-                projectName: qrProjectName || existingInspection.projectName,
-                nominalCrossSection: qrNominalCrossSection || existingInspection.nominalCrossSection,
-                breakerCapacity: qrBreakerCapacity || existingInspection.breakerCapacity,
-                managementNumber: qrManagementNumber || existingInspection.managementNumber,
                 floor: qrFloor || existingInspection.floor,
                 tr: qrTr || existingInspection.tr,
                 updatedAt: new Date().toISOString(), // sync 충돌 방지: 로컬 변경이 Supabase보다 최신임을 보장
@@ -361,16 +340,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
     const existingQRIds = new Set<string>();
 
-    // 기존 QR 코드에서 ID 추출
+    // 기존 QR 코드에서 ID 추출 (panelNo 직접 사용)
     savedQRCodes.forEach(qr => {
-      try {
-        const qrData = JSON.parse(qr.qrData);
-        if (qrData.id) {
-          existingQRIds.add(qrData.id);
-        }
-      } catch (e) {
-        // 무시
-      }
+      if (qr.panelNo) existingQRIds.add(qr.panelNo);
     });
 
     // QR 코드가 없는 InspectionRecord 찾기
@@ -414,28 +386,21 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       };
 
       const qrDataString = JSON.stringify({
-        id: inspection.panelNo,
-        location: location,
-        floor: floor,
-        position: position,
-        timestamp: new Date().toISOString(),
-        // InspectionRecord의 기본 정보 포함
-        panelNo: inspection.panelNo,
-        projectName: inspection.projectName,
-        contractor: inspection.contractor,
-        managementNumber: inspection.managementNumber,
-        nominalCrossSection: inspection.nominalCrossSection,
-        breakerCapacity: inspection.breakerCapacity
+        pnl_no: inspection.panelNo,
+        tr_data: { tr_no: '' }
       });
 
       const newQRCode: QRCodeData = {
         // panelNo 기반 안정적 ID → IndexedDB put() 시 upsert 보장 (중복 방지)
         id: `qr-${inspection.panelNo}`,
+        panelNo: inspection.panelNo,
         location: location,
         floor: floor,
-        position: inspection.memo || '',
+        position: inspection.position || { x: 50, y: 50 },
+        trData: { tr_no: '', description: '' },
         qrData: qrDataString,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       newQRCodes.push(newQRCode);
@@ -486,11 +451,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         } else if (key === 'qrData' && typeof data[key] === 'string') {
           try {
             const qrData = JSON.parse(data[key]);
-            if (qrData.id) {
-              qrData.id = migrateIdFloor(qrData.id);
-            }
-            if (qrData.floor === '1st') {
-              qrData.floor = 'F1';
+            // 신규 형식 (pnl_no 존재) - 변환 불필요
+            if (!qrData.pnl_no) {
+              if (qrData.id) {
+                qrData.id = migrateIdFloor(qrData.id);
+              }
+              if (qrData.floor === '1st') {
+                qrData.floor = 'F1';
+              }
             }
             migrated[key] = JSON.stringify(qrData);
           } catch {
@@ -577,40 +545,31 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     // PNL NO. 생성: 1-1, 2-1 형식 (F1/B1 + A/B/C/D)
     const finalId = data.id?.trim() || (isValidTR(data.location) ? toPnlNo(data.floor, data.location) : `${FLOOR_TO_NUM[data.floor] || data.floor}-${data.location}`);
 
-    // QR 코드에 포함될 데이터를 JSON 형식으로 생성 (Panel Master 데이터 포함)
-    const qrDataString = JSON.stringify({
-      id: finalId,
-      location: data.location,
-      floor: data.floor,
-      position: position,
-      timestamp: new Date().toISOString(),
-      contractor: data.contractor,
-      projectName: data.projectName,
-      nominalCrossSection: data.nominalCrossSection,
-      breakerCapacity: data.breakerCapacity,
-      managementNumber: data.position
-    });
-
-    // 기존 QR 코드 확인
+    // 기존 QR 코드 확인 (qrDataString 생성 전에 먼저 선언)
     const savedQRCodes = qrCodes;
-    const existingQR = savedQRCodes.find((qr: QRCodeData) => {
-      try {
-        const qrData = JSON.parse(qr.qrData);
-        return qrData.id === finalId;
-      } catch {
-        return false;
-      }
+    const existingQR = savedQRCodes.find((qr: QRCodeData) => qr.panelNo === finalId);
+
+    // QR 코드에 포함될 데이터를 JSON 형식으로 생성 (최소화)
+    const qrDataString = JSON.stringify({
+      pnl_no: finalId,
+      tr_data: { tr_no: existingQR?.trData?.tr_no || '' }
     });
 
     if (!existingQR) {
       // 새 QR 코드 생성
+      const positionData = data.position && typeof data.position === 'object'
+        ? data.position as { x: number; y: number }
+        : { x: 50, y: 50 };
       const newQRCode: QRCodeData = {
         id: `qr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        panelNo: finalId,
         qrData: qrDataString,
         location: data.location,
         floor: data.floor,
-        position: data.position || '',
-        createdAt: new Date().toISOString()
+        position: positionData,
+        trData: { tr_no: '', description: '' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       const updatedQRCodes = [...savedQRCodes, newQRCode];
@@ -630,25 +589,23 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const handleSelectQR = (qr: QRCodeData) => {
     setSelectedQR(qr);
     try {
-      const data = JSON.parse(qr.qrData);
-      const position = data.position || {};
       setQrData({
-        id: data.id || '',
+        id: qr.panelNo || '',
         location: qr.location,
         floor: qr.floor,
-        position: typeof position === 'string' ? position : (position.description || qr.position || ''),
-        positionX: position.x ? String(position.x) : '',
-        positionY: position.y ? String(position.y) : '',
-        contractor: data.contractor || '삼성물산',
-        projectName: data.projectName || '성수동 K-PJT',
-        nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
+        position: typeof qr.position === 'object' ? '' : (qr.position || ''),
+        positionX: qr.position?.x ? String(qr.position.x) : '',
+        positionY: qr.position?.y ? String(qr.position.y) : '',
+        contractor: '삼성물산',
+        projectName: '성수동 K-PJT',
+        nominalCrossSection: '', breakerCapacity: ''
       });
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
       setIsEditing(false);
     } catch (e) {
       setQrData({
-        id: '',
+        id: qr.panelNo || '',
         location: qr.location,
         floor: qr.floor,
         position: qr.position,
@@ -728,35 +685,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     setSelectedQR(qr);
     setIsEditing(true);
     setShowForm(false);
-    try {
-      const data = JSON.parse(qr.qrData);
-      const position = data.position || {};
-      setQrData({
-        id: data.id || '',
-        location: qr.location,
-        floor: qr.floor,
-        position: typeof position === 'string' ? position : (position.description || qr.position || ''),
-        positionX: position.x ? String(position.x) : '',
-        positionY: position.y ? String(position.y) : '',
-        contractor: data.contractor || '삼성물산',
-        projectName: data.projectName || '성수동 K-PJT',
-        nominalCrossSection: data.nominalCrossSection || '', breakerCapacity: data.breakerCapacity || ''
-      });
-      setGeneratedQR(qr.qrData);
-    } catch {
-      setQrData({
-        id: '',
-        location: qr.location,
-        floor: qr.floor,
-        position: qr.position,
-        positionX: '',
-        positionY: '',
-        contractor: '삼성물산',
-        projectName: '성수동 K-PJT',
-        nominalCrossSection: '', breakerCapacity: ''
-      });
-      setGeneratedQR(qr.qrData);
-    }
+    setQrData({
+      id: qr.panelNo || '',
+      location: qr.location,
+      floor: qr.floor,
+      position: typeof qr.position === 'object' ? '' : (qr.position || ''),
+      positionX: qr.position?.x ? String(qr.position.x) : '',
+      positionY: qr.position?.y ? String(qr.position.y) : '',
+      contractor: '삼성물산',
+      projectName: '성수동 K-PJT',
+      nominalCrossSection: '', breakerCapacity: ''
+    });
+    setGeneratedQR(qr.qrData);
   };
 
   const handleEditQR = (qr: QRCodeData, e: React.MouseEvent) => {
@@ -795,16 +735,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     const finalId = qrData.id?.trim() || (isValidTR(finalLocation) ? toPnlNo(qrData.floor, finalLocation) : `${FLOOR_TO_NUM[qrData.floor] || qrData.floor}-${finalLocation}`);
 
     const updatedQRData = JSON.stringify({
-      id: finalId,
-      location: finalLocation,
-      floor: qrData.floor,
-      position: position,
-      timestamp: new Date().toISOString(),
-      contractor: qrData.contractor,
-      projectName: qrData.projectName,
-      nominalCrossSection: qrData.nominalCrossSection,
-      breakerCapacity: qrData.breakerCapacity,
-      managementNumber: qrData.position
+      pnl_no: finalId,
+      tr_data: { tr_no: selectedQR?.trData?.tr_no || '' }
     });
 
     const updatedQRCodes = qrCodes.map(qr =>
@@ -926,7 +858,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     }
     
     // 상세 패널(모달) 표시 후 해당 마커 선택 → 위치 수정 가능
-    if (!qrDataToUse.id) {
+    const panelId = selectedQR?.panelNo || qrDataToUse.pnl_no || qrDataToUse.id;
+    if (!panelId) {
       showToast('패널 ID를 찾을 수 없습니다. QR을 다시 선택해주세요.');
       return;
     }
@@ -935,20 +868,24 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       return;
     }
     setOpenDetailPanelForMapping(true);
-    onSelectInspection(qrDataToUse.id);
+    onSelectInspection(panelId);
     // 리렌더 후 스크롤 복원
     restoreScrollAfterAction();
   };
 
   const saveQRCode = (qrDataString: string): QRCodeData => {
     const qrDataObj = JSON.parse(qrDataString);
+    const pnlNo = qrDataObj.pnl_no || qrDataObj.id || qrData.id || '';
     const newQRCode: QRCodeData = {
       id: `qr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      location: qrDataObj.location || qrData.location,
-      floor: qrDataObj.floor || qrData.floor,
-      position: qrData.position,
+      panelNo: pnlNo,
+      location: qrData.location,
+      floor: qrData.floor,
+      position: { x: qrData.positionX ? parseFloat(qrData.positionX) : 50, y: qrData.positionY ? parseFloat(qrData.positionY) : 50 },
+      trData: { tr_no: qrDataObj.tr_data?.tr_no || '', description: '' },
       qrData: qrDataString,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     setQrCodes(prev => [newQRCode, ...prev]);
     return newQRCode;
@@ -1049,17 +986,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       finalId = qrData.id?.trim() || (isValidTR(finalLocation) ? toPnlNo(finalFloor, finalLocation) : `${FLOOR_TO_NUM[finalFloor] || finalFloor}-${finalLocation}`);
     }
 
-    // QR 코드에 포함될 데이터를 JSON 형식으로 생성
+    // QR 코드에 포함될 데이터를 JSON 형식으로 생성 (최소화)
     const data = JSON.stringify({
-      id: finalId,
-      location: finalLocation,
-      floor: finalFloor,
-      position: position,
-      timestamp: new Date().toISOString(),
-      contractor: qrData.contractor,
-      projectName: qrData.projectName,
-      nominalCrossSection: qrData.nominalCrossSection,
-      breakerCapacity: qrData.breakerCapacity
+      pnl_no: finalId,
+      tr_data: { tr_no: selectedQR?.trData?.tr_no || '' }
     });
 
     setGeneratedQR(data);
@@ -1314,22 +1244,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     return inspections.filter(i => !qrCodes.some(qr => isInspectionMatchedWithQR(i, qr)));
   }, [inspections, qrCodes, isInspectionMatchedWithQR]);
 
-  // QR 코드 매핑 최적화 (성능 개선) — inner id 충돌 시 최신 createdAt 우선
+  // QR 코드 매핑 최적화 (panelNo 직접 사용) — 최신 createdAt 우선
   const qrCodeMap = useMemo(() => {
     const map = new Map<string, QRCodeData>();
-    // 오래된 것 먼저 처리 → 최신이 나중에 덮어씌워 우선됨
     qrCodes
       .slice()
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .forEach(qr => {
-        try {
-          const qrData = JSON.parse(qr.qrData);
-          if (qrData.id) {
-            map.set(qrData.id, qr);
-          }
-        } catch (e) {
-          // 무시
-        }
+        if (qr.panelNo) map.set(qr.panelNo, qr);
       });
     return map;
   }, [qrCodes]);
@@ -1397,18 +1319,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       .sort((a, b) => a.trKey.localeCompare(b.trKey));
   }, [inspections]);
 
-  // 선택된 QR의 ID 추출 최적화
-  const selectedQRId = useMemo(() => {
-    if (selectedQR) {
-      try {
-        const qrData = JSON.parse(selectedQR.qrData);
-        return qrData.id || '';
-      } catch (e) {
-        return '';
-      }
-    }
-    return '';
-  }, [selectedQR]);
+  // 선택된 QR의 ID 추출 최적화 (panelNo 직접 사용)
+  const selectedQRId = useMemo(() => selectedQR?.panelNo || '', [selectedQR]);
 
   // Select 포커스 시 모든 부모 컨테이너의 overflow를 visible로 변경
   React.useEffect(() => {

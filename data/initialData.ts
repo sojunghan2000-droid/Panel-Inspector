@@ -1151,6 +1151,7 @@ export function generateInitialQRCodes(inspections: InspectionRecord[]): QRCodeD
     const trNo = `TR-${ins.tr === 'B' ? '2' : '1'}${ins.tr === 'A' ? '(A)' : '(B)'} 900KVA`;
     return {
       id: `qr-init-${ins.panelNo}-${idx}`,
+      panelNo: ins.panelNo,
       floor: ins.floor || 'F1',
       position: { x: 50, y: 50 }, // 기본 위치 (중앙)
       trData: {
@@ -1160,21 +1161,8 @@ export function generateInitialQRCodes(inspections: InspectionRecord[]): QRCodeD
         position: ins.tr,
       },
       qrData: JSON.stringify({
-        id: ins.panelNo,
-        floor: ins.floor || 'F1',
-        position: { x: 50, y: 50 },
-        tr_data: {
-          tr_no: trNo,
-          description: ins.managementNumber || '',
-          capacity: '900KVA',
-          position: ins.tr,
-        },
-        timestamp: now,
-        contractor: ins.contractor,
-        projectName: ins.projectName,
-        nominalCrossSection: ins.nominalCrossSection,
-        breakerCapacity: ins.breakerCapacity,
-        managementNumber: ins.managementNumber,
+        pnl_no: ins.panelNo,
+        tr_data: { tr_no: trNo },
       }),
       createdAt: now,
       updatedAt: now,

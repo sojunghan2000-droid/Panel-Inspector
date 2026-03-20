@@ -146,12 +146,12 @@ export const exportToExcel = async (
         } else if (qrData.position && qrData.position.description) {
           qrPosition = qrData.position.description;
         } else {
-          qrPosition = qr.position || '';
+          qrPosition = qr.position ? `${qr.position.x},${qr.position.y}` : '';
         }
       } catch (e) {
         qrLocation = qr.location || '';
         qrFloor = qr.floor || '';
-        qrPosition = qr.position || '';
+        qrPosition = qr.position ? `${qr.position.x},${qr.position.y}` : '';
         qrId = inspection.panelNo;
       }
     } else {

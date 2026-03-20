@@ -77,11 +77,14 @@ const migrateFloorFormat = (data: any): any => {
       } else if (key === 'qrData' && typeof data[key] === 'string') {
         try {
           const qrData = JSON.parse(data[key]);
-          if (qrData.id) {
-            qrData.id = migrateIdFloor(qrData.id);
-          }
-          if (qrData.floor === '1st') {
-            qrData.floor = 'F1';
+          // 신규 형식 (pnl_no 존재) - 변환 불필요
+          if (!qrData.pnl_no) {
+            if (qrData.id) {
+              qrData.id = migrateIdFloor(qrData.id);
+            }
+            if (qrData.floor === '1st') {
+              qrData.floor = 'F1';
+            }
           }
           migrated[key] = JSON.stringify(qrData);
         } catch {
@@ -632,17 +635,15 @@ const App: React.FC = () => {
     
     setInspections(uniqueInspections);
 
-    // QR 코드의 qrData에 embedded된 position도 최신 inspection position으로 동기화
+    // QR 코드의 DB position 컬럼을 최신 inspection position으로 동기화
     setQrCodes((prevQrCodes: QRCodeData[]) =>
       prevQrCodes.map((qr: QRCodeData) => {
         try {
-          const qrData = JSON.parse(qr.qrData);
-          const matchingInspection = uniqueInspections.find(i => i.panelNo === qrData.id);
+          const matchingInspection = uniqueInspections.find(i => i.panelNo === qr.panelNo);
           if (matchingInspection?.position) {
             const updatedQrData = {
-              ...qrData,
+              ...JSON.parse(qr.qrData),
               position: {
-                ...qrData.position,
                 x: matchingInspection.position.x,
                 y: matchingInspection.position.y,
               },
@@ -725,9 +726,7 @@ const App: React.FC = () => {
       // pushDeleteInspection: 실패 시 오프라인 큐에 저장 → 네트워크 복귀 시 재시도
       pushDeleteInspection(panelNo).catch(console.error);
     }
-    setQrCodes((prev: QRCodeData[]) => prev.filter((qr: QRCodeData) => {
-      try { return JSON.parse(qr.qrData).id !== panelNo; } catch { return true; }
-    }));
+    setQrCodes((prev: QRCodeData[]) => prev.filter((qr: QRCodeData) => qr.panelNo !== panelNo));
   }, [session, isConfigured, setQrCodes]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
@@ -887,23 +886,15 @@ const App: React.FC = () => {
       // 스캔 시간 생성 (YYYY-MM-DD hh:mm:ss 형식)
       const scanTime = formatDateTime();
 
-      // QR 코드에서 PNL NO. 찾기 (id 또는 panelNo)
-      const qrPanelNo = data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
+      // QR 코드에서 PNL NO. 찾기 (신규: pnl_no, 구형: panelNo/id 폴백)
+      const qrPanelNo = data.pnl_no || data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
       console.log('🏷️ PNL NO:', qrPanelNo);
 
-      // qrCodes에서 매칭되는 QR 찾기 (Panel Master에서 등록한 QR)
+      // qrCodes에서 매칭되는 QR 찾기 (panel_no 컬럼 직접 비교)
       const matchedQR = qrCodes.find((qr: any) => {
-        try {
-          const qrDataObj = JSON.parse(qr.qrData || '{}');
-          // QR 데이터의 id/panelNo와 비교
-          const matches = qrDataObj.id === qrPanelNo ||
-                         qrDataObj.panelNo === qrPanelNo ||
-                         qr.location === data.location;
-          console.log('  - 비교:', qrDataObj.id, qrDataObj.panelNo, '===', qrPanelNo, '결과:', matches);
-          return matches;
-        } catch {
-          return false;
-        }
+        const matches = qr.panelNo === qrPanelNo || qr.location === data.location;
+        console.log('  - 비교:', qr.panelNo, '===', qrPanelNo, '결과:', matches);
+        return matches;
       });
       console.log('🔗 matchedQR:', matchedQR);
 
@@ -922,8 +913,8 @@ const App: React.FC = () => {
       const existingBoard = inspections.find(i => i.panelNo === qrPanelNo || i.panelNo.includes(qrPanelNo));
       console.log('📋 existingBoard:', existingBoard);
 
-      // 최종 PNL NO 결정
-      const finalPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || matchedQRData.panelNo || qrPanelNo;
+      // 최종 PNL NO 결정 (신규: pnl_no, 구형 폴백 유지)
+      const finalPanelNo = data.pnl_no || data.panelNo || data.pnlNo || data.id || matchedQR?.panelNo || qrPanelNo;
       console.log('🎯 최종 PNL NO:', finalPanelNo);
 
       if (existingBoard) {
