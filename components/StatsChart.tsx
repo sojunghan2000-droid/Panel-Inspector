@@ -7,6 +7,10 @@ interface StatsChartProps {
 }
 
 const StatsChart: React.FC<StatsChartProps> = ({ data }) => {
+  // 데이터 없거나 합계 0이면 렌더링 생략 (Recharts width/height -1 경고 방지)
+  if (!data || data.length === 0 || data.every(d => d.value === 0)) {
+    return <div className="w-full" style={{ height: '256px', minHeight: '200px' }} />;
+  }
   return (
     <div className="w-full" style={{ height: '256px', minHeight: '200px', minWidth: 0 }}>
       <ResponsiveContainer width="100%" height="100%">
