@@ -190,9 +190,13 @@ const App: React.FC = () => {
   // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
   const editingReportRef = useRef<ReportHistory | null>(null);
   useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
-  // inspectionsRef: updateInspections에서 이전 상태 비교용 (stale closure 방지)
+  // inspectionsRef: updateInspections에서 이전 상태 비교용 + flushOfflineQueue 최신 참조
   const inspectionsRef = useRef<InspectionRecord[]>([]);
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
+  const qrCodesRef = useRef<QRCodeData[]>([]);
+  useEffect(() => { qrCodesRef.current = qrCodes; }, [qrCodes]);
+  const reportsRef = useRef<ReportHistory[]>([]);
+  useEffect(() => { reportsRef.current = reports; }, [reports]);
 
   // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
   // @MX:WARN: inline 콜백 사용 금지 - 매 렌더마다 새 함수 참조 생성 → battery useEffect 무한 재실행
@@ -606,16 +610,16 @@ const App: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // 오프라인 → 온라인 전환 시 큐 플러시
+  // 오프라인 → 온라인 전환 시 큐 플러시 — ref로 항상 최신 값 참조 (stale closure 방지)
   useEffect(() => {
     if (!isConfigured) return;
     const handleOnline = () => {
-      flushOfflineQueue(inspections, qrCodes, reports).catch(console.error);
+      flushOfflineQueue(inspectionsRef.current, qrCodesRef.current, reportsRef.current).catch(console.error);
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspections, qrCodes, reports]);
+  }, [isConfigured]);
 
   // PWA 설치 핸들러
   const handleInstallApp = async () => {
@@ -655,6 +659,9 @@ const App: React.FC = () => {
       }
     }
     
+    // ✅ await 이전에 prevMap 캡처 — setInspections + await 이후에는 inspectionsRef.current가 이미 NEW 상태일 수 있음
+    const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
+
     setInspections(uniqueInspections);
 
     // QR 코드의 DB position 컬럼을 최신 inspection position으로 동기화
@@ -728,7 +735,6 @@ const App: React.FC = () => {
 
     // Supabase push (fire-and-forget) — updatedAt이 갱신된 항목만 push (egress 절감)
     if (session && isConfigured) {
-      const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
       const toSync = uniqueInspections.filter(ins => {
         const prev = prevMap.get(ins.panelNo);
         if (!prev) return true; // 신규 항목
