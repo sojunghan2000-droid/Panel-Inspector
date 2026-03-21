@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, Hash, Zap, GitBranch, ChevronLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeData, InspectionRecord, getTrLetter } from '../types';
 import FloorPlanView from './FloorPlanView';
 import TRSystemModal from './TRSystemModal';
+import { exportQRBatchToExcel } from '../services/excelService';
 
 /** PNL NO. 형식: 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR letter A,B → 1,2 */
 const FLOOR_TO_NUM: Record<string, string> = { F1: '1', F2: '2', F3: '3', F4: '4', F5: '5', F6: '6', B1: '7', B2: '8' };
@@ -1398,6 +1399,27 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     showToast(`${count}개 패널을 삭제했습니다`);
   }, [selectedPanelNos, onDeleteInspection]);
 
+  const handleBulkQRExcel = useCallback(async () => {
+    if (!selectedPanelNos.size) return;
+    setIsBulkLoading(true);
+    try {
+      const selectedQrCodes = qrCodes.filter(qr => selectedPanelNos.has(qr.panelNo));
+      const items: Array<{ qrCode: QRCodeData; imageDataUrl: string }> = [];
+      for (const qrCode of selectedQrCodes) {
+        const canvas = document.getElementById(`qr-batch-canvas-${qrCode.panelNo}`) as HTMLCanvasElement | null;
+        const imageDataUrl = canvas?.toDataURL('image/png') ?? '';
+        items.push({ qrCode, imageDataUrl });
+      }
+      await exportQRBatchToExcel(items);
+      showToast(`${items.length}개 QR 코드를 엑셀로 출력했습니다`);
+    } catch (e) {
+      console.error('QR 일괄 출력 오류:', e);
+      showToast('QR 엑셀 출력 중 오류가 발생했습니다');
+    } finally {
+      setIsBulkLoading(false);
+    }
+  }, [selectedPanelNos, qrCodes]);
+
   // TR 계통 요약 (인라인 패널용)
   const trSummary = useMemo(() => {
     const trMap: Record<string, InspectionRecord[]> = {};
@@ -2127,6 +2149,18 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             </div>
         )}
 
+        {/* 일괄 QR 출력용 숨김 캔버스 */}
+        <div style={{ position: 'absolute', left: '-9999px', top: 0, pointerEvents: 'none' }} aria-hidden="true">
+          {qrCodes.filter(qr => selectedPanelNos.has(qr.panelNo)).map(qr => (
+            <QRCodeCanvas
+              key={qr.panelNo}
+              id={`qr-batch-canvas-${qr.panelNo}`}
+              value={qr.qrData}
+              size={256}
+            />
+          ))}
+        </div>
+
         {/* 일괄 작업 팝업 모달 */}
         {showBulkModal && createPortal(
           <>
@@ -2176,6 +2210,11 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       </button>
                     </div>
                   </div>
+                  <button onClick={() => { setShowBulkModal(false); handleBulkQRExcel(); }}
+                    disabled={isBulkLoading}
+                    className="w-full py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors mb-2">
+                    QR 엑셀 출력
+                  </button>
                   <button onClick={() => { handleBulkDelete(); setShowBulkModal(false); }}
                     disabled={isBulkLoading}
                     className="w-full py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">

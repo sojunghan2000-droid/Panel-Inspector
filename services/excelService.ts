@@ -508,3 +508,96 @@ export const exportToExcel = async (
   // 내보낸 PNL NO 목록 반환
   return inspections.map(i => i.panelNo);
 };
+
+/**
+ * QR 코드 일괄 출력 엑셀 파일 생성
+ * 선택된 패널의 qr_data 정보와 QR 코드 이미지를 포함한 별도 파일 생성
+ */
+export const exportQRBatchToExcel = async (
+  items: Array<{ qrCode: QRCodeData; imageDataUrl: string }>
+): Promise<void> => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Panel Inspector';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('QR 코드 출력');
+
+  // 열 너비 설정
+  sheet.getColumn(1).width = 18;  // PNL NO.
+  sheet.getColumn(2).width = 22;  // TR
+  sheet.getColumn(3).width = 10;  // 층수
+  sheet.getColumn(4).width = 22;  // QR 이미지
+
+  // 헤더
+  const headerRow = sheet.addRow(['PNL NO.', 'TR', '층수', 'QR 코드']);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.height = 22;
+
+  let currentRow = 2;
+
+  for (const { qrCode, imageDataUrl } of items) {
+    // qr_data 파싱
+    let pnlNo = qrCode.panelNo || '';
+    let trNo = qrCode.trData?.tr_no || '';
+    let floor = qrCode.floor || '';
+
+    try {
+      const parsed = JSON.parse(qrCode.qrData);
+      if (parsed.id) pnlNo = parsed.id;
+      if (!trNo && parsed.location) trNo = parsed.location;
+      if (!floor && parsed.floor) floor = parsed.floor;
+    } catch { /* qrData 파싱 실패 시 qrCode 필드 사용 */ }
+
+    // trNo가 없으면 tr_data에서 추출
+    if (!trNo) trNo = qrCode.location || '';
+
+    const row = sheet.addRow([pnlNo, trNo, floor, '']);
+    row.alignment = { vertical: 'middle', horizontal: 'center' };
+    row.height = 128;
+
+    // A~C 셀 스타일
+    row.getCell(1).font = { bold: true, size: 11 };
+    row.getCell(2).font = { size: 10 };
+    row.getCell(3).font = { size: 10 };
+
+    // QR 이미지 삽입
+    if (imageDataUrl && imageDataUrl.startsWith('data:image')) {
+      try {
+        const base64 = imageDataUrl.split(',')[1];
+        const imageId = workbook.addImage({ base64, extension: 'png' });
+        // D열에 이미지 삽입 (셀 범위 인덱스는 0-based)
+        sheet.addImage(imageId, {
+          tl: { col: 3, row: currentRow - 1 },
+          br: { col: 4, row: currentRow },
+        });
+      } catch (e) {
+        console.error('QR 이미지 삽입 오류:', e);
+      }
+    }
+
+    currentRow++;
+  }
+
+  // 파일 다운로드
+  const today = new Date().toISOString().split('T')[0];
+  const fileName = `QR코드_출력_${today}.xlsx`;
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
+  if (isElectron) {
+    const result = await window.electronAPI!.saveExcelFile(Array.from(new Uint8Array(buffer)), fileName);
+    if (!result.success && !result.canceled) throw new Error(result.error || '파일 저장 실패');
+  } else {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
+};
