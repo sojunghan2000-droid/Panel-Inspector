@@ -2,20 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { QrCode, Download, Printer, MapPin, Building2, FileText, Calendar, Trash2, Eye, Edit2, X, Save, Search, Hash, Zap, GitBranch, ChevronLeft, ChevronDown, ChevronUp } from 'lucide-react';
-import { QRCodeData, InspectionRecord } from '../types';
+import { QRCodeData, InspectionRecord, getTrLetter } from '../types';
 import FloorPlanView from './FloorPlanView';
 import TRSystemModal from './TRSystemModal';
 
-/** TR(위치) 허용 값: A (TR-1 900KVA), B (TR-2 950KVA) */
-const TR_OPTIONS = ['A', 'B'] as const;
-const TR_DISPLAY_LABELS: Record<string, string> = {
-  'A': 'TR-1 900KVA',
-  'B': 'TR-2 950KVA',
-};
-const isValidTR = (v: string): v is typeof TR_OPTIONS[number] =>
-  TR_OPTIONS.includes(v as typeof TR_OPTIONS[number]);
-
-/** PNL NO. 형식: MOCK_DATA와 동일. 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR A,B → 1,2 */
+/** PNL NO. 형식: 층 1=F1, 2=F2, …, 6=F6, 7=B1, 8=B2 / TR letter A,B → 1,2 */
 const FLOOR_TO_NUM: Record<string, string> = { F1: '1', F2: '2', F3: '3', F4: '4', F5: '5', F6: '6', B1: '7', B2: '8' };
 const NUM_TO_FLOOR: Record<string, string> = {
   '1': 'F1', '2': 'F2', '3': 'F3', '4': 'F4', '5': 'F5', '6': 'F6', '7': 'B1', '8': 'B2',
@@ -23,10 +14,17 @@ const NUM_TO_FLOOR: Record<string, string> = {
 const TR_TO_NUM: Record<string, string> = { A: '1', B: '2' };
 const NUM_TO_TR: Record<string, string> = { '1': 'A', '2': 'B' };
 
-/** 층(F1/B1) + TR(A/B/C/D) → PNL NO.(1-1, 2-1 등) */
+/** TR full string 또는 letter가 유효한 TR 계통인지 확인 */
+function isValidTR(v: string): boolean {
+  const letter = getTrLetter(v) || v?.toUpperCase();
+  return letter === 'A' || letter === 'B';
+}
+
+/** 층(F1/B1) + TR full string or letter → PNL NO.(1-1, 2-1 등) */
 function toPnlNo(floor: string, location: string): string {
   const f = FLOOR_TO_NUM[floor] || floor;
-  const l = TR_TO_NUM[location?.toUpperCase()] ?? location;
+  const letter = getTrLetter(location) || location?.toUpperCase();
+  const l = TR_TO_NUM[letter] ?? location;
   return `${f}-${l}`;
 }
 
@@ -99,7 +97,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [selectedFloor, setSelectedFloor] = useState<string>('F1');
   const [qrData, setQrData] = useState<QRData>({
     id: '', // PNL NO. 자유 입력 (예: 1, 1-1, 1-1-1)
-    location: 'A',
+    location: 'TR-1(A) 900KVA',
     floor: 'F1',
     position: '',
     positionX: '',
@@ -115,6 +113,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [isSelectFocused, setIsSelectFocused] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   // showForm: 신규 등록 모드 플래그 (selectedQR 없이 폼 표시)
   const [showTRSystemModal, setShowTRSystemModal] = useState(false);
   const [trPanelExpanded, setTrPanelExpanded] = useState(false);
@@ -128,6 +127,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteInspectionConfirmId, setDeleteInspectionConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [selectedPanelNos, setSelectedPanelNos] = useState<Set<string>>(new Set());
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [bulkFloor, setBulkFloor] = useState<string>('F1');
+  const [bulkTrNo, setBulkTrNo] = useState<string>('');
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (msg: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -138,6 +141,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const panelDetailSectionRef = useRef<HTMLDivElement>(null);
   const savedMainScrollOnInteractionRef = useRef<number>(0);
   const savedRightScrollOnInteractionRef = useRef<number>(0);
+  // 편집 시 dirty 추적용: selectQR/handleSelectQR 호출 시 초기값 저장
+  const initialQrDataRef = useRef<QRData | null>(null);
   // QR 자동생성 useEffect에서 qrCodes를 의존성으로 쓰지 않기 위한 ref
   const qrCodesRef = useRef<QRCodeData[]>([]);
   useEffect(() => { qrCodesRef.current = qrCodes; }, [qrCodes]);
@@ -593,9 +598,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const handleSelectQR = (qr: QRCodeData) => {
     setSelectedQR(qr);
     try {
+      const loc = qr.trData?.tr_no || qr.location || 'TR-1(A) 900KVA';
       setQrData({
         id: qr.panelNo || '',
-        location: qr.location,
+        location: loc,
         floor: qr.floor,
         position: typeof qr.position === 'object' ? '' : (qr.position || ''),
         positionX: qr.position?.x ? String(qr.position.x) : '',
@@ -604,13 +610,15 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         projectName: '성수동 K-PJT',
         nominalCrossSection: '', breakerCapacity: ''
       });
+      initialQrDataRef.current = { id: qr.panelNo || '', location: loc, floor: qr.floor, position: typeof qr.position === 'object' ? '' : (qr.position || ''), positionX: qr.position?.x ? String(qr.position.x) : '', positionY: qr.position?.y ? String(qr.position.y) : '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' };
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
       setIsEditing(false);
     } catch (e) {
+      const loc = qr.trData?.tr_no || qr.location || 'TR-1(A) 900KVA';
       setQrData({
         id: qr.panelNo || '',
-        location: qr.location,
+        location: loc,
         floor: qr.floor,
         position: qr.position,
         positionX: '',
@@ -619,6 +627,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         projectName: '성수동 K-PJT',
         nominalCrossSection: '', breakerCapacity: ''
       });
+      initialQrDataRef.current = { id: qr.panelNo || '', location: loc, floor: qr.floor, position: qr.position, positionX: '', positionY: '', contractor: '삼성물산', projectName: '성수동 K-PJT', nominalCrossSection: '', breakerCapacity: '' };
       // generatedQR은 설정하지 않음 - 상세 정보 섹션에서 표시
       // setGeneratedQR(qr.qrData);
       setIsEditing(false);
@@ -686,12 +695,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   };
 
   const selectQR = (qr: QRCodeData) => {
+    const loc = qr.trData?.tr_no || qr.location || 'TR-1(A) 900KVA';
     setSelectedQR(qr);
     setIsEditing(true);
     setShowForm(false);
-    setQrData({
+    const data: QRData = {
       id: qr.panelNo || '',
-      location: qr.location,
+      location: loc,
       floor: qr.floor,
       position: typeof qr.position === 'object' ? '' : (qr.position || ''),
       positionX: qr.position?.x ? String(qr.position.x) : '',
@@ -699,7 +709,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       contractor: '삼성물산',
       projectName: '성수동 K-PJT',
       nominalCrossSection: '', breakerCapacity: ''
-    });
+    };
+    setQrData(data);
+    initialQrDataRef.current = data;
     setGeneratedQR(qr.qrData);
   };
 
@@ -740,7 +752,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
 
     const updatedQRData = JSON.stringify({
       pnl_no: finalId,
-      tr_data: { tr_no: selectedQR?.trData?.tr_no || '' }
+      tr_data: { tr_no: finalLocation }
     });
 
     const updatedQRCodes = qrCodes.map(qr =>
@@ -750,6 +762,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             location: finalLocation,
             floor: qrData.floor,
             position: qrData.position,
+            trData: { ...qr.trData, tr_no: finalLocation },
             qrData: updatedQRData,
             createdAt: new Date().toISOString(), // 수정 시각 갱신 → sync 시 local이 이김
           }
@@ -910,7 +923,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
         if (!finalLocation) finalLocation = NUM_TO_TR[idParts[1]] || idParts[1];
       }
       if (!finalFloor) finalFloor = 'F1';
-      if (!finalLocation && isValidTR('A')) finalLocation = 'A';
+      if (!finalLocation) finalLocation = 'TR-1(A) 900KVA';
     }
 
     if (!finalLocation || !finalFloor) {
@@ -1197,9 +1210,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   };
 
   const resetForm = () => {
+    initialQrDataRef.current = null;
     setQrData({
       id: '',
-      location: 'A',
+      location: 'TR-1(A) 900KVA',
       // @MX:NOTE: 현재 FloorPlanView에서 선택된 층(selectedFloor)을 기본값으로 사용
       floor: selectedFloor,
       position: '',
@@ -1301,9 +1315,88 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
       (ins.floor || '').toLowerCase().includes(q) ||
       (ins.notes || '').toLowerCase().includes(q) ||
       (ins.nominalCrossSection || '').toLowerCase().includes(q) ||
-      (TR_DISPLAY_LABELS[ins.tr || ''] || '').toLowerCase().includes(q)
+      (ins.tr || '').toLowerCase().includes(q)
     );
   }, [sortedInspections, searchText]);
+
+  // 다중 선택: 사용 가능한 TR 목록 (qrCodes에서 수집, 없으면 기본값)
+  const availableTrNos = useMemo(() => {
+    const set = new Set(qrCodes.map(qr => qr.trData?.tr_no).filter((v): v is string => !!v));
+    if (!set.size) { set.add('TR-1 900KVA'); set.add('TR-2 950KVA'); }
+    return Array.from(set);
+  }, [qrCodes]);
+
+  // 다중 선택 핸들러
+  const togglePanelSelect = useCallback((panelNo: string) => {
+    setSelectedPanelNos(prev => {
+      const next = new Set(prev);
+      next.has(panelNo) ? next.delete(panelNo) : next.add(panelNo);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedPanelNos(prev => {
+      if (prev.size === filteredInspections.length && filteredInspections.length > 0) {
+        return new Set();
+      }
+      return new Set(filteredInspections.map(i => i.panelNo));
+    });
+  }, [filteredInspections]);
+
+  const handleBulkFloorChange = useCallback(async (floor: string) => {
+    if (!selectedPanelNos.size) return;
+    setIsBulkLoading(true);
+    try {
+      const updatedInspections = inspections.map(ins =>
+        selectedPanelNos.has(ins.panelNo) ? { ...ins, floor } : ins
+      );
+      if (onUpdateInspections) onUpdateInspections(updatedInspections);
+      const updatedQrCodes = qrCodes.map(qr =>
+        selectedPanelNos.has(qr.panelNo) ? { ...qr, floor } : qr
+      );
+      setQrCodes(updatedQrCodes);
+      showToast(`${selectedPanelNos.size}개 패널 층수를 ${floor}로 변경했습니다`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  }, [selectedPanelNos, inspections, qrCodes, onUpdateInspections, setQrCodes]);
+
+  const handleBulkTRChange = useCallback(async (trNo: string) => {
+    if (!selectedPanelNos.size) return;
+    setIsBulkLoading(true);
+    try {
+      const updatedInspections = inspections.map(ins =>
+        selectedPanelNos.has(ins.panelNo) ? { ...ins, tr: trNo } : ins
+      );
+      if (onUpdateInspections) onUpdateInspections(updatedInspections);
+      const updatedQrCodes = qrCodes.map(qr => {
+        if (!selectedPanelNos.has(qr.panelNo)) return qr;
+        let newQrData = qr.qrData;
+        try {
+          const parsed = JSON.parse(qr.qrData);
+          parsed.tr_data = { ...parsed.tr_data, tr_no: trNo };
+          newQrData = JSON.stringify(parsed);
+        } catch { /* qrData 파싱 실패 시 기존 유지 */ }
+        return { ...qr, trData: { ...qr.trData, tr_no: trNo }, qrData: newQrData, updatedAt: new Date().toISOString() };
+      });
+      setQrCodes(updatedQrCodes);
+      showToast(`${selectedPanelNos.size}개 패널 TR을 ${trNo}로 변경했습니다`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  }, [selectedPanelNos, inspections, qrCodes, onUpdateInspections, setQrCodes]);
+
+  const handleBulkDelete = useCallback(() => {
+    const count = selectedPanelNos.size;
+    if (!count) return;
+    if (!window.confirm(`선택된 ${count}개 패널을 삭제하시겠습니까?`)) return;
+    selectedPanelNos.forEach(panelNo => {
+      onDeleteInspection?.(panelNo);
+    });
+    setSelectedPanelNos(new Set());
+    showToast(`${count}개 패널을 삭제했습니다`);
+  }, [selectedPanelNos, onDeleteInspection]);
 
   // TR 계통 요약 (인라인 패널용)
   const trSummary = useMemo(() => {
@@ -1316,9 +1409,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     return Object.entries(trMap)
       .map(([trKey, panels]) => ({
         trKey,
-        trLabel: trKey === 'A' ? 'TR-1 (A) 900KVA' : trKey === 'B' ? 'TR-2 (B) 950KVA' : trKey ? `TR-${trKey}` : '미지정',
+        trLabel: trKey || '미지정',
         panels,
-        color: trKey === 'A' ? 'bg-blue-500' : trKey === 'B' ? 'bg-orange-500' : 'bg-slate-400',
+        color: getTrLetter(trKey) === 'A' ? 'bg-blue-500' : getTrLetter(trKey) === 'B' ? 'bg-orange-500' : 'bg-slate-400',
       }))
       .sort((a, b) => a.trKey.localeCompare(b.trKey));
   }, [inspections]);
@@ -1416,19 +1509,21 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
             onClick={() => setTrPanelExpanded(prev => !prev)}
           >
             <div className="flex items-center gap-2">
-              {trPanelExpanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
               <GitBranch size={14} className="text-slate-600" />
               <span className="font-semibold text-sm text-slate-800">TR 계통</span>
               <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
                 {trSummary.length}개 TR · {inspections.length}개 PNL
               </span>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowTRSystemModal(true); }}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-            >
-              편집
-            </button>
+            <div className="flex items-center gap-1">
+              {trPanelExpanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowTRSystemModal(true); }}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+              >
+                편집
+              </button>
+            </div>
           </div>
           {trPanelExpanded && (
             <>
@@ -1471,6 +1566,20 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-slate-800">등록 분전함</h2>
             <div className="flex items-center gap-2">
+              {selectedPanelNos.size > 0 && (
+                <button
+                  onClick={() => setShowBulkModal(true)}
+                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {selectedPanelNos.size}개 선택 · 일괄 작업
+                </button>
+              )}
+              <button
+                onClick={toggleSelectAll}
+                className="text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                {selectedPanelNos.size === filteredInspections.length && filteredInspections.length > 0 ? '전체 해제' : '전체 선택'}
+              </button>
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{filteredInspections.length}/{inspections.length}</span>
               <button
                 onClick={() => setShowFloorPlanMobile(true)}
@@ -1546,9 +1655,16 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between gap-1 min-w-0">
-                    {/* 왼쪽: 핀 + 패널번호 + 배지들 + 날짜 한 줄 */}
+                    {/* 왼쪽: 체크박스 + 핀 + 패널번호 + 배지들 + 날짜 한 줄 */}
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-                      <MapPin size={12} className={`shrink-0 ${inspection.tr === 'A' ? 'text-blue-600' : inspection.tr === 'B' ? 'text-orange-500' : 'text-slate-400'}`} />
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
+                        checked={selectedPanelNos.has(inspection.panelNo)}
+                        onChange={() => togglePanelSelect(inspection.panelNo)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <MapPin size={12} className={`shrink-0 ${getTrLetter(inspection.tr) === 'A' ? 'text-blue-600' : getTrLetter(inspection.tr) === 'B' ? 'text-orange-500' : 'text-slate-400'}`} />
                       <span className="font-semibold text-xs text-slate-800 shrink-0">
                         {migrateIdFloor(inspection.panelNo)}
                       </span>
@@ -1557,8 +1673,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                       )}
                       {inspection.floor && <span className="text-[10px] text-slate-400 shrink-0">{inspection.floor}</span>}
                       {inspection.tr && (
-                        <span className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${inspection.tr === 'A' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                          {TR_DISPLAY_LABELS[inspection.tr] || inspection.tr}
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${getTrLetter(inspection.tr) === 'A' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {inspection.tr}
                         </span>
                       )}
                       {matchingQR && (
@@ -1609,6 +1725,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
           </div>
         )}
         </div>{/* overflow-y-auto flex-1 */}
+
         </div>
       </div>
 
@@ -1845,21 +1962,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                   TR
                 </label>
                 <select
-                  value={qrData.location || 'A'}
+                  value={qrData.location || ''}
                   onChange={(e) => handleInputChange('location', e.target.value)}
                   onFocus={restoreMainScrollOnFocus}
                   className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white cursor-pointer"
                 >
-                  {trSummary.map(({ trKey, trLabel }) => (
-                    <option key={trKey} value={trKey}>{trLabel}</option>
+                  {availableTrNos.map(tr => (
+                    <option key={tr} value={tr}>{tr}</option>
                   ))}
-                  {/* 기본 옵션 (TR이 아직 없는 경우) */}
-                  {trSummary.length === 0 && (
-                    <>
-                      <option value="A">{TR_DISPLAY_LABELS['A']}</option>
-                      <option value="B">{TR_DISPLAY_LABELS['B']}</option>
-                    </>
-                  )}
                 </select>
               </div>
 
@@ -1972,7 +2082,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 }}
                 onClick={selectedQR ? handleUpdateQR : generateQR}
                 onFocus={restoreMainScrollOnFocus}
-                disabled={!qrData.location || !qrData.floor}
+                disabled={selectedQR
+                  ? JSON.stringify(qrData) === JSON.stringify(initialQrDataRef.current)
+                  : (!qrData.location || !qrData.floor)}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <Save size={18} />
@@ -2013,6 +2125,68 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
               </button>
             </div>
             </div>
+        )}
+
+        {/* 일괄 작업 팝업 모달 */}
+        {showBulkModal && createPortal(
+          <>
+            <div className="fixed inset-0 bg-black bg-opacity-40 z-50" onClick={() => setShowBulkModal(false)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-slate-800">일괄 작업</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{selectedPanelNos.size}개 패널 선택됨</span>
+                      <button onClick={() => setShowBulkModal(false)} className="p-1 hover:bg-slate-100 rounded text-slate-400 transition-colors">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-xs font-medium text-slate-600 mb-1 block">층수 변경</label>
+                    <div className="flex gap-2">
+                      <select value={bulkFloor} onChange={e => setBulkFloor(e.target.value)}
+                        className="flex-1 text-sm border border-slate-300 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                        {['F1','F2','F3','F4','F5','F6','B1','B2'].map(f => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => { handleBulkFloorChange(bulkFloor); setShowBulkModal(false); }}
+                        disabled={isBulkLoading}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        변경
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <label className="text-xs font-medium text-slate-600 mb-1 block">TR 변경</label>
+                    <div className="flex gap-2">
+                      <select value={bulkTrNo} onChange={e => setBulkTrNo(e.target.value)}
+                        className="flex-1 text-sm border border-slate-300 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+                        <option value="">TR 선택</option>
+                        {availableTrNos.map(tr => (
+                          <option key={tr} value={tr}>{tr}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => { if(bulkTrNo){ handleBulkTRChange(bulkTrNo); setShowBulkModal(false); } }}
+                        disabled={isBulkLoading || !bulkTrNo}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        변경
+                      </button>
+                    </div>
+                  </div>
+                  <button onClick={() => { handleBulkDelete(); setShowBulkModal(false); }}
+                    disabled={isBulkLoading}
+                    className="w-full py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+                    선택 패널 삭제
+                  </button>
+                  {isBulkLoading && <p className="text-xs text-center text-slate-400 mt-2">처리 중...</p>}
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
         )}
 
         {/* QR Code Modal */}
@@ -2068,9 +2242,10 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     {(() => {
                       const linkedInsp = inspections.find(i => i.panelNo === qrData.id);
                       const trCode = linkedInsp?.tr || qrData.location;
-                      const trLabel = TR_DISPLAY_LABELS[trCode] || trCode || '-';
+                      const trLabel = trCode || '-';
                       const floorLabel = linkedInsp?.floor || qrData.floor || '-';
-                      const trColor = trCode === 'A' ? '#3b82f6' : trCode === 'B' ? '#f97316' : '#94a3b8';
+                      const trLetter = getTrLetter(trCode);
+                      const trColor = trLetter === 'A' ? '#3b82f6' : trLetter === 'B' ? '#f97316' : '#94a3b8';
                       return (
                     <div className="flex-1 space-y-3">
                       {/* PNL NO. */}

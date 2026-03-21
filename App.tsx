@@ -279,9 +279,20 @@ const App: React.FC = () => {
           qr => !pendingDeleteQRIds.has(qr.id)
         );
 
+        // 3.5 레거시 tr 값 'A'/'B' → 전체 TR 문자열 마이그레이션
+        const LEGACY_TR_EXPAND: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
+        const migratedInspections = filteredInspections.map(ins => {
+          if (ins.tr && ins.tr.length === 1 && /^[A-Z]$/.test(ins.tr)) {
+            const upgraded = { ...ins, tr: LEGACY_TR_EXPAND[ins.tr] ?? ins.tr };
+            saveInspection(upgraded).catch(() => {});
+            return upgraded;
+          }
+          return ins;
+        });
+
         // 4. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
         let currentInspections: InspectionRecord[];
-        if (filteredInspections.length === 0 && filteredQRCodes.length === 0) {
+        if (migratedInspections.length === 0 && filteredQRCodes.length === 0) {
           console.log('[초기화] 최초 접속 - 초기 데이터 65면 시드');
           const initialQRCodes = generateInitialQRCodes(INITIAL_INSPECTIONS);
 
@@ -291,7 +302,7 @@ const App: React.FC = () => {
           currentInspections = INITIAL_INSPECTIONS;
           setQrCodesState(initialQRCodes);
         } else {
-          currentInspections = filteredInspections;
+          currentInspections = migratedInspections;
           setQrCodesState(filteredQRCodes);
         }
 

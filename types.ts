@@ -61,7 +61,7 @@ export interface InspectionRecord {
   currentL1?: number | null; // 전류 (A) - 후크메가 L1
   currentL2?: number | null; // 전류 (A) - 후크메가 L2
   currentL3?: number | null; // 전류 (A) - 후크메가 L3
-  tr?: string; // TR: 'A' (TR-1 900KVA) 또는 'B' (TR-2 950KVA)
+  tr?: string; // TR: 'TR-1(A) 900KVA' 또는 'TR-2(B) 950KVA' 전체 문자열 (레거시: 'A'/'B')
   floor?: string; // 명시적 층수: 'F1'~'F6', 'B1', 'B2'
   nominalCrossSection?: string; // 공칭 단면적 (예: '95SQ', '300SQ')
   breakerCapacity?: string; // 차단기 용량 [A] (Panel Master 연계)
@@ -176,4 +176,15 @@ export interface InspectionsDB {
   inspectionHistory: InspectionHistoryEntry;
   syncMetadata?: SyncMetadata; // v7에서 추가됨
   migration?: any;
+}
+
+/**
+ * TR 전체 문자열에서 단일 알파벳 코드 추출
+ * "TR-1(A) 900KVA" → 'A' / "TR-2 (B) 950KVA" → 'B' / 'A' → 'A' (레거시 호환)
+ */
+export function getTrLetter(trNo?: string): string {
+  if (!trNo) return '';
+  if (trNo.length === 1 && /^[A-Z]$/.test(trNo)) return trNo;
+  const match = trNo.match(/\(([A-Z])\)/);
+  return match ? match[1] : '';
 }

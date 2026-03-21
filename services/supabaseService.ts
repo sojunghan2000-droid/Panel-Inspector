@@ -8,6 +8,9 @@
 import { supabase } from './supabaseClient';
 import type { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
 
+// 레거시 'A'/'B' TR 코드 → full string 변환 (DB 하위 호환)
+const LEGACY_TR_MAP: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
+
 // ─────────────────────────────────────────
 // InspectionRecord ↔ DB 행 변환
 // ─────────────────────────────────────────
@@ -84,7 +87,7 @@ function rowToInspection(row: Record<string, unknown>): InspectionRecord {
     currentL1: (row.current_l1 as number | null) ?? undefined,
     currentL2: (row.current_l2 as number | null) ?? undefined,
     currentL3: (row.current_l3 as number | null) ?? undefined,
-    tr: (row.tr as string | null) ?? undefined,
+    tr: (() => { const v = (row.tr as string | null); if (!v) return undefined; return (v.length === 1 && /^[A-Z]$/.test(v)) ? (LEGACY_TR_MAP[v] ?? v) : v; })(),
     floor: (row.floor as string | null) ?? undefined,
     nominalCrossSection: (row.nominal_cross_section as string | null) ?? undefined,
     breakerCapacity: (row.breaker_capacity as string | null) ?? undefined,

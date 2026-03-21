@@ -771,6 +771,9 @@ const InspectionDetail: React.FC<InspectionDetailProps> = ({ record, onSave, onG
                 <option value="">-</option>
                 <option value="A">TR-1 900KVA</option>
                 <option value="B">TR-2 950KVA</option>
+                {formData.tr && formData.tr !== 'A' && formData.tr !== 'B' && (
+                  <option value={formData.tr}>{formData.tr}</option>
+                )}
               </select>
             </div>
             <div>

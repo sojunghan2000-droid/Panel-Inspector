@@ -262,7 +262,7 @@ export const exportToExcel = async (
   };
 
   inspections.forEach(inspection => {
-    const trValue = inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-';
+    const trValue = inspection.tr || '-';
     pnlListSheet.addRow({
       id: inspection.panelNo,
       tr: trValue,

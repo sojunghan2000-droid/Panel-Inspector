@@ -11,6 +11,8 @@ const SQ_TO_BREAKER: Record<string, string> = {
   '16': '50',
 };
 
+const LEGACY_TR_EXPAND: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
+
 function panel(
   panelNo: string,
   tr: 'A' | 'B',
@@ -25,7 +27,7 @@ function panel(
     loads: { welder: false, grinder: false, light: false, pump: false },
     photoUrl: null,
     memo: '',
-    tr,
+    tr: LEGACY_TR_EXPAND[tr] ?? tr,
     floor,
     nominalCrossSection,
     breakerCapacity: SQ_TO_BREAKER[nominalCrossSection] || '',
@@ -237,7 +239,7 @@ export const INITIAL_INSPECTIONS: InspectionRecord[] = [
     loads: { welder: false, grinder: false, light: false, pump: false },
     photoUrl: null,
     memo: '',
-    tr: 'A',
+    tr: 'TR-1(A) 900KVA',
     floor: 'F1',
     nominalCrossSection: '95',
     breakerCapacity: '225',
@@ -1148,7 +1150,7 @@ export const INITIAL_INSPECTIONS: InspectionRecord[] = [
 export function generateInitialQRCodes(inspections: InspectionRecord[]): QRCodeData[] {
   const now = new Date().toISOString();
   return inspections.map((ins, idx) => {
-    const trNo = `TR-${ins.tr === 'B' ? '2' : '1'}${ins.tr === 'A' ? '(A)' : '(B)'} 900KVA`;
+    const trNo = ins.tr || 'TR-1(A) 900KVA';
     return {
       id: `qr-init-${ins.panelNo}-${idx}`,
       panelNo: ins.panelNo,

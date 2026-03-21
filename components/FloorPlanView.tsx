@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { InspectionRecord, QRCodeData } from '../types';
+import { InspectionRecord, QRCodeData, getTrLetter } from '../types';
 import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 import { pushFloorPlanImage } from '../services/syncService';
@@ -644,8 +644,9 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   /** TR 기준 색상 반환: TR-1 (A) = 파란색, TR-2 (B) = 주황색 */
   const getTRColor = (panelNo: string, qrCodes: QRCodeData[], inspection?: InspectionRecord): string => {
     // 1. inspection.tr 필드 우선 확인 (명시적 TR 값)
-    if (inspection?.tr === 'A') return '#3b82f6'; // TR-1 파란색
-    if (inspection?.tr === 'B') return '#f97316'; // TR-2 주황색
+    const trLetter = getTrLetter(inspection?.tr);
+    if (trLetter === 'A') return '#3b82f6'; // TR-1 파란색
+    if (trLetter === 'B') return '#f97316'; // TR-2 주황색
 
     // 2. QR 코드에서 trData 확인
     const matchingQR = qrCodes.find(qr => qr.panelNo === panelNo);
