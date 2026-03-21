@@ -195,8 +195,6 @@ const App: React.FC = () => {
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
   const qrCodesRef = useRef<QRCodeData[]>([]);
   useEffect(() => { qrCodesRef.current = qrCodes; }, [qrCodes]);
-  const reportsRef = useRef<ReportHistory[]>([]);
-  useEffect(() => { reportsRef.current = reports; }, [reports]);
 
   // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
   // @MX:WARN: inline 콜백 사용 금지 - 매 렌더마다 새 함수 참조 생성 → battery useEffect 무한 재실행
@@ -238,6 +236,8 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
+  const reportsRef = useRef<ReportHistory[]>([]);
+  useEffect(() => { reportsRef.current = reports; }, [reports]);
   const [floorPlanUrls, setFloorPlanUrls] = useState<{ floor: string; url: string }[]>([]);
   const [inspectionHistory, setInspectionHistory] = useState<InspectionHistoryEntry[]>([]);
   const [isExporting, setIsExporting] = useState(false);
