@@ -572,7 +572,18 @@ const App: React.FC = () => {
     }
 
     const [withPositions, assigned] = assignDefaultPositions(repatchedMerged);
-    setInspections(withPositions);
+    // Race Condition 수정: functional setInspections로 pullAll 진행 중 사용자가 이동한 위치 보존
+    // pullAll 시작 시점의 IDB 스냅샷 기반 withPositions와 호출 시점 currentInspections를 비교해 최신 updatedAt 우선
+    setInspections(currentInspections => {
+      const currentMap = new Map(currentInspections.map(i => [i.panelNo, i]));
+      return withPositions.map(synced => {
+        const current = currentMap.get(synced.panelNo);
+        if (!current) return synced;
+        const currentTs = current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+        const syncedTs = synced.updatedAt ? new Date(synced.updatedAt).getTime() : 0;
+        return currentTs > syncedTs ? current : synced;
+      });
+    });
     if (assigned.length > 0) {
       const now = new Date().toISOString();
       const toSave = withPositions

@@ -609,8 +609,10 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (remoteTs > localTs) {
-            localMap.set(remote.panelNo, remote);
-            await saveInspection(remote);
+            // position 보존: remote가 이겨도 position이 null이면 local position 유지
+            const merged = { ...remote, position: remote.position ?? local.position };
+            localMap.set(remote.panelNo, merged);
+            await saveInspection(merged);
           }
         }
       }
@@ -707,8 +709,10 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (!local || remoteTs > localTs) {
-            localMap.set(remote.panelNo, remote);
-            await saveInspection(remote);
+            // position 보존: remote가 이겨도 position이 null이면 local position 유지
+            const merged = { ...remote, position: remote.position ?? local?.position };
+            localMap.set(remote.panelNo, merged);
+            await saveInspection(merged);
             inspectionsChanged = true;
           }
         }

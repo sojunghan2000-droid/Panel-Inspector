@@ -1349,8 +1349,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     if (!selectedPanelNos.size) return;
     setIsBulkLoading(true);
     try {
+      const now = new Date().toISOString();
       const updatedInspections = inspections.map(ins =>
-        selectedPanelNos.has(ins.panelNo) ? { ...ins, floor } : ins
+        selectedPanelNos.has(ins.panelNo) ? { ...ins, floor, updatedAt: now } : ins
       );
       if (onUpdateInspections) onUpdateInspections(updatedInspections);
       const updatedQrCodes = qrCodes.map(qr =>
@@ -1367,8 +1368,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
     if (!selectedPanelNos.size) return;
     setIsBulkLoading(true);
     try {
+      const now2 = new Date().toISOString();
       const updatedInspections = inspections.map(ins =>
-        selectedPanelNos.has(ins.panelNo) ? { ...ins, tr: trNo } : ins
+        selectedPanelNos.has(ins.panelNo) ? { ...ins, tr: trNo, updatedAt: now2 } : ins
       );
       if (onUpdateInspections) onUpdateInspections(updatedInspections);
       const updatedQrCodes = qrCodes.map(qr => {
