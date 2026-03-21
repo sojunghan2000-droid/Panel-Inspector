@@ -167,9 +167,13 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
   const scrollToPanelDetail = useCallback(() => {
     setTimeout(() => {
       if (panelDetailSectionRef.current && rightPanelScrollRef.current) {
-        panelDetailSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const container = rightPanelScrollRef.current;
+        const target = panelDetailSectionRef.current;
+        // 컨테이너 기준 상대 offsetTop 계산 후 직접 스크롤 (scrollIntoView는 window 스크롤을 타겟팅할 수 있음)
+        const targetOffsetTop = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        container.scrollTo({ top: targetOffsetTop, behavior: 'smooth' });
       }
-    }, 100);
+    }, 120);
   }, []);
 
   /** FloorPlanView 위젯(마커)으로 스크롤 */
@@ -1534,6 +1538,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                     if (onSelectInspection) {
                       onSelectInspection(inspection.panelNo);
                     }
+                    // 패널 상세 정보 섹션으로 자동 스크롤
+                    scrollToPanelDetail();
                   }}
                   className={`px-3 py-2 cursor-pointer transition-colors hover:bg-slate-50 ${
                     isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
