@@ -720,7 +720,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     if (selectedInspection && onUpdateInspections) {
       const updatedInspections = inspections.map(inspection =>
         inspection.panelNo === selectedInspection.panelNo
-          ? { ...inspection, position: { x: clampedX, y: clampedY }, updatedAt: new Date().toISOString() }
+          ? { ...inspection, position: { x: clampedX, y: clampedY }, positionUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
           : inspection
       );
 
@@ -728,7 +728,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
       // 선택 유지: 마커를 계속 이동할 수 있도록 selectedInspection을 새 위치로 업데이트
       // (deselect 하려면 마커 재클릭)
-      const movedInspection = { ...selectedInspection, position: { x: clampedX, y: clampedY } };
+      const movedInspection = { ...selectedInspection, position: { x: clampedX, y: clampedY }, positionUpdatedAt: new Date().toISOString() };
       setSelectedInspection(movedInspection);
     } else {
       // 선택된 inspection이 없으면 가장 가까운 inspection 선택하거나 새로 생성
@@ -746,7 +746,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         if (onUpdateInspections) {
           const updatedInspections = inspections.map(inspection =>
             inspection.panelNo === nearestInspection.panelNo
-              ? { ...inspection, position: { x: clampedX, y: clampedY }, updatedAt: new Date().toISOString() }
+              ? { ...inspection, position: { x: clampedX, y: clampedY }, positionUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
               : inspection
           );
           onUpdateInspections(updatedInspections);

@@ -562,8 +562,17 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (remoteTs > localTs) {
-            // position 보존: remote가 이겨도 position이 null이면 local position 유지
-            const merged = { ...remote, position: remote.position ?? local.position };
+            // positionUpdatedAt 기준으로 position 충돌 해결 (updatedAt과 독립적)
+            // 동점(둘 다 null)이면 local 우선 → 기존 수동 위치 보존
+            const remotePosTs = remote.positionUpdatedAt ? new Date(remote.positionUpdatedAt).getTime() : 0;
+            const localPosTs = local.positionUpdatedAt ? new Date(local.positionUpdatedAt).getTime() : 0;
+            const mergedPosition = remotePosTs > localPosTs
+              ? (remote.position ?? local.position)
+              : (local.position ?? remote.position);
+            const mergedPositionUpdatedAt = remotePosTs > localPosTs
+              ? (remote.positionUpdatedAt ?? local.positionUpdatedAt)
+              : (local.positionUpdatedAt ?? remote.positionUpdatedAt);
+            const merged = { ...remote, position: mergedPosition, positionUpdatedAt: mergedPositionUpdatedAt };
             localMap.set(remote.panelNo, merged);
             await saveInspection(merged);
           }
@@ -646,8 +655,17 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (!local || remoteTs > localTs) {
-            // position 보존: remote가 이겨도 position이 null이면 local position 유지
-            const merged = { ...remote, position: remote.position ?? local?.position };
+            // positionUpdatedAt 기준으로 position 충돌 해결 (updatedAt과 독립적)
+            // 동점(둘 다 null)이면 local 우선 → 기존 수동 위치 보존
+            const remotePosTs = remote.positionUpdatedAt ? new Date(remote.positionUpdatedAt).getTime() : 0;
+            const localPosTs = local?.positionUpdatedAt ? new Date(local.positionUpdatedAt).getTime() : 0;
+            const mergedPosition = remotePosTs > localPosTs
+              ? (remote.position ?? local?.position)
+              : (local?.position ?? remote.position);
+            const mergedPositionUpdatedAt = remotePosTs > localPosTs
+              ? (remote.positionUpdatedAt ?? local?.positionUpdatedAt)
+              : (local?.positionUpdatedAt ?? remote.positionUpdatedAt);
+            const merged = { ...remote, position: mergedPosition, positionUpdatedAt: mergedPositionUpdatedAt };
             localMap.set(remote.panelNo, merged);
             await saveInspection(merged);
             inspectionsChanged = true;

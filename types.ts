@@ -52,6 +52,7 @@ export interface InspectionRecord {
     x: number; // percentage (0-100)
     y: number; // percentage (0-100)
   };
+  positionUpdatedAt?: string; // ISO 8601 - 사용자가 마커를 수동으로 이동한 시각 (격자 자동 배치와 구분)
   // 사진의 엑셀 보고서 구조 반영
   inspectors?: string[]; // 점검자 (예: ["이재두 프로", "김윤수 프로", "이승환 프로"])
   projectName?: string; // PJT명
