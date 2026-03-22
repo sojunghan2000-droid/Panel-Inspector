@@ -114,6 +114,14 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
             Board List
           </h3>
           <div className="flex items-center gap-1.5">
+            {(showGroundFaultOnly || searchQuery) && (
+              <button
+                onClick={() => { setShowGroundFaultOnly(false); setSearchQuery(''); }}
+                className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 transition-colors"
+              >
+                전체보기
+              </button>
+            )}
             <button
               onClick={() => setShowGroundFaultOnly(v => !v)}
               title="접지 불량 패널만 보기"
