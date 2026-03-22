@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InspectionRecord } from '../types';
-import { ClipboardList, AlertTriangle, CheckCircle, Clock, Search } from 'lucide-react';
+import { ClipboardList, AlertTriangle, CheckCircle, Clock, Search, ShieldAlert } from 'lucide-react';
 
 interface BoardListProps {
   items: InspectionRecord[];
@@ -15,6 +15,7 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showGroundFaultOnly, setShowGroundFaultOnly] = useState(false);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -79,11 +80,17 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
     });
   }, [items, sortField, sortDirection]);
 
+  const groundFaultCount = useMemo(() => items.filter(i => i.grounding === '불량').length, [items]);
+
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return sortedItems;
-    const q = searchQuery.toLowerCase();
-    return sortedItems.filter(item => item.panelNo.toLowerCase().includes(q));
-  }, [sortedItems, searchQuery]);
+    let result = sortedItems;
+    if (showGroundFaultOnly) result = result.filter(item => item.grounding === '불량');
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(item => item.panelNo.toLowerCase().includes(q));
+    }
+    return result;
+  }, [sortedItems, searchQuery, showGroundFaultOnly]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -106,7 +113,26 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
             <ClipboardList size={18} />
             Board List
           </h3>
-          <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{items.length} Items</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowGroundFaultOnly(v => !v)}
+              title="접지 불량 패널만 보기"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                showGroundFaultOnly
+                  ? 'bg-red-500 text-white'
+                  : 'bg-red-50 text-red-600 hover:bg-red-100'
+              }`}
+            >
+              <ShieldAlert size={12} />
+              <span>접지 불량</span>
+              {groundFaultCount > 0 && (
+                <span className={`ml-0.5 rounded-full px-1 text-xs font-bold ${showGroundFaultOnly ? 'bg-red-400 text-white' : 'bg-red-200 text-red-700'}`}>
+                  {groundFaultCount}
+                </span>
+              )}
+            </button>
+            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{items.length} Items</span>
+          </div>
         </div>
         <p className="text-xs text-slate-500 mt-1.5">데이터는 Panel Master에 등록된 분전함의 내용을 기반으로 생성됩니다.</p>
         <div className="relative mt-2">
@@ -154,7 +180,11 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
                 onClick={() => onSelect(item.panelNo)}
                 className={`
                   cursor-pointer transition-colors hover:bg-blue-50
-                  ${selectedId === item.panelNo ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'border-l-4 border-l-transparent'}
+                  ${selectedId === item.panelNo
+                    ? 'bg-blue-50 border-l-4 border-l-blue-500'
+                    : item.grounding === '불량'
+                      ? 'border-l-4 border-l-red-400 hover:bg-red-50'
+                      : 'border-l-4 border-l-transparent'}
                 `}
               >
                 <td className="px-4 py-3 font-medium text-slate-800">{item.panelNo}</td>
