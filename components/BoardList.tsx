@@ -11,6 +11,18 @@ interface BoardListProps {
 type SortField = 'panelNo' | 'status' | 'lastInspectionDate' | null;
 type SortDirection = 'asc' | 'desc';
 
+// 자연 정렬: 1, 2, 3, ..., 9, 10, 11 (사전순 아님)
+function naturalCompare(a: string, b: string): number {
+  const pa = a.split(/[-]/).map(s => { const n = parseInt(s, 10); return isNaN(n) ? s : n; });
+  const pb = b.split(/[-]/).map(s => { const n = parseInt(s, 10); return isNaN(n) ? s : n; });
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] ?? -1, vb = pb[i] ?? -1;
+    if (typeof va === 'number' && typeof vb === 'number') { if (va !== vb) return va - vb; }
+    else { const cmp = String(va).localeCompare(String(vb)); if (cmp !== 0) return cmp; }
+  }
+  return 0;
+}
+
 const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) => {
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -36,10 +48,10 @@ const BoardList: React.FC<BoardListProps> = ({ items, selectedId, onSelect }) =>
       let bValue: any;
 
       switch (sortField) {
-        case 'panelNo':
-          aValue = a.panelNo;
-          bValue = b.panelNo;
-          break;
+        case 'panelNo': {
+          const cmp = naturalCompare(a.panelNo, b.panelNo);
+          return sortDirection === 'asc' ? cmp : -cmp;
+        }
         case 'status':
           // 상태 우선순위: Complete > In Progress > Pending
           const statusOrder: Record<string, number> = {
