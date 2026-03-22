@@ -970,7 +970,7 @@ const App: React.FC = () => {
               setSelectedInspectionId(null);
               setIsSidebarOpen(prev => !prev);
             }}
-          >성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.30</span></h1>
+          >성수동 <span className="text-blue-400">K-PJT</span> <span className="text-slate-500 text-sm font-normal">Ver.1.0</span></h1>
         </div>
         
         <nav className="flex-1 py-6 px-3 space-y-1">
