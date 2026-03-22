@@ -1108,6 +1108,14 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 {sortField === f && <span className="ml-0.5">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
               </button>
             ))}
+            {searchText && (
+              <button
+                onClick={() => setSearchText('')}
+                className="text-[10px] px-2 py-1 rounded-full border transition-colors bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+              >
+                전체보기
+              </button>
+            )}
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
