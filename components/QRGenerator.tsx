@@ -14,6 +14,7 @@ const NUM_TO_FLOOR: Record<string, string> = {
 };
 const TR_TO_NUM: Record<string, string> = { A: '1', B: '2' };
 const NUM_TO_TR: Record<string, string> = { '1': 'A', '2': 'B' };
+const TR_FULL_STRINGS: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
 
 /** TR full string 또는 letter가 유효한 TR 계통인지 확인 */
 function isValidTR(v: string): boolean {
@@ -51,17 +52,20 @@ function floorToDisplayLabel(floor: string): string {
 }
 
 /** InspectionRecord -> QR JSON 문자열 변환 */
-const toQRString = (ins: InspectionRecord): string => JSON.stringify({
-  id: ins.panelNo,
-  location: ins.tr ?? '',
-  floor: ins.floor ?? '',
-  positionX: String(ins.position?.x ?? 0),
-  positionY: String(ins.position?.y ?? 0),
-  contractor: ins.contractor ?? '',
-  projectName: ins.projectName ?? '',
-  nominalCrossSection: ins.nominalCrossSection ?? '',
-  breakerCapacity: ins.breakerCapacity ?? '',
-});
+const toQRString = (ins: InspectionRecord): string => {
+  // 레거시 'A'/'B' → 전체 문자열 정규화
+  const letter = getTrLetter(ins.tr ?? '') || (ins.tr ?? '').toUpperCase();
+  const location = TR_FULL_STRINGS[letter] || ins.tr || '';
+  return JSON.stringify({
+    id: ins.panelNo,
+    location,
+    floor: ins.floor ?? '',
+    contractor: ins.contractor ?? '',
+    projectName: ins.projectName ?? '',
+    nominalCrossSection: ins.nominalCrossSection ?? '',
+    breakerCapacity: ins.breakerCapacity ?? '',
+  });
+};
 
 interface QRData {
   id: string;
@@ -1390,10 +1394,15 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({
                 <input
                   type="text"
                   value={qrData.id}
-                  onChange={(e) => handleInputChange('id', e.target.value)}
+                  onChange={(e) => !selectedQR && handleInputChange('id', e.target.value)}
+                  readOnly={!!selectedQR}
                   onFocus={restoreMainScrollOnFocus}
                   placeholder="예: 1-1 또는 2-1"
-                  className="w-full rounded-lg border-slate-300 border px-4 py-2.5 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className={`w-full rounded-lg border px-4 py-2.5 outline-none ${
+                    selectedQR
+                      ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200'
+                      : 'border-slate-300 text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                 />
               </div>
               

@@ -556,6 +556,16 @@ const App: React.FC = () => {
     pullAll(inspections, reports, {
       onInspectionsUpdated: applyPositionsAfterSync,
       onReportsUpdated: (merged) => setReports(merged),
+      onInspectionHistoryUpdated: (history) => {
+        setInspectionHistory(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          const newEntries = history.filter(e => !existingIds.has(e.id));
+          if (newEntries.length === 0) return prev;
+          return [...newEntries, ...prev].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
+      },
       onSyncStatusChange: (status) => setSyncStatus(status),
       onFloorPlanUrlsUpdated: (urls) => setFloorPlanUrls(urls),
     });
@@ -1062,6 +1072,16 @@ const App: React.FC = () => {
                 pullAll(inspections, reports, {
                   onInspectionsUpdated: applyPositionsAfterSync,
                   onReportsUpdated: (merged) => setReports(merged),
+                  onInspectionHistoryUpdated: (history) => {
+                    setInspectionHistory(prev => {
+                      const existingIds = new Set(prev.map(e => e.id));
+                      const newEntries = history.filter(e => !existingIds.has(e.id));
+                      if (newEntries.length === 0) return prev;
+                      return [...newEntries, ...prev].sort(
+                        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                      );
+                    });
+                  },
                   onSyncStatusChange: (status) => setSyncStatus(status),
                 });
               }}
