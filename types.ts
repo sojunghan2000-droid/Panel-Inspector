@@ -111,31 +111,11 @@ export interface InspectionHistoryEntry {
   };
 }
 
-export interface QRCodeData {
-  id: string;
-  // @MX:NOTE: DB panel_no 컬럼 직접 매핑 - JSON.parse(qrData).id 대체
-  panelNo: string;
-  location?: string; // 구형 호환: qr_data.location 또는 UI 입력값 (선택적)
-  floor: string;
-  position: {
-    x: number; // 백분율 (0-100)
-    y: number; // 백분율 (0-100)
-  };
-  trData: {
-    tr_no: string; // 예: "TR-1(A) 900KVA"
-    description: string;
-    capacity?: string;
-    position?: string;
-  };
-  qrData: string; // JSON string - 신규 형식: {pnl_no, tr_data: {tr_no}}
-  createdAt: string;
-  updatedAt: string;
-}
 
 // @MX:NOTE: 동기화 메타데이터 추적 (Phase 1)
 export interface SyncMetadata {
   id: string; // 고유ID: "sync-metadata"
-  storeType: 'inspections' | 'photos' | 'qrCodes' | 'floorPlanImages' | 'reports' | 'inspectionHistory';
+  storeType: 'inspections' | 'photos' | 'floorPlanImages' | 'reports' | 'inspectionHistory';
   lastSyncTime: string; // ISO 8601 형식
   recordCount: number; // 마지막 동기화 시점의 레코드 수
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
@@ -166,11 +146,10 @@ export interface AutoSyncConfig {
   nextAutoSyncTime?: string; // 다음 자동 동기화 예정 시간
 }
 
-// @MX:NOTE: IndexedDB v6 호환성을 위한 타입 확장
+// @MX:NOTE: IndexedDB v8 호환성을 위한 타입 확장
 export interface InspectionsDB {
   inspections: InspectionRecord;
   photos: any;
-  qrCodes: QRCodeData;
   floorPlanImages: any;
   reports: ReportHistory;
   inspectionHistory: InspectionHistoryEntry;

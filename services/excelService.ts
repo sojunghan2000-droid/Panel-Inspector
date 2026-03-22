@@ -1,9 +1,8 @@
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
-import { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import { InspectionRecord, ReportHistory } from '../types';
 import { getPhoto, getThermalImage, blobToDataURL } from './indexedDBService';
 
-const STORAGE_KEY = 'safetyguard_qrcodes';
 const REPORTS_STORAGE_KEY = 'safetyguard_reports';
 const INSPECTIONS_STORAGE_KEY = 'safetyguard_inspections';
 
@@ -92,71 +91,28 @@ const imageUrlToBase64 = async (url: string): Promise<{ base64: string; extensio
  * 스펙 버전 1.0에 맞춰 엑셀 파일을 생성합니다.
  * 
  * @param inspections 검사 기록 배열
- * @param qrCodesFromProps QR 코드 데이터 (옵션)
  * @param reportsFromProps 보고서 데이터 (옵션)
  * @returns 내보낸 PNL NO 목록 (사진 삭제용)
  */
 export const exportToExcel = async (
   inspections: InspectionRecord[],
-  qrCodesFromProps?: QRCodeData[],
   reportsFromProps?: ReportHistory[]
 ): Promise<string[]> => {
-  const savedQRCodes: QRCodeData[] = qrCodesFromProps ?? JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   const reports: ReportHistory[] = reportsFromProps ?? JSON.parse(localStorage.getItem(REPORTS_STORAGE_KEY) || '[]');
-  
+
   // Reports를 ID로 매핑
   const reportMap = new Map<string, ReportHistory>();
   reports.forEach(report => {
     reportMap.set(report.boardId, report);
   });
-  
-  // QR 코드를 ID로 매핑 (QR과 ID는 하나의 객체이므로 ID로 직접 매칭)
-  const qrMap = new Map<string, QRCodeData>();
-  savedQRCodes.forEach(qr => {
-    try {
-      const qrData = JSON.parse(qr.qrData);
-      if (qrData.id) {
-        const matchingInspection = inspections.find(inspection => inspection.panelNo === qrData.id);
-        if (matchingInspection) {
-          qrMap.set(matchingInspection.panelNo, qr);
-        }
-      }
-    } catch (e) {
-      console.error('QR 데이터 파싱 오류:', e);
-    }
-  });
 
   // 엑셀 데이터 준비
   const excelData: ExcelExportData[] = inspections.map(inspection => {
-    const qr = qrMap.get(inspection.panelNo);
     const report = reportMap.get(inspection.panelNo);
-    let qrLocation = '';
-    let qrFloor = '';
-    let qrPosition = '';
-    let qrId = '';
-
-    if (qr) {
-      try {
-        const qrData = JSON.parse(qr.qrData);
-        qrId = qrData.id || inspection.panelNo;
-        qrLocation = qrData.location || qr.location || '';
-        qrFloor = qrData.floor || qr.floor || '';
-        if (typeof qrData.position === 'string') {
-          qrPosition = qrData.position;
-        } else if (qrData.position && qrData.position.description) {
-          qrPosition = qrData.position.description;
-        } else {
-          qrPosition = qr.position ? `${qr.position.x},${qr.position.y}` : '';
-        }
-      } catch (e) {
-        qrLocation = qr.location || '';
-        qrFloor = qr.floor || '';
-        qrPosition = qr.position ? `${qr.position.x},${qr.position.y}` : '';
-        qrId = inspection.panelNo;
-      }
-    } else {
-      qrId = inspection.panelNo;
-    }
+    const qrId = inspection.panelNo;
+    const qrLocation = inspection.tr || '';
+    const qrFloor = inspection.floor || '';
+    const qrPosition = inspection.position ? `${inspection.position.x},${inspection.position.y}` : '';
 
     // 부하 원인 문자열 생성
     const connectedLoads = [];
@@ -514,7 +470,7 @@ export const exportToExcel = async (
  * 선택된 패널의 qr_data 정보와 QR 코드 이미지를 포함한 별도 파일 생성
  */
 export const exportQRBatchToExcel = async (
-  items: Array<{ qrCode: QRCodeData; imageDataUrl: string }>
+  items: Array<{ inspection: InspectionRecord; imageDataUrl: string }>
 ): Promise<void> => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Panel Inspector';
@@ -537,21 +493,10 @@ export const exportQRBatchToExcel = async (
 
   let currentRow = 2;
 
-  for (const { qrCode, imageDataUrl } of items) {
-    // qr_data 파싱
-    let pnlNo = qrCode.panelNo || '';
-    let trNo = qrCode.trData?.tr_no || '';
-    let floor = qrCode.floor || '';
-
-    try {
-      const parsed = JSON.parse(qrCode.qrData);
-      if (parsed.id) pnlNo = parsed.id;
-      if (!trNo && parsed.location) trNo = parsed.location;
-      if (!floor && parsed.floor) floor = parsed.floor;
-    } catch { /* qrData 파싱 실패 시 qrCode 필드 사용 */ }
-
-    // trNo가 없으면 tr_data에서 추출
-    if (!trNo) trNo = qrCode.location || '';
+  for (const { inspection, imageDataUrl } of items) {
+    const pnlNo = inspection.panelNo || '';
+    const trNo = inspection.tr || '';
+    const floor = inspection.floor || '';
 
     const row = sheet.addRow([pnlNo, trNo, floor, '']);
     row.alignment = { vertical: 'middle', horizontal: 'center' };

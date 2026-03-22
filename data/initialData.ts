@@ -1,4 +1,4 @@
-import { InspectionRecord, QRCodeData } from '../types';
+import { InspectionRecord } from '../types';
 
 /** 공칭단면적 → 차단기 용량 임의 매핑 */
 const SQ_TO_BREAKER: Record<string, string> = {
@@ -1146,28 +1146,3 @@ export const INITIAL_INSPECTIONS: InspectionRecord[] = [
   },
 ];
 
-/** 초기 InspectionRecord에서 QRCodeData 생성 */
-export function generateInitialQRCodes(inspections: InspectionRecord[]): QRCodeData[] {
-  const now = new Date().toISOString();
-  return inspections.map((ins, idx) => {
-    const trNo = ins.tr || 'TR-1(A) 900KVA';
-    return {
-      id: `qr-init-${ins.panelNo}-${idx}`,
-      panelNo: ins.panelNo,
-      floor: ins.floor || 'F1',
-      position: { x: 50, y: 50 }, // 기본 위치 (중앙)
-      trData: {
-        tr_no: trNo,
-        description: ins.managementNumber || '',
-        capacity: '900KVA',
-        position: ins.tr,
-      },
-      qrData: JSON.stringify({
-        pnl_no: ins.panelNo,
-        tr_data: { tr_no: trNo },
-      }),
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-}
