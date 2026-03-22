@@ -138,6 +138,12 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
   const [focusedCell, setFocusedCell] = useState<{ trKey: string; row: number; col: number } | null>(null);
   const cellRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
+  // TR 추가 팝업 상태
+  const [showAddTRDialog, setShowAddTRDialog] = useState(false);
+  const [newTRNum, setNewTRNum] = useState('');      // 예: "3"
+  const [newTRLetter, setNewTRLetter] = useState(''); // 예: "C"
+  const [newTRKVA, setNewTRKVA] = useState('');       // 예: "950"
+
   // 모달 열릴 때 데이터 초기화
   useEffect(() => {
     if (isOpen) {
@@ -359,28 +365,39 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
     }));
   }, [panels]);
 
-  /* ─── TR 추가 ─── */
-  const addNewTR = useCallback(() => {
+  /* ─── TR 추가 팝업 열기 ─── */
+  const openAddTRDialog = useCallback(() => {
+    // 다음 번호/계통 자동 제안
+    const existingLetters = [...new Set(panels.map(p => getTrLetter(p.tr)).filter(Boolean))];
+    const allLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const nextLetter = allLetters.find(l => !existingLetters.includes(l)) || '';
+    const maxNum = panels.reduce((max, p) => {
+      const m = p.tr?.match(/TR-(\d+)/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    setNewTRNum(String(maxNum + 1));
+    setNewTRLetter(nextLetter);
+    setNewTRKVA('');
+    setShowAddTRDialog(true);
+  }, [panels]);
+
+  /* ─── TR 추가 확정 ─── */
+  const addNewTR = useCallback((trName: string) => {
     const existingTRs = new Set(panels.map(p => p.tr));
-    // A, B 다음으로 C, D, E... 추가
-    const allTRs = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const nextTR = allTRs.find(t => !existingTRs.has(t));
-    if (!nextTR) {
-      alert('더 이상 TR을 추가할 수 없습니다.');
+    if (existingTRs.has(trName)) {
+      alert('이미 존재하는 TR입니다.');
       return;
     }
     const newPanel: PanelNode = {
       panelNo: '1',
       notes: '',
       nominalCrossSection: '',
-      tr: nextTR,
+      tr: trName,
       floor: 'F1',
     };
-    // panelNo 중복 방지: 해당 TR에 맞는 번호 생성
-    const trPanels = panels.filter(p => p.tr === nextTR);
-    if (trPanels.length === 0) {
-      setPanels(prev => [...prev, newPanel]);
-    }
+    setPanels(prev => [...prev, newPanel]);
+    setTrGroups(prev => ({ ...prev, [trName]: false }));
+    setShowAddTRDialog(false);
   }, [panels]);
 
   /* ─── TR 그룹 토글 ─── */
@@ -431,6 +448,73 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+
+          {/* TR 추가 팝업 */}
+          {showAddTRDialog && (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-xl shadow-xl p-5 w-80 flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-800">TR 추가</h3>
+                  <button onClick={() => setShowAddTRDialog(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                    <X size={16} className="text-slate-500" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-slate-500 mb-1">TR 번호</label>
+                    <input
+                      type="number" min="1" value={newTRNum}
+                      onChange={e => setNewTRNum(e.target.value)}
+                      placeholder="3"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <label className="block text-xs text-slate-500 mb-1">계통</label>
+                    <input
+                      type="text" maxLength={1} value={newTRLetter}
+                      onChange={e => setNewTRLetter(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                      placeholder="C"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-slate-500 mb-1">KVA</label>
+                    <input
+                      type="number" min="1" value={newTRKVA}
+                      onChange={e => setNewTRKVA(e.target.value)}
+                      placeholder="950"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                {/* 미리보기 */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                  <span className="text-xs text-amber-600 font-medium">
+                    {newTRNum && newTRLetter && newTRKVA
+                      ? `TR-${newTRNum}(${newTRLetter}) ${newTRKVA}KVA`
+                      : '번호 · 계통 · KVA를 입력하세요'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAddTRDialog(false)}
+                    className="flex-1 py-2 text-sm border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    disabled={!newTRNum || !newTRLetter || !newTRKVA}
+                    onClick={() => addNewTR(`TR-${newTRNum}(${newTRLetter}) ${newTRKVA}KVA`)}
+                    className="flex-1 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    추가
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 가설변대 헤더 */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -441,7 +525,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
               </span>
             </div>
             <button
-              onClick={addNewTR}
+              onClick={openAddTRDialog}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-lg font-medium transition-colors"
             >
               <Plus size={14} />
