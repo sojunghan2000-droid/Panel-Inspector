@@ -111,7 +111,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
   const totalInspections = inspections.length;
   const completeCount = inspections.filter(i => i.status === 'Complete').length;
-  const inProgressCount = inspections.filter(i => i.status === 'In Progress').length;
+  const groundFaultCount = inspections.filter(i => i.grounding === '불량').length;
   const pendingCount = inspections.filter(i => i.status === 'Pending').length;
   const completionRate = totalInspections > 0 ? Math.round((completeCount / totalInspections) * 100) : 0;
 
@@ -200,8 +200,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-            <span className="text-2xl font-bold text-slate-800">{inProgressCount}</span>
-            <p className="text-sm text-slate-600 font-medium mt-1">In Progress</p>
+            <span className="text-2xl font-bold text-red-600">{groundFaultCount}</span>
+            <p className="text-sm text-slate-600 font-medium mt-1">접지 불량 건</p>
           </div>
 
           <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
