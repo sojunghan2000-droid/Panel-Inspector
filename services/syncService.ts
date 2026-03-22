@@ -19,9 +19,10 @@ import {
   deleteInspectionFromSupabase,
   upsertFloorPlanUrl,
   fetchAllFloorPlanUrls,
+  fetchAllInspectionHistory,
 } from './supabaseService';
-import { saveInspection, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, saveSyncMetadata, getSyncMetadata, updateSyncMetadata } from './indexedDBService';
-import type { InspectionRecord, ReportHistory, SyncMetadata, AutoSyncConfig } from '../types';
+import { saveInspection, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, saveSyncMetadata, getSyncMetadata, updateSyncMetadata, getAllInspectionHistory as getAllInspectionHistoryFromIDB, saveInspectionHistory as saveInspectionHistoryToIDB } from './indexedDBService';
+import type { InspectionRecord, ReportHistory, SyncMetadata, AutoSyncConfig, InspectionHistoryEntry } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 
@@ -253,6 +254,7 @@ export async function pushReport(report: ReportHistory): Promise<void> {
 export interface PullCallbacks {
   onInspectionsUpdated: (records: InspectionRecord[]) => void;
   onReportsUpdated: (reports: ReportHistory[]) => void;
+  onInspectionHistoryUpdated: (history: InspectionHistoryEntry[]) => void;
   onSyncStatusChange: (status: SyncStatus, msg?: string) => void;
   onFloorPlanUrlsUpdated?: (urls: { floor: string; url: string }[]) => void;
 }
@@ -608,6 +610,23 @@ export async function pullAll(
         }
       }
 
+      // ── InspectionHistory ── (소량이므로 항상 전체 fetch)
+      const remoteHistory = await fetchAllInspectionHistory();
+      const localHistoryMap = new Map((await getAllInspectionHistoryFromIDB()).map(e => [e.id, e]));
+      let historyChanged = false;
+      for (const remote of remoteHistory) {
+        if (!localHistoryMap.has(remote.id)) {
+          localHistoryMap.set(remote.id, remote);
+          await saveInspectionHistoryToIDB(remote);
+          historyChanged = true;
+        }
+      }
+      if (historyChanged) {
+        const sorted = Array.from(localHistoryMap.values())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        callbacks.onInspectionHistoryUpdated(sorted);
+      }
+
     } else {
       // ═══════════════════════════════════════
       // 증분: 변경분만 동기화
@@ -689,6 +708,23 @@ export async function pullAll(
         for (const report of localOnlyReports) {
           await upsertReport(report);
         }
+      }
+
+      // ── InspectionHistory ── (소량이므로 항상 전체 fetch)
+      const remoteHistoryIncr = await fetchAllInspectionHistory();
+      const localHistoryMapIncr = new Map((await getAllInspectionHistoryFromIDB()).map(e => [e.id, e]));
+      let historyChangedIncr = false;
+      for (const remote of remoteHistoryIncr) {
+        if (!localHistoryMapIncr.has(remote.id)) {
+          localHistoryMapIncr.set(remote.id, remote);
+          await saveInspectionHistoryToIDB(remote);
+          historyChangedIncr = true;
+        }
+      }
+      if (historyChangedIncr) {
+        const sortedIncr = Array.from(localHistoryMapIncr.values())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        callbacks.onInspectionHistoryUpdated(sortedIncr);
       }
     }
 
@@ -941,6 +977,7 @@ export function startAutoSync(
       await pullAllFn([], [], {
         onInspectionsUpdated: () => {},
         onReportsUpdated: () => {},
+        onInspectionHistoryUpdated: () => {},
         onSyncStatusChange: (status: SyncStatus) => notifyStatus(status),
       });
       setLastAutoSyncTime();
