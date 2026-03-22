@@ -478,14 +478,20 @@ export const exportQRBatchToExcel = async (
 
   const sheet = workbook.addWorksheet('QR 코드 출력');
 
-  // 열 너비 설정
-  sheet.getColumn(1).width = 18;  // PNL NO.
-  sheet.getColumn(2).width = 22;  // TR
-  sheet.getColumn(3).width = 10;  // 층수
-  sheet.getColumn(4).width = 22;  // QR 이미지
+  // 2건/행 레이아웃: 좌측(A~D) + 우측(E~H)
+  // A: PNL NO. (좌)  B: TR (좌)  C: 층수 (좌)  D: QR (좌)
+  // E: PNL NO. (우)  F: TR (우)  G: 층수 (우)  H: QR (우)
+  sheet.getColumn(1).width = 12;  // A: PNL NO. (좌)
+  sheet.getColumn(2).width = 16;  // B: TR (좌)
+  sheet.getColumn(3).width = 7;   // C: 층수 (좌)
+  sheet.getColumn(4).width = 22;  // D: QR 이미지 (좌)
+  sheet.getColumn(5).width = 12;  // E: PNL NO. (우)
+  sheet.getColumn(6).width = 16;  // F: TR (우)
+  sheet.getColumn(7).width = 7;   // G: 층수 (우)
+  sheet.getColumn(8).width = 22;  // H: QR 이미지 (우)
 
-  // 헤더
-  const headerRow = sheet.addRow(['PNL NO.', 'TR', '층수', 'QR 코드']);
+  // 헤더 (좌 + 우)
+  const headerRow = sheet.addRow(['PNL NO.', 'TR', '층수', 'QR 코드', 'PNL NO.', 'TR', '층수', 'QR 코드']);
   headerRow.font = { bold: true };
   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
   headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -493,32 +499,60 @@ export const exportQRBatchToExcel = async (
 
   let currentRow = 2;
 
-  for (const { inspection, imageDataUrl } of items) {
-    const pnlNo = inspection.panelNo || '';
-    const trNo = inspection.tr || '';
-    const floor = inspection.floor || '';
+  for (let i = 0; i < items.length; i += 2) {
+    const leftItem = items[i];
+    const rightItem = items[i + 1]; // 홀수 건수면 undefined
 
-    const row = sheet.addRow([pnlNo, trNo, floor, '']);
+    // 좌측 데이터
+    const leftPnl = leftItem.inspection.panelNo || '';
+    const leftTr = leftItem.inspection.tr || '';
+    const leftFloor = leftItem.inspection.floor || '';
+
+    // 우측 데이터 (없으면 빈 문자열)
+    const rightPnl = rightItem ? rightItem.inspection.panelNo || '' : '';
+    const rightTr = rightItem ? rightItem.inspection.tr || '' : '';
+    const rightFloor = rightItem ? rightItem.inspection.floor || '' : '';
+
+    const row = sheet.addRow([leftPnl, leftTr, leftFloor, '', rightPnl, rightTr, rightFloor, '']);
     row.alignment = { vertical: 'middle', horizontal: 'center' };
     row.height = 128;
 
-    // A~C 셀 스타일
+    // 좌측 셀 스타일
     row.getCell(1).font = { bold: true, size: 11 };
     row.getCell(2).font = { size: 10 };
     row.getCell(3).font = { size: 10 };
+    // 우측 셀 스타일
+    if (rightItem) {
+      row.getCell(5).font = { bold: true, size: 11 };
+      row.getCell(6).font = { size: 10 };
+      row.getCell(7).font = { size: 10 };
+    }
 
-    // QR 이미지 삽입
-    if (imageDataUrl && imageDataUrl.startsWith('data:image')) {
+    // 좌측 QR 이미지 → D열 (0-based col index 3)
+    if (leftItem.imageDataUrl?.startsWith('data:image')) {
       try {
-        const base64 = imageDataUrl.split(',')[1];
+        const base64 = leftItem.imageDataUrl.split(',')[1];
         const imageId = workbook.addImage({ base64, extension: 'png' });
-        // D열에 이미지 삽입 (셀 범위 인덱스는 0-based)
         sheet.addImage(imageId, {
           tl: { col: 3, row: currentRow - 1 },
           br: { col: 4, row: currentRow },
         });
       } catch (e) {
-        console.error('QR 이미지 삽입 오류:', e);
+        console.error('QR 이미지 삽입 오류 (좌):', e);
+      }
+    }
+
+    // 우측 QR 이미지 → H열 (0-based col index 7)
+    if (rightItem?.imageDataUrl?.startsWith('data:image')) {
+      try {
+        const base64 = rightItem.imageDataUrl.split(',')[1];
+        const imageId = workbook.addImage({ base64, extension: 'png' });
+        sheet.addImage(imageId, {
+          tl: { col: 7, row: currentRow - 1 },
+          br: { col: 8, row: currentRow },
+        });
+      } catch (e) {
+        console.error('QR 이미지 삽입 오류 (우):', e);
       }
     }
 
