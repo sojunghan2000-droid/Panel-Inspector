@@ -61,7 +61,7 @@ export interface InspectionRecord {
   currentL1?: number | null; // 전류 (A) - 후크메가 L1
   currentL2?: number | null; // 전류 (A) - 후크메가 L2
   currentL3?: number | null; // 전류 (A) - 후크메가 L3
-  tr?: string; // TR: 'A' (TR-1 900KVA) 또는 'B' (TR-2 950KVA)
+  tr?: string; // TR: 'TR-1(A) 900KVA' 또는 'TR-2(B) 950KVA' 전체 문자열 (레거시: 'A'/'B')
   floor?: string; // 명시적 층수: 'F1'~'F6', 'B1', 'B2'
   nominalCrossSection?: string; // 공칭 단면적 (예: '95SQ', '300SQ')
   breakerCapacity?: string; // 차단기 용량 [A] (Panel Master 연계)
@@ -111,28 +111,11 @@ export interface InspectionHistoryEntry {
   };
 }
 
-export interface QRCodeData {
-  id: string;
-  floor: string;
-  position: {
-    x: number; // 백분율 (0-100)
-    y: number; // 백분율 (0-100)
-  };
-  trData: {
-    tr_no: string; // 예: "TR-06867034"
-    description: string; // 예: "TR-1(A) 900KVA"
-    capacity?: string; // 예: "900KVA"
-    position?: string; // 예: "1(A)"
-  };
-  qrData: string; // JSON string
-  createdAt: string;
-  updatedAt: string;
-}
 
 // @MX:NOTE: 동기화 메타데이터 추적 (Phase 1)
 export interface SyncMetadata {
   id: string; // 고유ID: "sync-metadata"
-  storeType: 'inspections' | 'photos' | 'qrCodes' | 'floorPlanImages' | 'reports' | 'inspectionHistory';
+  storeType: 'inspections' | 'photos' | 'floorPlanImages' | 'reports' | 'inspectionHistory';
   lastSyncTime: string; // ISO 8601 형식
   recordCount: number; // 마지막 동기화 시점의 레코드 수
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
@@ -163,14 +146,24 @@ export interface AutoSyncConfig {
   nextAutoSyncTime?: string; // 다음 자동 동기화 예정 시간
 }
 
-// @MX:NOTE: IndexedDB v6 호환성을 위한 타입 확장
+// @MX:NOTE: IndexedDB v8 호환성을 위한 타입 확장
 export interface InspectionsDB {
   inspections: InspectionRecord;
   photos: any;
-  qrCodes: QRCodeData;
   floorPlanImages: any;
   reports: ReportHistory;
   inspectionHistory: InspectionHistoryEntry;
   syncMetadata?: SyncMetadata; // v7에서 추가됨
   migration?: any;
+}
+
+/**
+ * TR 전체 문자열에서 단일 알파벳 코드 추출
+ * "TR-1(A) 900KVA" → 'A' / "TR-2 (B) 950KVA" → 'B' / 'A' → 'A' (레거시 호환)
+ */
+export function getTrLetter(trNo?: string): string {
+  if (!trNo) return '';
+  if (trNo.length === 1 && /^[A-Z]$/.test(trNo)) return trNo;
+  const match = trNo.match(/\(([A-Z])\)/);
+  return match ? match[1] : '';
 }

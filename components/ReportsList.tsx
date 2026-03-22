@@ -413,7 +413,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                   key={report.id}
                   onClick={() => setSelectedReport(report)}
                   className={`
-                    p-2 sm:p-3 cursor-pointer transition-colors hover:bg-slate-50
+                    px-2 py-1 sm:px-3 cursor-pointer transition-colors hover:bg-slate-50
                     ${selectedReport?.id === report.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}
                   `}
                 >
@@ -445,10 +445,9 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
                           {getStatusIcon(report.status)}
                           <span className="font-semibold text-xs sm:text-sm text-slate-800 truncate">{report.reportId}</span>
                         </div>
-                        {/* PNL NO. */}
-                        <p className="text-xs text-slate-600 mb-0.5 truncate">PNL NO.: {report.boardId}</p>
-                        {/* 날짜 + 그룹 ID */}
-                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-500 min-w-0 overflow-hidden">
+                        {/* PNL NO. + 날짜 + 그룹 ID (한 줄) */}
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-500">
+                        <span className="text-slate-600">PNL NO.: {report.boardId}</span>
                           <div className="flex items-center gap-0.5 shrink-0">
                             <Calendar size={10} />
                             <span className="whitespace-nowrap">{formatDate(report.generatedAt)}</span>

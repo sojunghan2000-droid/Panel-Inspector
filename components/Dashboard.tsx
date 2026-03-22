@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { InspectionRecord, StatData, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
+import { InspectionRecord, StatData, ReportHistory, InspectionHistoryEntry } from '../types';
 import BoardList from './BoardList';
 import InspectionDetail from './InspectionDetail';
 import StatsChart from './StatsChart';
@@ -17,7 +17,6 @@ interface DashboardProps {
   onSelectionChange?: (id: string | null) => void;
   onReportGenerated?: (report: ReportHistory) => void;
   onReportsUpdate?: (reports: ReportHistory[]) => void;
-  qrCodes?: QRCodeData[];
   reports?: ReportHistory[];
   inspectionHistory?: InspectionHistoryEntry[];
   onResetAllInspections?: (groupId: string) => Promise<void>;
@@ -35,7 +34,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   onSelectionChange,
   onReportGenerated,
   onReportsUpdate,
-  qrCodes = [],
   reports = [],
   inspectionHistory = [],
   onResetAllInspections,

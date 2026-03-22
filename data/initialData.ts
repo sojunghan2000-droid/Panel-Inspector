@@ -1,4 +1,4 @@
-import { InspectionRecord, QRCodeData } from '../types';
+import { InspectionRecord } from '../types';
 
 /** 공칭단면적 → 차단기 용량 임의 매핑 */
 const SQ_TO_BREAKER: Record<string, string> = {
@@ -10,6 +10,8 @@ const SQ_TO_BREAKER: Record<string, string> = {
   '35': '100',
   '16': '50',
 };
+
+const LEGACY_TR_EXPAND: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
 
 function panel(
   panelNo: string,
@@ -25,7 +27,7 @@ function panel(
     loads: { welder: false, grinder: false, light: false, pump: false },
     photoUrl: null,
     memo: '',
-    tr,
+    tr: LEGACY_TR_EXPAND[tr] ?? tr,
     floor,
     nominalCrossSection,
     breakerCapacity: SQ_TO_BREAKER[nominalCrossSection] || '',
@@ -237,7 +239,7 @@ export const INITIAL_INSPECTIONS: InspectionRecord[] = [
     loads: { welder: false, grinder: false, light: false, pump: false },
     photoUrl: null,
     memo: '',
-    tr: 'A',
+    tr: 'TR-1(A) 900KVA',
     floor: 'F1',
     nominalCrossSection: '95',
     breakerCapacity: '225',
@@ -1144,40 +1146,3 @@ export const INITIAL_INSPECTIONS: InspectionRecord[] = [
   },
 ];
 
-/** 초기 InspectionRecord에서 QRCodeData 생성 */
-export function generateInitialQRCodes(inspections: InspectionRecord[]): QRCodeData[] {
-  const now = new Date().toISOString();
-  return inspections.map((ins, idx) => {
-    const trNo = `TR-${ins.tr === 'B' ? '2' : '1'}${ins.tr === 'A' ? '(A)' : '(B)'} 900KVA`;
-    return {
-      id: `qr-init-${ins.panelNo}-${idx}`,
-      floor: ins.floor || 'F1',
-      position: { x: 50, y: 50 }, // 기본 위치 (중앙)
-      trData: {
-        tr_no: trNo,
-        description: ins.managementNumber || '',
-        capacity: '900KVA',
-        position: ins.tr,
-      },
-      qrData: JSON.stringify({
-        id: ins.panelNo,
-        floor: ins.floor || 'F1',
-        position: { x: 50, y: 50 },
-        tr_data: {
-          tr_no: trNo,
-          description: ins.managementNumber || '',
-          capacity: '900KVA',
-          position: ins.tr,
-        },
-        timestamp: now,
-        contractor: ins.contractor,
-        projectName: ins.projectName,
-        nominalCrossSection: ins.nominalCrossSection,
-        breakerCapacity: ins.breakerCapacity,
-        managementNumber: ins.managementNumber,
-      }),
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-}

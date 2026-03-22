@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry, SyncMetadata } from '../types';
+import { InspectionRecord, ReportHistory, InspectionHistoryEntry, SyncMetadata } from '../types';
 
 interface InspectionsDB extends DBSchema {
   inspections: {
@@ -16,11 +16,6 @@ interface InspectionsDB extends DBSchema {
       updatedAt: number;
     };
     indexes: { 'by-panelNo': string };
-  };
-  qrCodes: {
-    key: string; // id
-    value: QRCodeData;
-    indexes: { 'by-id': string };
   };
   floorPlanImages: {
     key: string; // floor (예: 'F1', 'B1', 'F1-panel-master', 'B1-panel-master')
@@ -56,17 +51,19 @@ let dbInstance: IDBPDatabase<InspectionsDB> | null = null;
  * 버전 4: inspectionHistory 저장소 추가
  * 버전 5: qrCodes 스토어 초기화 (중복/오염 데이터 제거, Supabase 재동기화)
  * 버전 6: inspections 스토어에서 잘못된 '06867034' 패널 삭제
+ * 버전 7: syncMetadata 저장소 추가
+ * 버전 8: qrCodes 저장소 삭제 (inspections 테이블로 통합)
  */
 export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
   if (dbInstance) {
     return dbInstance;
   }
 
-  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 7, {
+  dbInstance = await openDB<InspectionsDB>('panel-inspector-db', 8, {
     upgrade(db, oldVersion, newVersion, transaction) {
       // v5: qrCodes 스토어 초기화 (386개 중복 데이터 제거)
-      if (oldVersion < 5 && db.objectStoreNames.contains('qrCodes')) {
-        db.deleteObjectStore('qrCodes');
+      if (oldVersion < 5 && db.objectStoreNames.contains('qrCodes' as any)) {
+        db.deleteObjectStore('qrCodes' as any);
       }
       // v6: 잘못된 inspection '06867034' 삭제
       if (oldVersion < 6 && db.objectStoreNames.contains('inspections')) {
@@ -78,6 +75,10 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
           keyPath: 'id',
         });
         syncMetadataStore.createIndex('by-storeType', 'storeType', { unique: false });
+      }
+      // v8: qrCodes 저장소 삭제 (inspections 테이블로 통합)
+      if (oldVersion < 8 && db.objectStoreNames.contains('qrCodes' as any)) {
+        db.deleteObjectStore('qrCodes' as any);
       }
       // Inspections 저장소
       if (!db.objectStoreNames.contains('inspections')) {
@@ -93,14 +94,6 @@ export const initIndexedDB = async (): Promise<IDBPDatabase<InspectionsDB>> => {
           keyPath: 'panelNo',
         });
         photoStore.createIndex('by-panelNo', 'panelNo', { unique: true });
-      }
-
-      // QR Codes 저장소 (버전 2에서 추가)
-      if (!db.objectStoreNames.contains('qrCodes')) {
-        const qrCodeStore = db.createObjectStore('qrCodes', {
-          keyPath: 'id',
-        });
-        qrCodeStore.createIndex('by-id', 'id', { unique: true });
       }
 
       // Floor Plan Images 저장소 (버전 2에서 추가)
@@ -320,69 +313,6 @@ export const getAllInspectionsWithPhotos = async (): Promise<InspectionRecord[]>
 };
 
 // ============================================
-// QR Codes 관련 함수들
-// ============================================
-
-/**
- * QR 코드 저장
- */
-export const saveQRCode = async (qrCode: QRCodeData): Promise<void> => {
-  const db = await initIndexedDB();
-  await db.put('qrCodes', qrCode);
-};
-
-/**
- * 여러 QR 코드 한번에 저장
- */
-export const saveAllQRCodes = async (qrCodes: QRCodeData[]): Promise<void> => {
-  const db = await initIndexedDB();
-  const tx = db.transaction('qrCodes', 'readwrite');
-  await Promise.all([
-    ...qrCodes.map(qr => tx.store.put(qr)),
-    tx.done
-  ]);
-};
-
-/**
- * 모든 QR 코드 조회
- */
-export const getAllQRCodes = async (): Promise<QRCodeData[]> => {
-  const db = await initIndexedDB();
-  return await db.getAll('qrCodes');
-};
-
-/**
- * 특정 QR 코드 조회
- */
-export const getQRCode = async (id: string): Promise<QRCodeData | undefined> => {
-  const db = await initIndexedDB();
-  return await db.get('qrCodes', id);
-};
-
-/**
- * QR 코드 삭제 (삭제 대기 큐 연동)
- * - 삭제 전 큐에 등록 → 성공 시 큐 제거, 실패 시 큐 유지
- */
-export const deleteQRCode = async (id: string): Promise<void> => {
-  addToIDBDeleteQueue('qr', id);
-  try {
-    const db = await initIndexedDB();
-    await db.delete('qrCodes', id);
-    removeFromIDBDeleteQueue('qr', id);
-  } catch (err) {
-    console.error('[IDB] QR 삭제 실패, 큐에 보관:', id, err);
-  }
-};
-
-/**
- * 모든 QR 코드 삭제
- */
-export const clearAllQRCodes = async (): Promise<void> => {
-  const db = await initIndexedDB();
-  await db.clear('qrCodes');
-};
-
-// ============================================
 // Floor Plan Images 관련 함수들
 // ============================================
 
@@ -534,12 +464,12 @@ export const deleteInspectionHistory = async (id: string): Promise<void> => {
 const IDB_DELETE_QUEUE_KEY = 'panel-inspector-idb-delete-queue';
 
 interface IDBDeleteQueueItem {
-  type: 'inspection' | 'qr';
-  key: string; // panelNo or qrId
+  type: 'inspection';
+  key: string; // panelNo
   timestamp: string;
 }
 
-function addToIDBDeleteQueue(type: 'inspection' | 'qr', key: string): void {
+function addToIDBDeleteQueue(type: 'inspection', key: string): void {
   try {
     const raw = localStorage.getItem(IDB_DELETE_QUEUE_KEY);
     const queue: IDBDeleteQueueItem[] = raw ? JSON.parse(raw) : [];
@@ -550,7 +480,7 @@ function addToIDBDeleteQueue(type: 'inspection' | 'qr', key: string): void {
   } catch { /* localStorage 오류 무시 */ }
 }
 
-function removeFromIDBDeleteQueue(type: 'inspection' | 'qr', key: string): void {
+function removeFromIDBDeleteQueue(type: 'inspection', key: string): void {
   try {
     const raw = localStorage.getItem(IDB_DELETE_QUEUE_KEY);
     const queue: IDBDeleteQueueItem[] = raw ? JSON.parse(raw) : [];
@@ -579,8 +509,6 @@ export async function flushIDBDeleteQueue(): Promise<void> {
       if (item.type === 'inspection') {
         await db.delete('inspections', item.key);
         await db.delete('photos', item.key);
-      } else if (item.type === 'qr') {
-        await db.delete('qrCodes', item.key);
       }
       removeFromIDBDeleteQueue(item.type, item.key);
     } catch {
@@ -601,7 +529,7 @@ export async function saveSyncMetadata(metadata: SyncMetadata): Promise<void> {
 
 /**
  * 특정 저장소의 SyncMetadata 조회
- * @param storeType 저장소 타입 ('inspections', 'photos', 'qrCodes', 'floorPlanImages', 'reports', 'inspectionHistory')
+ * @param storeType 저장소 타입 ('inspections', 'photos', 'floorPlanImages', 'reports', 'inspectionHistory')
  */
 export async function getSyncMetadata(storeType: string): Promise<SyncMetadata | undefined> {
   const db = await initIndexedDB();

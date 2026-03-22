@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, ChevronDown, ChevronRight, GitBranch, Zap, Save, RotateCcw } from 'lucide-react';
-import { InspectionRecord } from '../types';
+import { InspectionRecord, getTrLetter } from '../types';
 
 /* ─── 타입 ─── */
 interface PanelNode {
@@ -127,7 +127,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
       panelNo: ins.panelNo,
       notes: ins.notes || '',
       nominalCrossSection: ins.nominalCrossSection?.replace(/SQ$/i, '') || '',
-      tr: ins.tr || 'A',
+      tr: ins.tr || 'TR-1(A) 900KVA',
       floor: ins.floor || 'F1',
       parentPanelNo: ins.parentPanelNo,
     }));
@@ -231,7 +231,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
       notes: '',
       nominalCrossSection: '',
       tr: trKey,
-      floor: trKey === 'A' ? 'F1' : 'B1',
+      floor: getTrLetter(trKey) === 'A' ? 'F1' : 'B1',
     };
     setPanels(prev => [...prev, newPanel]);
   }, [panels]);
@@ -353,7 +353,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
 
     return Object.keys(grouped).sort().map(trKey => ({
       trKey,
-      trLabel: TR_LABELS[trKey] || `TR-${trKey}`,
+      trLabel: trKey || '미지정',
       panels: grouped[trKey],
       flatRows: flattenTree(buildTree(grouped[trKey])),
     }));
@@ -455,8 +455,8 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
               {/* TR 헤더 */}
               <div
                 className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition-colors ${
-                  trKey === 'A' ? 'bg-blue-50 hover:bg-blue-100 border-b border-blue-200' :
-                  trKey === 'B' ? 'bg-orange-50 hover:bg-orange-100 border-b border-orange-200' :
+                  getTrLetter(trKey) === 'A' ? 'bg-blue-50 hover:bg-blue-100 border-b border-blue-200' :
+                  getTrLetter(trKey) === 'B' ? 'bg-orange-50 hover:bg-orange-100 border-b border-orange-200' :
                   'bg-slate-50 hover:bg-slate-100 border-b border-slate-200'
                 }`}
                 onClick={() => toggleTRGroup(trKey)}
@@ -464,7 +464,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
                 <div className="flex items-center gap-2">
                   {trGroups[trKey] ? <ChevronRight size={18} className="text-slate-500" /> : <ChevronDown size={18} className="text-slate-500" />}
                   <span className={`font-bold text-sm ${
-                    trKey === 'A' ? 'text-blue-800' : trKey === 'B' ? 'text-orange-800' : 'text-slate-800'
+                    getTrLetter(trKey) === 'A' ? 'text-blue-800' : getTrLetter(trKey) === 'B' ? 'text-orange-800' : 'text-slate-800'
                   }`}>
                     {trLabel}
                   </span>
@@ -478,8 +478,8 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
                     addRootPanel(trKey);
                   }}
                   className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                    trKey === 'A' ? 'bg-blue-600 text-white hover:bg-blue-700' :
-                    trKey === 'B' ? 'bg-orange-600 text-white hover:bg-orange-700' :
+                    getTrLetter(trKey) === 'A' ? 'bg-blue-600 text-white hover:bg-blue-700' :
+                    getTrLetter(trKey) === 'B' ? 'bg-orange-600 text-white hover:bg-orange-700' :
                     'bg-slate-600 text-white hover:bg-slate-700'
                   }`}
                 >
@@ -628,7 +628,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
           <div className="flex items-center gap-4">
             {trData.map(({ trKey, trLabel, panels: trPanels }) => (
               <span key={trKey} className="flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${trKey === 'A' ? 'bg-blue-500' : trKey === 'B' ? 'bg-orange-500' : 'bg-slate-400'}`} />
+                <span className={`w-2 h-2 rounded-full ${getTrLetter(trKey) === 'A' ? 'bg-blue-500' : getTrLetter(trKey) === 'B' ? 'bg-orange-500' : 'bg-slate-400'}`} />
                 {trLabel}: <strong className="text-slate-700">{trPanels.length}</strong>개
               </span>
             ))}

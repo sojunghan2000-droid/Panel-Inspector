@@ -11,22 +11,17 @@ import {
   fetchAllInspections,
   fetchInspectionsSince,
   fetchAllInspectionIds,
-  upsertQRCodes,
-  fetchAllQRCodes,
-  fetchQRCodesSince,
-  fetchAllQRCodeIds,
   upsertReport,
   fetchAllReports,
   fetchReportsSince,
   fetchAllReportIds,
   uploadBlob,
-  deleteQRCodeFromSupabase,
   deleteInspectionFromSupabase,
   upsertFloorPlanUrl,
   fetchAllFloorPlanUrls,
 } from './supabaseService';
-import { saveInspection, saveQRCode, saveAllQRCodes, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, deleteQRCode as deleteQRCodeFromIDB, saveSyncMetadata, getSyncMetadata, updateSyncMetadata } from './indexedDBService';
-import type { InspectionRecord, QRCodeData, ReportHistory, SyncMetadata, AutoSyncConfig } from '../types';
+import { saveInspection, saveReport, getAllInspections as getAllInspectionsFromIDB, getFloorPlanImage, saveFloorPlanImage, deleteInspection as deleteInspectionFromIDB, saveSyncMetadata, getSyncMetadata, updateSyncMetadata } from './indexedDBService';
+import type { InspectionRecord, ReportHistory, SyncMetadata, AutoSyncConfig } from '../types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 
@@ -36,7 +31,6 @@ const OFFLINE_QUEUE_KEY = 'panel-inspector-offline-queue';
 const CACHE_TTL_MINUTES = {
   inspections: 30,           // 검사 데이터: 30분
   photos: 60,                // 사진: 60분
-  qrCodes: 60,               // QR 코드: 60분
   floorPlanImages: 120,      // 층 평면도: 120분 (거의 변경 없음)
   reports: 15,               // 보고서: 15분 (자주 변경)
   inspectionHistory: 45,     // 검사 히스토리: 45분
@@ -49,8 +43,8 @@ const getDevCacheTTLSeconds = (): number => {
 };
 
 interface OfflineQueueItem {
-  type: 'inspection' | 'qrcodes' | 'report' | 'delete-qr' | 'delete-inspection' | 'floor-plan';
-  key: string; // panelNo / qrId / 'all' / reportId / floor('F1'~'F6','B1','B2')
+  type: 'inspection' | 'report' | 'delete-inspection' | 'floor-plan';
+  key: string; // panelNo / reportId / floor('F1'~'F6','B1','B2')
   timestamp: string;
 }
 
@@ -188,43 +182,6 @@ export async function pushInspectionsBatch(records: InspectionRecord[]): Promise
 }
 
 /**
- * 모든 QR Codes를 Supabase에 push
- */
-export async function pushAllQRCodes(codes: QRCodeData[]): Promise<void> {
-  if (!navigator.onLine) {
-    addToOfflineQueue({ type: 'qrcodes', key: 'all', timestamp: new Date().toISOString() });
-    return;
-  }
-
-  try {
-    await upsertQRCodes(codes);
-  } catch (err) {
-    console.error('[syncService] pushAllQRCodes 오류:', err);
-    addToOfflineQueue({ type: 'qrcodes', key: 'all', timestamp: new Date().toISOString() });
-  }
-}
-
-/**
- * QR 코드 삭제를 Supabase에 push (오프라인 큐 지원)
- * - 오프라인 또는 실패 시 큐에 저장 → 네트워크 복귀 시 재시도
- */
-export async function pushDeleteQRCode(id: string): Promise<void> {
-  if (!navigator.onLine) {
-    addToOfflineQueue({ type: 'delete-qr', key: id, timestamp: new Date().toISOString() });
-    notifyStatus('offline');
-    return;
-  }
-  try {
-    await deleteQRCodeFromSupabase(id);
-  } catch (err) {
-    console.error('[syncService] QR 삭제 오류:', err);
-    addToOfflineQueue({ type: 'delete-qr', key: id, timestamp: new Date().toISOString() });
-    notifyStatus('error', String(err));
-    throw err;
-  }
-}
-
-/**
  * Inspection 삭제를 Supabase에 push (오프라인 큐 지원)
  * - 오프라인 또는 실패 시 큐에 저장 → 네트워크 복귀 시 재시도
  */
@@ -295,7 +252,6 @@ export async function pushReport(report: ReportHistory): Promise<void> {
 
 export interface PullCallbacks {
   onInspectionsUpdated: (records: InspectionRecord[]) => void;
-  onQRCodesUpdated: (codes: QRCodeData[]) => void;
   onReportsUpdated: (reports: ReportHistory[]) => void;
   onSyncStatusChange: (status: SyncStatus, msg?: string) => void;
   onFloorPlanUrlsUpdated?: (urls: { floor: string; url: string }[]) => void;
@@ -461,7 +417,7 @@ export async function shouldRefreshStore(storeType: string, forceRefresh: boolea
  * - 캐시 만료하면 true 반환 (fetch 수행)
  */
 async function shouldFetchStore(
-  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages'
+  storeType: 'inspections' | 'reports' | 'floorPlanImages'
 ): Promise<boolean> {
   return await shouldRefreshStore(storeType, false);
 }
@@ -472,7 +428,7 @@ async function shouldFetchStore(
  * - 동기화 상태를 'success'로 설정
  */
 async function markStoreSyncComplete(
-  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages',
+  storeType: 'inspections' | 'reports' | 'floorPlanImages',
   recordCount: number
 ): Promise<void> {
   await setLastSyncTimeForStore(storeType, recordCount);
@@ -483,7 +439,7 @@ async function markStoreSyncComplete(
  * - SyncMetadata 업데이트 (syncStatus = 'error', lastError)
  */
 async function markStoreSyncError(
-  storeType: 'inspections' | 'qrCodes' | 'reports' | 'floorPlanImages',
+  storeType: 'inspections' | 'reports' | 'floorPlanImages',
   error: string
 ): Promise<void> {
   await updateStoreSyncStatus(storeType, 'error', error);
@@ -544,7 +500,6 @@ export function saveAutoSyncConfig(config: Partial<AutoSyncConfig>): void {
  * @MX:NOTE Phase 2 캐시 TTL 통합
  * 각 저장소별로 shouldRefreshStore() 호출하여 캐시 유효성 확인:
  * - inspections: 30분 (dev: 30초)
- * - qrCodes: 60분 (dev: 30초)  
  * - reports: 15분 (dev: 30초)
  * - floorPlanImages: 120분 (dev: 30초)
  * 
@@ -558,7 +513,6 @@ let _isPullRunning = false;
 
 export async function pullAll(
   localInspections: InspectionRecord[],
-  localQRCodes: QRCodeData[],
   localReports: ReportHistory[],
   callbacks: PullCallbacks
 ): Promise<void> {
@@ -578,9 +532,6 @@ export async function pullAll(
 
     // 오프라인 큐에서 삭제 예정 ID 수집 (병합 시 부활 방지)
     const offlineQueue = getOfflineQueue();
-    const pendingDeleteQRIds = new Set(
-      offlineQueue.filter(q => q.type === 'delete-qr').map(q => q.key)
-    );
     const pendingDeleteInspectionIds = new Set(
       offlineQueue.filter(q => q.type === 'delete-inspection').map(q => q.key)
     );
@@ -609,8 +560,10 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (remoteTs > localTs) {
-            localMap.set(remote.panelNo, remote);
-            await saveInspection(remote);
+            // position 보존: remote가 이겨도 position이 null이면 local position 유지
+            const merged = { ...remote, position: remote.position ?? local.position };
+            localMap.set(remote.panelNo, merged);
+            await saveInspection(merged);
           }
         }
       }
@@ -628,39 +581,6 @@ export async function pullAll(
       if (inspectionsToPush.length > 0) {
         console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
         await upsertInspections(inspectionsToPush);
-      }
-
-      // ── QR Codes ──
-      const remoteQRCodes = await fetchAllQRCodes();
-      const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
-
-      for (const remote of remoteQRCodes) {
-        if (pendingDeleteQRIds.has(remote.id)) continue;
-        const local = localQRMap.get(remote.id);
-        if (!local) {
-          localQRMap.set(remote.id, remote);
-          await saveQRCode(remote);
-        } else {
-          const remoteTs = new Date(remote.createdAt).getTime();
-          const localTs = new Date(local.createdAt).getTime();
-          if (remoteTs > localTs) {
-            localQRMap.set(remote.id, remote);
-            await saveQRCode(remote);
-          }
-        }
-      }
-      callbacks.onQRCodesUpdated(Array.from(localQRMap.values()));
-
-      // 로컬 → Supabase push (QR)
-      const remoteQRIds = new Set(remoteQRCodes.map(q => q.id));
-      const qrsToPush = localQRCodes.filter(q => {
-        if (!remoteQRIds.has(q.id)) return true;
-        const remote = remoteQRCodes.find(r => r.id === q.id)!;
-        return new Date(q.createdAt).getTime() > new Date(remote.createdAt).getTime();
-      });
-      if (qrsToPush.length > 0) {
-        console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
-        await upsertQRCodes(qrsToPush);
       }
 
       // ── Reports ──
@@ -707,8 +627,10 @@ export async function pullAll(
           const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
           const localTs = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
           if (!local || remoteTs > localTs) {
-            localMap.set(remote.panelNo, remote);
-            await saveInspection(remote);
+            // position 보존: remote가 이겨도 position이 null이면 local position 유지
+            const merged = { ...remote, position: remote.position ?? local?.position };
+            localMap.set(remote.panelNo, merged);
+            await saveInspection(merged);
             inspectionsChanged = true;
           }
         }
@@ -741,55 +663,6 @@ export async function pullAll(
       if (inspectionsToPush.length > 0) {
         console.log(`[syncService] 로컬→Supabase 역방향 push: ${inspectionsToPush.length}건`);
         await upsertInspections(inspectionsToPush);
-      }
-
-      // ── QR Codes (변경분) ──
-      const changedQRCodes = await fetchQRCodesSince(lastSync);
-      const localQRMap = new Map(localQRCodes.map(q => [q.id, q]));
-      let qrChanged = false;
-
-      if (changedQRCodes.length > 0) {
-        console.log(`[syncService] 증분 QR codes: ${changedQRCodes.length}건`);
-        for (const remote of changedQRCodes) {
-          if (pendingDeleteQRIds.has(remote.id)) continue;
-          const local = localQRMap.get(remote.id);
-          if (!local) {
-            localQRMap.set(remote.id, remote);
-            await saveQRCode(remote);
-            qrChanged = true;
-          } else {
-            const remoteTs = new Date(remote.createdAt).getTime();
-            const localTs = new Date(local.createdAt).getTime();
-            if (remoteTs > localTs) {
-              localQRMap.set(remote.id, remote);
-              await saveQRCode(remote);
-              qrChanged = true;
-            }
-          }
-        }
-      }
-
-      // 삭제 감지 (QR)
-      const remoteQRIdSet = new Set(await fetchAllQRCodeIds());
-      for (const local of localQRCodes) {
-        if (!remoteQRIdSet.has(local.id) && !pendingDeleteQRIds.has(local.id)) {
-          localQRMap.delete(local.id);
-          qrChanged = true;
-          // IDB에서도 실제 삭제 (미삭제 시 다음 sync에서 반복 감지 문제 방지)
-          deleteQRCodeFromIDB(local.id).catch(console.error);
-          console.log(`[syncService] QR 원격 삭제 감지: ${local.id}`);
-        }
-      }
-
-      if (qrChanged) {
-        callbacks.onQRCodesUpdated(Array.from(localQRMap.values()));
-      }
-
-      // 로컬 → Supabase push (QR)
-      const qrsToPush = localQRCodes.filter(q => !remoteQRIdSet.has(q.id));
-      if (qrsToPush.length > 0) {
-        console.log(`[syncService] QR Codes 로컬→Supabase push: ${qrsToPush.length}건`);
-        await upsertQRCodes(qrsToPush);
       }
 
       // ── Reports (변경분) ──
@@ -864,7 +737,6 @@ export async function pullAll(
  */
 export async function flushOfflineQueue(
   localInspections: InspectionRecord[],
-  localQRCodes: QRCodeData[],
   localReports: ReportHistory[]
 ): Promise<void> {
   const queue = getOfflineQueue();
@@ -874,7 +746,6 @@ export async function flushOfflineQueue(
 
   try {
     const inspectionItems = queue.filter(q => q.type === 'inspection');
-    const qrcodesItems = queue.filter(q => q.type === 'qrcodes');
     const reportItems = queue.filter(q => q.type === 'report');
 
     // Inspections push
@@ -885,23 +756,12 @@ export async function flushOfflineQueue(
       await upsertInspections(inspectionsToPush);
     }
 
-    // QR Codes push
-    if (qrcodesItems.length > 0 && localQRCodes.length > 0) {
-      await upsertQRCodes(localQRCodes);
-    }
-
     // Reports push
     const reportsToPush = localReports.filter(r =>
       reportItems.some(q => q.key === r.reportId)
     );
     for (const report of reportsToPush) {
       await upsertReport(report);
-    }
-
-    // QR 삭제 큐 처리
-    const deleteQRItems = queue.filter(q => q.type === 'delete-qr');
-    for (const item of deleteQRItems) {
-      await deleteQRCodeFromSupabase(item.key);
     }
 
     // Inspection 삭제 큐 처리
@@ -946,16 +806,7 @@ export async function flushOfflineQueue(
  * }
  * ```
  * 
- * **2. 초회 QR Codes 로드 전에:**
- * ```typescript
- * if (await shouldFetchStore('qrCodes')) {
- *   const remoteQRCodes = await fetchAllQRCodes();
- *   // ... 기존 로직 ...
- *   await markStoreSyncComplete('qrCodes', localQRMap.size);
- * }
- * ```
- * 
- * **3. 초회 Reports 로드 전에:**
+ * **2. 초회 Reports 로드 전에:**
  * ```typescript
  * if (await shouldFetchStore('reports')) {
  *   const remoteReports = await fetchAllReports();
@@ -964,12 +815,11 @@ export async function flushOfflineQueue(
  * }
  * ```
  * 
- * **4. 증분 동기화 섹션도 동일하게 적용:**
+ * **3. 증분 동기화 섹션도 동일하게 적용:**
  * - fetchInspectionsSince() 호출 전 shouldFetchStore('inspections')
- * - fetchQRCodesSince() 호출 전 shouldFetchStore('qrCodes')
  * - fetchReportsSince() 호출 전 shouldFetchStore('reports')
  * 
- * **5. 에러 처리:**
+ * **4. 에러 처리:**
  * ```typescript
  * try {
  *   if (await shouldFetchStore('inspections')) {
@@ -992,7 +842,6 @@ export async function flushOfflineQueue(
  * ============================================
  * syncService.ts의 CACHE_TTL_MINUTES 상수 수정:
  * - inspections: 30분 (검사 데이터)
- * - qrCodes: 60분 (QR 코드)
  * - reports: 15분 (보고서 - 자주 변경)
  * - floorPlanImages: 120분 (층 평면도)
  * - photos: 60분
@@ -1052,7 +901,7 @@ function canExecuteAutoSync(config: AutoSyncConfig, isSyncing: boolean): boolean
  */
 export function startAutoSync(
   activityState: any,
-  pullAllFn: (cb: any) => Promise<void>
+  pullAllFn: (localInspections: InspectionRecord[], localReports: ReportHistory[], cb: PullCallbacks) => Promise<void>
 ): () => void {
   _activityState = activityState;
   const config = getAutoSyncConfig();
@@ -1089,9 +938,8 @@ export function startAutoSync(
       }
 
       console.log('[syncService] 자동 동기화 시작');
-      await pullAllFn({
+      await pullAllFn([], [], {
         onInspectionsUpdated: () => {},
-        onQRCodesUpdated: () => {},
         onReportsUpdated: () => {},
         onSyncStatusChange: (status: SyncStatus) => notifyStatus(status),
       });

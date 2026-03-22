@@ -6,7 +6,10 @@
  */
 
 import { supabase } from './supabaseClient';
-import type { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from '../types';
+import type { InspectionRecord, ReportHistory, InspectionHistoryEntry } from '../types';
+
+// 레거시 'A'/'B' TR 코드 → full string 변환 (DB 하위 호환)
+const LEGACY_TR_MAP: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
 
 // ─────────────────────────────────────────
 // InspectionRecord ↔ DB 행 변환
@@ -84,7 +87,7 @@ function rowToInspection(row: Record<string, unknown>): InspectionRecord {
     currentL1: (row.current_l1 as number | null) ?? undefined,
     currentL2: (row.current_l2 as number | null) ?? undefined,
     currentL3: (row.current_l3 as number | null) ?? undefined,
-    tr: (row.tr as string | null) ?? undefined,
+    tr: (() => { const v = (row.tr as string | null); if (!v) return undefined; return (v.length === 1 && /^[A-Z]$/.test(v)) ? (LEGACY_TR_MAP[v] ?? v) : v; })(),
     floor: (row.floor as string | null) ?? undefined,
     nominalCrossSection: (row.nominal_cross_section as string | null) ?? undefined,
     breakerCapacity: (row.breaker_capacity as string | null) ?? undefined,
@@ -162,67 +165,6 @@ export async function deleteInspectionFromSupabase(panelNo: string): Promise<voi
   if (error) throw error;
 }
 
-// ─────────────────────────────────────────
-// QR Codes CRUD
-// ─────────────────────────────────────────
-
-export async function upsertQRCodes(codes: QRCodeData[]): Promise<void> {
-  if (codes.length === 0) return;
-  const rows = codes.map(c => ({
-    id: c.id,
-    tr_data: c.trData,
-    floor: c.floor,
-    position: c.position,
-    qr_data: c.qrData,
-    created_at: c.createdAt,
-    updated_at: c.updatedAt || new Date().toISOString(),
-  }));
-  const { error } = await supabase.from('qr_codes').upsert(rows, { onConflict: 'id' });
-  if (error) throw error;
-}
-
-export async function deleteQRCodeFromSupabase(id: string): Promise<void> {
-  const { error } = await supabase.from('qr_codes').delete().eq('id', id);
-  if (error) throw error;
-}
-
-export async function fetchAllQRCodes(): Promise<QRCodeData[]> {
-  const { data, error } = await supabase.from('qr_codes').select('*');
-  if (error) throw error;
-  return (data as Record<string, unknown>[]).map(row => ({
-    id: row.id as string,
-    floor: row.floor as string,
-    position: row.position as { x: number; y: number },
-    trData: row.tr_data as QRCodeData['trData'],
-    qrData: row.qr_data as string,
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
-  }));
-}
-
-const rowToQRCode = (row: Record<string, unknown>): QRCodeData => ({
-  id: row.id as string,
-  floor: row.floor as string,
-  position: row.position as { x: number; y: number },
-  trData: row.tr_data as QRCodeData['trData'],
-  qrData: row.qr_data as string,
-  createdAt: row.created_at as string,
-  updatedAt: row.updated_at as string,
-});
-
-/** 증분 동기화: since 이후 변경된 QR codes만 가져오기 */
-export async function fetchQRCodesSince(since: string): Promise<QRCodeData[]> {
-  const { data, error } = await supabase.from('qr_codes').select('*').gt('updated_at', since);
-  if (error) throw error;
-  return (data as Record<string, unknown>[]).map(rowToQRCode);
-}
-
-/** 삭제 감지용: 전체 QR code ID 목록만 (경량) */
-export async function fetchAllQRCodeIds(): Promise<string[]> {
-  const { data, error } = await supabase.from('qr_codes').select('id');
-  if (error) throw error;
-  return (data as Record<string, unknown>[]).map(r => r.id as string);
-}
 
 // ─────────────────────────────────────────
 // Reports CRUD

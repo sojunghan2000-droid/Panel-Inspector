@@ -82,7 +82,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       ${inspection.contractor ? `<div class="info"><span class="label">시공사</span><span class="value">${inspection.contractor}</span></div>` : `<div class="info"><span class="label">시공사</span><span class="empty">-</span></div>`}
       ${inspection.managementNumber ? `<div class="info"><span class="label">관리번호</span><span class="value">${inspection.managementNumber}</span></div>` : `<div class="info"><span class="label">관리번호</span><span class="empty">-</span></div>`}
       <div class="info"><span class="label">PNL NO.</span><span class="value">${inspection.panelNo}</span></div>
-      <div class="info"><span class="label">TR</span><span class="${inspection.tr ? 'value' : 'empty'}">${inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-'}</span></div>
+      <div class="info"><span class="label">TR</span><span class="${inspection.tr ? 'value' : 'empty'}">${inspection.tr || '-'}</span></div>
       <div class="info"><span class="label">층수</span><span class="${inspection.floor ? 'value' : 'empty'}">${inspection.floor || '-'}</span></div>
       <div class="info"><span class="label">공칭 단면적</span><span class="${inspection.nominalCrossSection ? 'value' : 'empty'}">${inspection.nominalCrossSection || '-'}</span></div>
       <div class="info"><span class="label">상태</span><span class="value">${inspection.status}</span></div>

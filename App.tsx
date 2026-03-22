@@ -1,7 +1,7 @@
 //의미없는 주석
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { InspectionRecord, QRCodeData, ReportHistory, InspectionHistoryEntry } from './types';
+import { InspectionRecord, ReportHistory, InspectionHistoryEntry } from './types';
 import Dashboard from './components/Dashboard';
 import DashboardOverview from './components/DashboardOverview';
 import ReportsList from './components/ReportsList';
@@ -9,16 +9,16 @@ import QRGenerator from './components/QRGenerator';
 import QRScanner from './components/QRScanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LayoutDashboard, ScanLine, Bell, Menu, ShieldCheck, ClipboardList, BarChart3, QrCode, X, FileSpreadsheet, FileUp, Download, Smartphone, MoreVertical, AlertTriangle, LogOut } from 'lucide-react';
-import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllQRCodes, saveAllQRCodes, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteQRCode as deleteQRCodeFromIDB, deleteInspection, flushIDBDeleteQueue, getIDBDeleteQueue } from './services/indexedDBService';
+import { initIndexedDB, getAllInspectionsWithPhotos, saveInspection, savePhoto, dataURLToBlob, getAllReports, saveReport, deleteReport as deleteReportFromDB, saveFloorPlanImage, getFloorPlanImage, saveInspectionHistory, getAllInspectionHistory, deleteInspectionHistory, deleteInspection, flushIDBDeleteQueue, getIDBDeleteQueue } from './services/indexedDBService';
 import { exportToExcel } from './services/excelService';
 import ExportReviewModal from './components/ExportReviewModal';
-import { INITIAL_INSPECTIONS, generateInitialQRCodes } from './data/initialData';
+import { INITIAL_INSPECTIONS } from './data/initialData';
 import { parseInspectionExcel, mergeImportedData } from './services/excelImportService';
 import { supabase, isConfigured, getSession, Session } from './services/supabaseClient';
 import LoginPage from './components/LoginPage';
 import SyncStatusBadge from './components/SyncStatusBadge';
 import { AutoSyncSettings } from './components/AutoSyncSettings';
-import { pushInspection, pushInspectionsBatch, pushAllQRCodes, pushReport, pullAll, flushOfflineQueue, pushDeleteQRCode, pushDeleteInspection, SyncStatus, getAutoSyncConfig, saveAutoSyncConfig, startAutoSync, stopAutoSync, getLastAutoSyncTime } from './services/syncService';
+import { pushInspection, pushInspectionsBatch, pushReport, pullAll, flushOfflineQueue, pushDeleteInspection, SyncStatus, getAutoSyncConfig, saveAutoSyncConfig, startAutoSync, stopAutoSync, getLastAutoSyncTime } from './services/syncService';
 import { useActivityDetector, canAutoSync, ActivityState } from './hooks/useActivityDetector';
 import { deleteReport as deleteReportFromSupabase, upsertInspectionHistory, deleteInspectionHistoryFromSupabase } from './services/supabaseService';
 
@@ -77,11 +77,14 @@ const migrateFloorFormat = (data: any): any => {
       } else if (key === 'qrData' && typeof data[key] === 'string') {
         try {
           const qrData = JSON.parse(data[key]);
-          if (qrData.id) {
-            qrData.id = migrateIdFloor(qrData.id);
-          }
-          if (qrData.floor === '1st') {
-            qrData.floor = 'F1';
+          // 신규 형식 (pnl_no 존재) - 변환 불필요
+          if (!qrData.pnl_no) {
+            if (qrData.id) {
+              qrData.id = migrateIdFloor(qrData.id);
+            }
+            if (qrData.floor === '1st') {
+              qrData.floor = 'F1';
+            }
           }
           migrated[key] = JSON.stringify(qrData);
         } catch {
@@ -148,37 +151,6 @@ const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-  const [qrCodes, setQrCodesState] = useState<QRCodeData[]>([]);
-
-  // QR Codes 변경 시 IndexedDB + Supabase에 저장 (삭제 포함)
-  const setQrCodes = useCallback(async (newQrCodes: QRCodeData[] | ((prev: QRCodeData[]) => QRCodeData[])) => {
-    setQrCodesState(prev => {
-      const updatedQrCodes = typeof newQrCodes === 'function' ? newQrCodes(prev) : newQrCodes;
-
-      // 삭제된 QR ID 감지
-      const prevIds = new Set(prev.map(qr => qr.id));
-      const newIds = new Set(updatedQrCodes.map(qr => qr.id));
-      const deletedIds = [...prevIds].filter(id => !newIds.has(id as string)) as string[];
-
-      // 삭제된 항목: IndexedDB + Supabase에서 제거
-      // pushDeleteQRCode: 실패 시 오프라인 큐에 저장 → 네트워크 복귀 시 재시도
-      deletedIds.forEach((id: string) => {
-        deleteQRCodeFromIDB(id).catch(console.error);
-        if (session && isConfigured) {
-          pushDeleteQRCode(id).catch(console.error);
-        }
-      });
-
-      // 나머지 저장
-      saveAllQRCodes(updatedQrCodes).catch(error => {
-        console.error('QR Codes IndexedDB 저장 오류:', error);
-      });
-      if (session && isConfigured) {
-        pushAllQRCodes(updatedQrCodes).catch(console.error);
-      }
-      return updatedQrCodes;
-    });
-  }, [session]);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard-overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
@@ -187,10 +159,9 @@ const App: React.FC = () => {
   // useRef로 항상 최신 editingReport 보장 (onReportGenerated stale closure 방지)
   const editingReportRef = useRef<ReportHistory | null>(null);
   useEffect(() => { editingReportRef.current = editingReport; }, [editingReport]);
-  // inspectionsRef: updateInspections에서 이전 상태 비교용 (stale closure 방지)
+  // inspectionsRef: updateInspections에서 이전 상태 비교용 + flushOfflineQueue 최신 참조
   const inspectionsRef = useRef<InspectionRecord[]>([]);
   useEffect(() => { inspectionsRef.current = inspections; }, [inspections]);
-
   // @MX:NOTE: Phase 3 - 자동 주기 동기화 통합
   // @MX:WARN: inline 콜백 사용 금지 - 매 렌더마다 새 함수 참조 생성 → battery useEffect 무한 재실행
   // @MX:REASON: useCallback으로 안정적인 참조 보장. activityState는 Ref이므로 의존성 배열에서 제외
@@ -231,6 +202,8 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLElement>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reports, setReports] = useState<ReportHistory[]>([]);
+  const reportsRef = useRef<ReportHistory[]>([]);
+  useEffect(() => { reportsRef.current = reports; }, [reports]);
   const [floorPlanUrls, setFloorPlanUrls] = useState<{ floor: string; url: string }[]>([]);
   const [inspectionHistory, setInspectionHistory] = useState<InspectionHistoryEntry[]>([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -259,37 +232,35 @@ const App: React.FC = () => {
 
         // 2. IndexedDB에서 기존 데이터 로드
         const savedInspections = await getAllInspectionsWithPhotos();
-        const savedQRCodes = await getAllQRCodes();
 
         // 3. 삭제 대기 큐 기반 필터링 (재시도 실패해도 UI에 나타나지 않도록)
         const idbDeleteQueue = getIDBDeleteQueue();
         const pendingDeleteInspectionIds = new Set(
           idbDeleteQueue.filter(q => q.type === 'inspection').map(q => q.key)
         );
-        const pendingDeleteQRIds = new Set(
-          idbDeleteQueue.filter(q => q.type === 'qr').map(q => q.key)
-        );
         const filteredInspections = savedInspections.filter(
           i => !pendingDeleteInspectionIds.has(i.panelNo)
         );
-        const filteredQRCodes = savedQRCodes.filter(
-          qr => !pendingDeleteQRIds.has(qr.id)
-        );
+
+        // 3.5 레거시 tr 값 'A'/'B' → 전체 TR 문자열 마이그레이션
+        const LEGACY_TR_EXPAND: Record<string, string> = { A: 'TR-1(A) 900KVA', B: 'TR-2(B) 950KVA' };
+        const migratedInspections = filteredInspections.map(ins => {
+          if (ins.tr && ins.tr.length === 1 && /^[A-Z]$/.test(ins.tr)) {
+            const upgraded = { ...ins, tr: LEGACY_TR_EXPAND[ins.tr] ?? ins.tr };
+            saveInspection(upgraded).catch(() => {});
+            return upgraded;
+          }
+          return ins;
+        });
 
         // 4. 최초 접속 시 초기 데이터 시드 (IndexedDB 비어있을 때만)
         let currentInspections: InspectionRecord[];
-        if (filteredInspections.length === 0 && filteredQRCodes.length === 0) {
+        if (migratedInspections.length === 0) {
           console.log('[초기화] 최초 접속 - 초기 데이터 65면 시드');
-          const initialQRCodes = generateInitialQRCodes(INITIAL_INSPECTIONS);
-
           await Promise.all(INITIAL_INSPECTIONS.map(ins => saveInspection(ins)));
-          await saveAllQRCodes(initialQRCodes);
-
           currentInspections = INITIAL_INSPECTIONS;
-          setQrCodesState(initialQRCodes);
         } else {
-          currentInspections = filteredInspections;
-          setQrCodesState(filteredQRCodes);
+          currentInspections = migratedInspections;
         }
 
         // 3. Floor Plan 기본 배경 이미지 시드 (8개 층 중 하나라도 없을 때만)
@@ -454,7 +425,7 @@ const App: React.FC = () => {
           setInspectionHistory(savedHistory);
         }
 
-        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length || INITIAL_INSPECTIONS.length}개 패널, ${savedQRCodes.length || 65}개 QR 코드, ${savedReports.length}개 보고서, ${savedHistory.length}개 점검 이력`);
+        console.log(`[데이터 로드] IndexedDB: ${savedInspections.length || INITIAL_INSPECTIONS.length}개 패널, ${savedReports.length}개 보고서, ${savedHistory.length}개 점검 이력`);
       } catch (error) {
         console.error('IndexedDB 로드 오류:', error);
         // 오류 발생 시 빈 배열로 시작 (Panel Master에서 등록 필요)
@@ -558,7 +529,18 @@ const App: React.FC = () => {
     }
 
     const [withPositions, assigned] = assignDefaultPositions(repatchedMerged);
-    setInspections(withPositions);
+    // Race Condition 수정: functional setInspections로 pullAll 진행 중 사용자가 이동한 위치 보존
+    // pullAll 시작 시점의 IDB 스냅샷 기반 withPositions와 호출 시점 currentInspections를 비교해 최신 updatedAt 우선
+    setInspections(currentInspections => {
+      const currentMap = new Map(currentInspections.map(i => [i.panelNo, i]));
+      return withPositions.map(synced => {
+        const current = currentMap.get(synced.panelNo);
+        if (!current) return synced;
+        const currentTs = current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+        const syncedTs = synced.updatedAt ? new Date(synced.updatedAt).getTime() : 0;
+        return currentTs > syncedTs ? current : synced;
+      });
+    });
     if (assigned.length > 0) {
       const now = new Date().toISOString();
       const toSave = withPositions
@@ -571,9 +553,8 @@ const App: React.FC = () => {
   // 로그인 후 pullAll() 실행
   useEffect(() => {
     if (!session || !isConfigured) return;
-    pullAll(inspections, qrCodes, reports, {
+    pullAll(inspections, reports, {
       onInspectionsUpdated: applyPositionsAfterSync,
-      onQRCodesUpdated: (merged) => setQrCodesState(merged),
       onReportsUpdated: (merged) => setReports(merged),
       onSyncStatusChange: (status) => setSyncStatus(status),
       onFloorPlanUrlsUpdated: (urls) => setFloorPlanUrls(urls),
@@ -581,16 +562,16 @@ const App: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // 오프라인 → 온라인 전환 시 큐 플러시
+  // 오프라인 → 온라인 전환 시 큐 플러시 — ref로 항상 최신 값 참조 (stale closure 방지)
   useEffect(() => {
     if (!isConfigured) return;
     const handleOnline = () => {
-      flushOfflineQueue(inspections, qrCodes, reports).catch(console.error);
+      flushOfflineQueue(inspectionsRef.current, reportsRef.current).catch(console.error);
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspections, qrCodes, reports]);
+  }, [isConfigured]);
 
   // PWA 설치 핸들러
   const handleInstallApp = async () => {
@@ -630,31 +611,10 @@ const App: React.FC = () => {
       }
     }
     
-    setInspections(uniqueInspections);
+    // ✅ await 이전에 prevMap 캡처 — setInspections + await 이후에는 inspectionsRef.current가 이미 NEW 상태일 수 있음
+    const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
 
-    // QR 코드의 qrData에 embedded된 position도 최신 inspection position으로 동기화
-    setQrCodes((prevQrCodes: QRCodeData[]) =>
-      prevQrCodes.map((qr: QRCodeData) => {
-        try {
-          const qrData = JSON.parse(qr.qrData);
-          const matchingInspection = uniqueInspections.find(i => i.panelNo === qrData.id);
-          if (matchingInspection?.position) {
-            const updatedQrData = {
-              ...qrData,
-              position: {
-                ...qrData.position,
-                x: matchingInspection.position.x,
-                y: matchingInspection.position.y,
-              },
-            };
-            return { ...qr, qrData: JSON.stringify(updatedQrData) };
-          }
-        } catch {
-          // qrData 파싱 실패 시 원본 유지
-        }
-        return qr;
-      })
-    );
+    setInspections(uniqueInspections);
 
     // IndexedDB에 저장
     try {
@@ -705,7 +665,6 @@ const App: React.FC = () => {
 
     // Supabase push (fire-and-forget) — updatedAt이 갱신된 항목만 push (egress 절감)
     if (session && isConfigured) {
-      const prevMap = new Map<string, InspectionRecord>(inspectionsRef.current.map(i => [i.panelNo, i]));
       const toSync = uniqueInspections.filter(ins => {
         const prev = prevMap.get(ins.panelNo);
         if (!prev) return true; // 신규 항목
@@ -725,10 +684,7 @@ const App: React.FC = () => {
       // pushDeleteInspection: 실패 시 오프라인 큐에 저장 → 네트워크 복귀 시 재시도
       pushDeleteInspection(panelNo).catch(console.error);
     }
-    setQrCodes((prev: QRCodeData[]) => prev.filter((qr: QRCodeData) => {
-      try { return JSON.parse(qr.qrData).id !== panelNo; } catch { return true; }
-    }));
-  }, [session, isConfigured, setQrCodes]);
+  }, [session, isConfigured]);
 
   // 엑셀 Import 후 Reports 병합 핸들러
   // Inspection History 항목 이름 변경
@@ -887,43 +843,24 @@ const App: React.FC = () => {
       // 스캔 시간 생성 (YYYY-MM-DD hh:mm:ss 형식)
       const scanTime = formatDateTime();
 
-      // QR 코드에서 PNL NO. 찾기 (id 또는 panelNo)
-      const qrPanelNo = data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
+      // QR 코드에서 PNL NO. 찾기 (신규: pnl_no, 구형: panelNo/id 폴백)
+      const qrPanelNo = data.pnl_no || data.panelNo || data.pnlNo || data.id || (data.raw && data.raw.includes('DB-') ? data.raw : null) || data.raw || 'UNKNOWN';
       console.log('🏷️ PNL NO:', qrPanelNo);
 
-      // qrCodes에서 매칭되는 QR 찾기 (Panel Master에서 등록한 QR)
-      const matchedQR = qrCodes.find((qr: any) => {
-        try {
-          const qrDataObj = JSON.parse(qr.qrData || '{}');
-          // QR 데이터의 id/panelNo와 비교
-          const matches = qrDataObj.id === qrPanelNo ||
-                         qrDataObj.panelNo === qrPanelNo ||
-                         qr.location === data.location;
-          console.log('  - 비교:', qrDataObj.id, qrDataObj.panelNo, '===', qrPanelNo, '결과:', matches);
-          return matches;
-        } catch {
-          return false;
-        }
+      // inspections에서 매칭되는 패널 찾기
+      const matchedQR = inspections.find((ins) => {
+        const matches = ins.panelNo === qrPanelNo;
+        console.log('  - 비교:', ins.panelNo, '===', qrPanelNo, '결과:', matches);
+        return matches;
       });
       console.log('🔗 matchedQR:', matchedQR);
-
-      // matchedQR에서 데이터 추출
-      let matchedQRData: any = {};
-      if (matchedQR) {
-        try {
-          matchedQRData = JSON.parse(matchedQR.qrData || '{}');
-          console.log('📋 matchedQRData:', matchedQRData);
-        } catch {
-          matchedQRData = {};
-        }
-      }
 
       // 기존 보드 찾기 (panelNo 기준)
       const existingBoard = inspections.find(i => i.panelNo === qrPanelNo || i.panelNo.includes(qrPanelNo));
       console.log('📋 existingBoard:', existingBoard);
 
-      // 최종 PNL NO 결정
-      const finalPanelNo = data.panelNo || data.pnlNo || data.id || matchedQRData.id || matchedQRData.panelNo || qrPanelNo;
+      // 최종 PNL NO 결정 (신규: pnl_no, 구형 폴백 유지)
+      const finalPanelNo = data.pnl_no || data.panelNo || data.pnlNo || data.id || (matchedQR as InspectionRecord | undefined)?.panelNo || qrPanelNo;
       console.log('🎯 최종 PNL NO:', finalPanelNo);
 
       if (existingBoard) {
@@ -931,13 +868,13 @@ const App: React.FC = () => {
         const updatedBoard: InspectionRecord = {
           ...existingBoard,
           lastInspectionDate: scanTime,
-          projectName: data.projectName || matchedQRData.projectName || existingBoard.projectName || '',
-          contractor: data.contractor || matchedQRData.contractor || existingBoard.contractor || '',
-          managementNumber: data.managementNumber || matchedQRData.managementNumber || existingBoard.managementNumber || finalPanelNo,
-          floor: data.floor || matchedQRData.floor || existingBoard.floor,
-          tr: data.tr || matchedQRData.tr || matchedQRData.location || existingBoard.tr,
-          nominalCrossSection: data.nominalCrossSection || matchedQRData.nominalCrossSection || existingBoard.nominalCrossSection || '',
-          breakerCapacity: data.breakerCapacity || matchedQRData.breakerCapacity || existingBoard.breakerCapacity || '',
+          projectName: data.projectName || matchedQR?.projectName || existingBoard.projectName || '',
+          contractor: data.contractor || matchedQR?.contractor || existingBoard.contractor || '',
+          managementNumber: data.managementNumber || existingBoard.managementNumber || finalPanelNo,
+          floor: data.floor || matchedQR?.floor || existingBoard.floor,
+          tr: data.tr || matchedQR?.tr || existingBoard.tr,
+          nominalCrossSection: data.nominalCrossSection || matchedQR?.nominalCrossSection || existingBoard.nominalCrossSection || '',
+          breakerCapacity: data.breakerCapacity || matchedQR?.breakerCapacity || existingBoard.breakerCapacity || '',
         };
         setInspections(prev => prev.map(item => item.panelNo === existingBoard.panelNo ? updatedBoard : item));
         console.log('✅ 기존 보드 업데이트, dashboard로 이동');
@@ -1122,9 +1059,8 @@ const App: React.FC = () => {
               isConfigured={isConfigured}
               onManualSync={() => {
                 if (!session) return;
-                pullAll(inspections, qrCodes, reports, {
+                pullAll(inspections, reports, {
                   onInspectionsUpdated: applyPositionsAfterSync,
-                  onQRCodesUpdated: (merged) => setQrCodesState(merged),
                   onReportsUpdated: (merged) => setReports(merged),
                   onSyncStatusChange: (status) => setSyncStatus(status),
                 });
@@ -1399,7 +1335,6 @@ const App: React.FC = () => {
                       setEditingReport(null);
                     }}
                     onReportsUpdate={(newReports) => setReports(newReports)}
-                    qrCodes={qrCodes}
                     reports={reports}
                     inspectionHistory={inspectionHistory}
                     onResetAllInspections={handleResetAllInspections}
@@ -1452,8 +1387,6 @@ const App: React.FC = () => {
               ) : (
                 <QRGenerator
                   inspections={inspections}
-                  qrCodes={qrCodes}
-                  onQrCodesChange={setQrCodes}
                   onSelectInspection={(inspectionId) => {
                     setSelectedInspectionId(inspectionId);
                   }}
@@ -1541,7 +1474,7 @@ const App: React.FC = () => {
             onConfirm={async () => {
               setIsExporting(true);
               try {
-                await exportToExcel(inspections, qrCodes, reports);
+                await exportToExcel(inspections, reports);
                 setShowExportPreview(false);
                 alert(`엑셀 내보내기가 완료되었습니다.\n${inspections.length}개의 분전반 데이터가 내보내졌습니다.`);
               } catch (error) {

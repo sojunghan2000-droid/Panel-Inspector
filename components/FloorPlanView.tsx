@@ -1,16 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { InspectionRecord, QRCodeData } from '../types';
+import { InspectionRecord, getTrLetter } from '../types';
 import { CheckCircle2, Clock, AlertCircle, X, QrCode, Edit2, Save, MapPin, Upload, Image as ImageIcon, ZoomOut } from 'lucide-react';
 import { getFloorPlanImageAsDataURL, saveFloorPlanImage, dataURLToBlob } from '../services/indexedDBService';
 import { pushFloorPlanImage } from '../services/syncService';
 
 interface FloorPlanViewProps {
   inspections: InspectionRecord[];
-  /** QR 코드 목록 (동적 데이터) */
-  qrCodes?: QRCodeData[];
   onSelectInspection?: (inspection: InspectionRecord) => void;
   onUpdateInspections?: (inspections: InspectionRecord[]) => void;
-  onUpdateQRCodes?: (qrCodes: QRCodeData[]) => void;
   selectedInspectionId?: string | null;
   onSelectionChange?: (id: string | null) => void;
   selectedFloor?: string;
@@ -52,20 +49,11 @@ const toFloorLabel = (floor: string | null): string | null => {
 };
 const ALL_FLOORS = [...UPPER_FLOORS, ...BASEMENT_FLOORS];
 
-interface QRLocation {
-  id: string;
-  trNo: string; // TR 번호 (예: "TR-06867034")
-  floor: string;
-  position: { x: number; y: number };
-  qrId: string;
-}
 
 const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   inspections,
-  qrCodes: propQrCodes = [],
   onSelectInspection,
   onUpdateInspections,
-  onUpdateQRCodes,
   selectedInspectionId,
   onSelectionChange,
   selectedFloor: propSelectedFloor,
@@ -84,29 +72,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const [selectedMarkerIds, setSelectedMarkerIds] = useState<Set<string>>(new Set());
   const [batchTargetFloor, setBatchTargetFloor] = useState<string>('');
   const canMultiSelect = mode !== 'dashboard' && !readOnly;
-  // qrCodes prop → qrLocations (동적 데이터)
-  const qrLocations = useMemo(() => {
-    const locations: QRLocation[] = [];
-    propQrCodes.forEach((qr: QRCodeData) => {
-      try {
-        // 직접 position 객체 사용 (JSON 파싱 불필요)
-        const position = qr.position || { x: 50, y: 50 };
-        if (position.x >= 0 && position.x <= 100 && position.y >= 0 && position.y <= 100) {
-          locations.push({
-            id: `qr-${qr.id}`,
-            trNo: qr.trData.tr_no,
-            floor: qr.floor,
-            position,
-            qrId: qr.id
-          });
-        }
-      } catch {
-        // skip
-      }
-    });
-    return locations;
-  }, [propQrCodes]);
-  const savedQRCodesForMarkers = propQrCodes;
   const [isEditingInspectionPosition, setIsEditingInspectionPosition] = useState(false);
   const [editingPosition, setEditingPosition] = useState({ x: 0, y: 0 });
   const [editingFloor, setEditingFloor] = useState<string>('');
@@ -129,8 +94,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
   const zoomInnerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  /** QR 코드 드래그 2초 디바운싱 타이머 */
-  const qrCodeDragTimerRef = useRef<NodeJS.Timeout | null>(null);
   /** 리스트/마커에서 다른 검사 항목을 선택했을 때만 층 동기화. 드롭다운으로 층만 바꾼 경우에는 덮어쓰지 않음 */
   const prevSelectedInspectionIdRef = useRef<string | null>(null);
   /** 내부 마커 클릭 추적: true면 scrollToMarker 호출 생략 (스크롤 초기화 방지) */
@@ -617,47 +580,11 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
     }
   };
 
-  /** QR 코드 위젯 이동 (2초 디바운싱 저장) */
-  const handleQRCodeDrag = (qrId: string, newPosition: { x: number; y: number }) => {
-    if (!onUpdateQRCodes) return;
-
-    // 2초 디바운싱: 이동 중에는 로컬 상태만 업데이트
-    if (qrCodeDragTimerRef.current) {
-      clearTimeout(qrCodeDragTimerRef.current);
-    }
-
-    qrCodeDragTimerRef.current = setTimeout(() => {
-      const updatedQRCodes = propQrCodes.map(qr =>
-        qr.id === qrId
-          ? {
-              ...qr,
-              position: newPosition,
-              updatedAt: new Date().toISOString(),
-            }
-          : qr
-      );
-
-      onUpdateQRCodes(updatedQRCodes);
-    }, 2000); // 2초 디바운싱
-  };
-
   /** TR 기준 색상 반환: TR-1 (A) = 파란색, TR-2 (B) = 주황색 */
-  const getTRColor = (panelNo: string, qrCodes: QRCodeData[], inspection?: InspectionRecord): string => {
-    // 1. inspection.tr 필드 우선 확인 (명시적 TR 값)
-    if (inspection?.tr === 'A') return '#3b82f6'; // TR-1 파란색
-    if (inspection?.tr === 'B') return '#f97316'; // TR-2 주황색
-
-    // 2. QR 코드에서 trData 확인
-    const matchingQR = qrCodes.find(qr => {
-      try { return JSON.parse(qr.qrData).id === panelNo; } catch { return false; }
-    });
-    if (matchingQR) {
-      const trNo = matchingQR.trData?.tr_no?.toUpperCase() || '';
-      // TR-1, TR-1(A)와 같은 형식에서 숫자 추출
-      if (trNo.includes('1') && trNo.includes('A')) return '#3b82f6';
-      if (trNo.includes('2') && trNo.includes('B')) return '#f97316';
-    }
-
+  const getTRColor = (inspection?: InspectionRecord): string => {
+    const trLetter = getTrLetter(inspection?.tr);
+    if (trLetter === 'A') return '#3b82f6'; // TR-1 파란색
+    if (trLetter === 'B') return '#f97316'; // TR-2 주황색
     return '#94a3b8'; // 기본 회색
   };
 
@@ -867,64 +794,25 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
       type: 'inspection';
       position: { x: number; y: number };
       data: InspectionRecord;
-      qrLocation?: QRLocation;
+
     }> = [];
     
     // ID 기준으로 중복 제거를 위한 Set
     const seenMarkerIds = new Set<string>();
 
-    // QR 코드 데이터에서 ID 매핑 생성 (동적 데이터: propQrCodes)
-    const qrMapByInspectionId = new Map<string, QRLocation>();
-    qrLocations.forEach(qrLoc => {
-      try {
-        const qrCode = propQrCodes.find((qr: QRCodeData) => qr.id === qrLoc.qrId);
-        if (qrCode) {
-          const qrData = JSON.parse(qrCode.qrData);
-          if (qrData.id) {
-            qrMapByInspectionId.set(qrData.id, qrLoc);
-          }
-        }
-      } catch (e) {
-        // 무시
-      }
-    });
-
-    // InspectionRecord를 기준으로 마커 생성 (QR 정보 포함)
+    // InspectionRecord를 기준으로 마커 생성
     positionedInspections.forEach(inspection => {
       if (inspection.position) {
-        const qrLocation = qrMapByInspectionId.get(inspection.panelNo);
-        
-        // 층수 필터링: inspection.floor → QR floor → panelNo 추출 순서
+        // 층수 필터링: inspection.floor → panelNo 추출 순서
         let shouldShow = false;
         let markerFloor: string | null = null;
 
         // 1. inspection.floor 명시적 필드 우선
         if (inspection.floor) {
           markerFloor = inspection.floor;
-        } else if (qrLocation) {
-          // 2. QR 코드에 층수 정보가 있으면 사용
-          markerFloor = qrLocation.floor;
-        } else {
-          // QR 코드 정보가 없으면 propQrCodes에서 직접 확인
-          try {
-            const qrCode = propQrCodes.find((qr: QRCodeData) => {
-              try {
-                const qrData = JSON.parse(qr.qrData);
-                return qrData.id === inspection.panelNo;
-              } catch {
-                return false;
-              }
-            });
-            
-            if (qrCode) {
-              markerFloor = qrCode.floor;
-            }
-          } catch (e) {
-            // 무시
-          }
         }
-        
-        // QR 코드에 층수 정보가 없으면 PNL NO.에서 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1 → 1=F1, 2=B1)
+
+        // 2. PNL NO.에서 층수 추출 (형식: 1, 2, 1-1, 2-1, 3-1-1 → 1=F1, 2=B1)
         if (!markerFloor && inspection.panelNo) {
           const idParts = inspection.panelNo.trim().split('-').map((p: string) => p.trim());
           const floorMap: { [key: string]: string } = {
@@ -941,7 +829,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             markerFloor = floorMap[first] || (idParts.length >= 3 ? (floorMap[second] || 'F1') : 'F1');
           }
         }
-        
+
         // 층수 정확 일치: 선택된 층과 동일한 마커만 표시
         const normalizedFloor = toFloorLabel(markerFloor);
         if (!normalizedFloor) {
@@ -949,7 +837,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
         } else if (normalizedFloor === selectedFloor) {
           shouldShow = true;
         }
-        
+
         // 층에 맞는 마커만 추가 (panelNo 중복 체크)
         if (shouldShow && !seenMarkerIds.has(inspection.panelNo)) {
           seenMarkerIds.add(inspection.panelNo);
@@ -958,17 +846,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             type: 'inspection',
             position: inspection.position,
             data: inspection,
-            qrLocation: qrLocation
           });
         }
       }
     });
-    
-    // 디버깅: 마커 개수 확인
-    console.log('Total markers for floor', selectedFloor, ':', markers.length, 'Positioned inspections:', positionedInspections.length, 'Unique IDs:', seenMarkerIds.size);
+
+    console.log('Total markers for floor', selectedFloor, ':', markers.length);
 
     return markers;
-  }, [positionedInspections, qrLocations, selectedFloor]);
+  }, [positionedInspections, selectedFloor]);
 
   // 층별 위젯 개수 현황 (전체 층)
   const floorStats = useMemo(() => {
@@ -1218,7 +1104,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
             const { x, y } = marker.position;
             const inspection = marker.data;
             // TR 기준 색상 사용 (TR-1 = 파란색, TR-2 = 주황색)
-            const trColor = getTRColor(inspection.panelNo, propQrCodes, inspection);
+            const trColor = getTRColor(inspection);
             const isSelected = selectedInspection?.panelNo === marker.id;
             const isHovered = hoveredInspection?.panelNo === marker.id;
             // Panel Master: 패널 선택 시 선택된 마커만 표시, 나머지 숨김
@@ -1304,9 +1190,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
 
         {/* Selected Inspection Details Panel — startInEditMode(Dashboard에 위치 매핑 경로)일 때만 표시 */}
         {showDetailPanel && startInEditMode && mode !== 'dashboard' && selectedInspection && (() => {
-          // QR 정보 찾기
-          const qrLocation = allMarkers.find(m => m.id === selectedInspection.panelNo)?.qrLocation;
-          
           return (
           <>
             {/* Backdrop */}
@@ -1335,10 +1218,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({
               <div>
                 <h4 className="font-bold text-slate-800 text-lg mb-0.5">{selectedInspection.panelNo}</h4>
                 <p className="text-sm text-slate-600">Distribution Board</p>
-                {qrLocation && !isEditingInspectionPosition && (
+                {selectedInspection.tr && !isEditingInspectionPosition && (
                   <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
                     <QrCode size={12} />
-                    QR: {qrLocation.location} ({qrLocation.floor})
+                    TR: {selectedInspection.tr} ({selectedInspection.floor || ''})
                   </p>
                 )}
                 {isEditingInspectionPosition && (

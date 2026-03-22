@@ -1,9 +1,8 @@
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
-import { InspectionRecord, QRCodeData, ReportHistory } from '../types';
+import { InspectionRecord, ReportHistory } from '../types';
 import { getPhoto, getThermalImage, blobToDataURL } from './indexedDBService';
 
-const STORAGE_KEY = 'safetyguard_qrcodes';
 const REPORTS_STORAGE_KEY = 'safetyguard_reports';
 const INSPECTIONS_STORAGE_KEY = 'safetyguard_inspections';
 
@@ -92,71 +91,28 @@ const imageUrlToBase64 = async (url: string): Promise<{ base64: string; extensio
  * 스펙 버전 1.0에 맞춰 엑셀 파일을 생성합니다.
  * 
  * @param inspections 검사 기록 배열
- * @param qrCodesFromProps QR 코드 데이터 (옵션)
  * @param reportsFromProps 보고서 데이터 (옵션)
  * @returns 내보낸 PNL NO 목록 (사진 삭제용)
  */
 export const exportToExcel = async (
   inspections: InspectionRecord[],
-  qrCodesFromProps?: QRCodeData[],
   reportsFromProps?: ReportHistory[]
 ): Promise<string[]> => {
-  const savedQRCodes: QRCodeData[] = qrCodesFromProps ?? JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   const reports: ReportHistory[] = reportsFromProps ?? JSON.parse(localStorage.getItem(REPORTS_STORAGE_KEY) || '[]');
-  
+
   // Reports를 ID로 매핑
   const reportMap = new Map<string, ReportHistory>();
   reports.forEach(report => {
     reportMap.set(report.boardId, report);
   });
-  
-  // QR 코드를 ID로 매핑 (QR과 ID는 하나의 객체이므로 ID로 직접 매칭)
-  const qrMap = new Map<string, QRCodeData>();
-  savedQRCodes.forEach(qr => {
-    try {
-      const qrData = JSON.parse(qr.qrData);
-      if (qrData.id) {
-        const matchingInspection = inspections.find(inspection => inspection.panelNo === qrData.id);
-        if (matchingInspection) {
-          qrMap.set(matchingInspection.panelNo, qr);
-        }
-      }
-    } catch (e) {
-      console.error('QR 데이터 파싱 오류:', e);
-    }
-  });
 
   // 엑셀 데이터 준비
   const excelData: ExcelExportData[] = inspections.map(inspection => {
-    const qr = qrMap.get(inspection.panelNo);
     const report = reportMap.get(inspection.panelNo);
-    let qrLocation = '';
-    let qrFloor = '';
-    let qrPosition = '';
-    let qrId = '';
-
-    if (qr) {
-      try {
-        const qrData = JSON.parse(qr.qrData);
-        qrId = qrData.id || inspection.panelNo;
-        qrLocation = qrData.location || qr.location || '';
-        qrFloor = qrData.floor || qr.floor || '';
-        if (typeof qrData.position === 'string') {
-          qrPosition = qrData.position;
-        } else if (qrData.position && qrData.position.description) {
-          qrPosition = qrData.position.description;
-        } else {
-          qrPosition = qr.position || '';
-        }
-      } catch (e) {
-        qrLocation = qr.location || '';
-        qrFloor = qr.floor || '';
-        qrPosition = qr.position || '';
-        qrId = inspection.panelNo;
-      }
-    } else {
-      qrId = inspection.panelNo;
-    }
+    const qrId = inspection.panelNo;
+    const qrLocation = inspection.tr || '';
+    const qrFloor = inspection.floor || '';
+    const qrPosition = inspection.position ? `${inspection.position.x},${inspection.position.y}` : '';
 
     // 부하 원인 문자열 생성
     const connectedLoads = [];
@@ -262,7 +218,7 @@ export const exportToExcel = async (
   };
 
   inspections.forEach(inspection => {
-    const trValue = inspection.tr === 'A' ? 'TR-1 900KVA' : inspection.tr === 'B' ? 'TR-2 950KVA' : '-';
+    const trValue = inspection.tr || '-';
     pnlListSheet.addRow({
       id: inspection.panelNo,
       tr: trValue,
@@ -507,4 +463,86 @@ export const exportToExcel = async (
 
   // 내보낸 PNL NO 목록 반환
   return inspections.map(i => i.panelNo);
+};
+
+/**
+ * QR 코드 일괄 출력 엑셀 파일 생성
+ * 선택된 패널의 qr_data 정보와 QR 코드 이미지를 포함한 별도 파일 생성
+ */
+export const exportQRBatchToExcel = async (
+  items: Array<{ inspection: InspectionRecord; imageDataUrl: string }>
+): Promise<void> => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Panel Inspector';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('QR 코드 출력');
+
+  // 열 너비 설정
+  sheet.getColumn(1).width = 18;  // PNL NO.
+  sheet.getColumn(2).width = 22;  // TR
+  sheet.getColumn(3).width = 10;  // 층수
+  sheet.getColumn(4).width = 22;  // QR 이미지
+
+  // 헤더
+  const headerRow = sheet.addRow(['PNL NO.', 'TR', '층수', 'QR 코드']);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.height = 22;
+
+  let currentRow = 2;
+
+  for (const { inspection, imageDataUrl } of items) {
+    const pnlNo = inspection.panelNo || '';
+    const trNo = inspection.tr || '';
+    const floor = inspection.floor || '';
+
+    const row = sheet.addRow([pnlNo, trNo, floor, '']);
+    row.alignment = { vertical: 'middle', horizontal: 'center' };
+    row.height = 128;
+
+    // A~C 셀 스타일
+    row.getCell(1).font = { bold: true, size: 11 };
+    row.getCell(2).font = { size: 10 };
+    row.getCell(3).font = { size: 10 };
+
+    // QR 이미지 삽입
+    if (imageDataUrl && imageDataUrl.startsWith('data:image')) {
+      try {
+        const base64 = imageDataUrl.split(',')[1];
+        const imageId = workbook.addImage({ base64, extension: 'png' });
+        // D열에 이미지 삽입 (셀 범위 인덱스는 0-based)
+        sheet.addImage(imageId, {
+          tl: { col: 3, row: currentRow - 1 },
+          br: { col: 4, row: currentRow },
+        });
+      } catch (e) {
+        console.error('QR 이미지 삽입 오류:', e);
+      }
+    }
+
+    currentRow++;
+  }
+
+  // 파일 다운로드
+  const today = new Date().toISOString().split('T')[0];
+  const fileName = `QR코드_출력_${today}.xlsx`;
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
+  if (isElectron) {
+    const result = await window.electronAPI!.saveExcelFile(Array.from(new Uint8Array(buffer)), fileName);
+    if (!result.success && !result.canceled) throw new Error(result.error || '파일 저장 실패');
+  } else {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
 };
