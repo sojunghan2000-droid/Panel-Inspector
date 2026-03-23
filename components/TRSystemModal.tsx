@@ -697,7 +697,7 @@ const TRSystemModal: React.FC<TRSystemModalProps> = ({ isOpen, onClose, inspecti
               <p className="text-sm font-medium mb-2">등록된 TR이 없습니다</p>
               <p className="text-xs mb-4">'TR 추가' 버튼을 클릭하여 시작하세요</p>
               <button
-                onClick={addNewTR}
+                onClick={openAddTRDialog}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
               >
                 <Plus size={16} />
