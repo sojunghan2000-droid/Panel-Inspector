@@ -22,6 +22,7 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   // 선택된 보고서의 HTML 미리보기 (fetchReportHtml로 Storage/DB fallback)
@@ -71,59 +72,60 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
       });
   }, [reports]);
 
-  // 보고서 출력 핸들러
-  const handlePrintAllReports = () => {
-    if (approvedReports.length === 0) {
+  // 보고서 출력 핸들러 (선택된 항목만 or 전체)
+  const handlePrintReports = async () => {
+    // 선택된 항목이 있으면 선택된 것만, 없으면 전체
+    const targetReports = selectedIds.size > 0
+      ? approvedReports.filter(r => selectedIds.has(r.id))
+      : approvedReports;
+
+    if (targetReports.length === 0) {
       alert('출력할 승인된 보고서가 없습니다.');
       return;
     }
 
-    // 모든 승인된 보고서의 HTML을 결합
-    const combinedHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>가설분전반 점검 보고서 - 전체 출력</title>
-        <style>
-          @media print {
-            .report-page { page-break-after: always; }
-            .report-page:last-child { page-break-after: auto; }
-          }
-          body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 20px; }
-          .report-page { margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; }
-          .report-header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #333; }
-          .report-title { font-size: 24px; font-weight: bold; }
-          .report-meta { color: #666; font-size: 14px; margin-top: 8px; }
-        </style>
-      </head>
-      <body>
-        <div class="print-header" style="text-align: center; margin-bottom: 30px;">
-          <h1 style="margin: 0; font-size: 28px;">성수동 K-PJT 가설분전반 점검 보고서</h1>
-          <p style="color: #666; margin-top: 10px;">총 ${approvedReports.length}개 패널 | 출력일: ${new Date().toLocaleDateString('ko-KR')}</p>
-        </div>
-        ${approvedReports.map((report, index) => `
-          <div class="report-page">
-            <div class="report-header">
-              <div class="report-title">PNL NO. ${report.boardId}</div>
-              <div class="report-meta">${index + 1} / ${approvedReports.length} | ${new Date(report.generatedAt).toLocaleString('ko-KR')}</div>
-            </div>
-            ${report.htmlContent.replace(/<html[^>]*>|<\/html>|<head[^>]*>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')}
-          </div>
-        `).join('')}
-      </body>
-      </html>
-    `;
+    setIsPrinting(true);
+    try {
+      // fetchReportHtml로 각 보고서 HTML 로드 (Storage/DB fallback)
+      const htmlParts = await Promise.all(
+        targetReports.map(r => fetchReportHtml(r.id).catch(() => ''))
+      );
 
-    // 새 창에서 출력
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(combinedHtml);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 500);
+      const combinedHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>가설분전반 점검 보고서</title>
+          <style>
+            @media print {
+              .report-page { page-break-after: always; }
+              .report-page:last-child { page-break-after: auto; }
+            }
+            body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; }
+          </style>
+        </head>
+        <body>
+          ${htmlParts.map((html) => `
+            <div class="report-page">
+              ${html.replace(/<html[^>]*>|<\/html>|<head[^>]*>[\s\S]*?<\/head>|<body[^>]*>|<\/body>/gi, '')}
+            </div>
+          `).join('')}
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(combinedHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      }
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -301,21 +303,42 @@ const ReportsList: React.FC<ReportsListProps> = ({ reports, onDeleteReport, insp
       <div className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-slate-800">Generated Reports</h2>
-          {/* 보고서 출력 버튼 */}
-          <button
-            onClick={handlePrintAllReports}
-            disabled={approvedReports.length === 0}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              approvedReports.length > 0
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-            }`}
-            title={approvedReports.length > 0 ? `${approvedReports.length}개 승인된 보고서 출력` : '승인된 보고서가 없습니다'}
-          >
-            <Printer size={18} />
-            <span className="hidden sm:inline">보고서 출력 ({approvedReports.length})</span>
-            <span className="sm:hidden">{approvedReports.length}</span>
-          </button>
+          {/* 보고서 출력 버튼 (선택 시 선택된 것만, 없으면 전체) */}
+          {(() => {
+            const hasSelection = selectedIds.size > 0;
+            const printCount = hasSelection ? selectedIds.size : approvedReports.length;
+            const isDisabled = approvedReports.length === 0 || isPrinting;
+            return (
+              <button
+                onClick={handlePrintReports}
+                disabled={isDisabled}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isDisabled
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : hasSelection
+                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title={
+                  isDisabled
+                    ? '승인된 보고서가 없습니다'
+                    : hasSelection
+                      ? `선택된 ${selectedIds.size}개 보고서 출력`
+                      : `전체 ${approvedReports.length}개 보고서 출력`
+                }
+              >
+                <Printer size={18} />
+                <span className="hidden sm:inline">
+                  {isPrinting
+                    ? '출력 준비 중...'
+                    : hasSelection
+                      ? `선택 출력 (${printCount})`
+                      : `보고서 출력 (${printCount})`}
+                </span>
+                <span className="sm:hidden">{isPrinting ? '...' : printCount}</span>
+              </button>
+            );
+          })()}
         </div>
 
         {/* 선택/다운로드/Import 툴바 */}
